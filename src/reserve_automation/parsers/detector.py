@@ -18,12 +18,13 @@ class ParserDetector:
     Tries all registered parsers and uses the first one that can handle the file.
     """
 
-    def __init__(self, config: Optional[dict] = None):
+    def __init__(self, config: Optional[dict] = None, llm_gateway=None):
         """
         Initialize parser detector.
 
         Args:
             config: Optional parser configuration
+            llm_gateway: Optional LLM Gateway for vision-based OCR
         """
         config = config or {}
 
@@ -39,6 +40,8 @@ class ParserDetector:
                 denoise=image_config.get("denoise", True),
                 enhance_contrast=image_config.get("enhance_contrast", True),
                 language=image_config.get("ocr_language", "eng"),
+                ocr_method=image_config.get("ocr_method", "auto"),
+                llm_gateway=llm_gateway,
             ),
         ]
 

@@ -39,10 +39,14 @@ async def extraction_pipeline(
 
     logger.info(f"Starting extraction pipeline for: {input_file.name}")
 
+    # Initialize LLM gateway early (needed for vision-based OCR)
+    llm_config = config.get("llm", {})
+    llm_gateway = LLMGateway(llm_config)
+
     # Step 1: Parse input file
     try:
         parser_config = config.get("parsers", {})
-        parser_detector = ParserDetector(parser_config)
+        parser_detector = ParserDetector(parser_config, llm_gateway=llm_gateway)
 
         if input_type == "auto":
             logger.debug("Auto-detecting input type...")
@@ -60,6 +64,8 @@ async def extraction_pipeline(
                 parser = ImageParser(
                     preprocess=image_config.get("preprocess", True),
                     language=image_config.get("ocr_language", "eng"),
+                    ocr_method=image_config.get("ocr_method", "auto"),
+                    llm_gateway=llm_gateway,
                 )
 
             parser_result = await parser.parse(input_file)
@@ -73,9 +79,6 @@ async def extraction_pipeline(
 
     # Step 2: Extract bottles using LLM
     try:
-        # Initialize LLM gateway
-        llm_config = config.get("llm", {})
-        llm_gateway = LLMGateway(llm_config)
 
         # Extract bottles
         extractor = BottleExtractor(llm_gateway)

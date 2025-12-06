@@ -32,6 +32,7 @@ parsers:
     denoise: true
     enhance_contrast: true
     ocr_language: "eng"
+    ocr_method: "auto"  # tesseract | vision | auto (smart fallback)
 
 # Extraction settings
 extraction:
