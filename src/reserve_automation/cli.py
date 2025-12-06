@@ -1,11 +1,16 @@
 """CLI interface for The Reserve Automation."""
 
+import asyncio
+import json
 import click
 from pathlib import Path
 from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
 
 from .core.config import Config
 from .core.exceptions import ConfigurationError, ReserveAutomationError
+from .pipeline import extraction_pipeline
 from .utils.logging import logger, setup_logging
 
 console = Console()
@@ -62,9 +67,47 @@ def extract(ctx, input_file, type, beverage, output, review):
         reserve-automation extract label.jpg --type image --beverage whiskey
         reserve-automation extract scan.pdf --output bottles.json --no-review
     """
-    console.print("[yellow]Extract command not yet implemented[/yellow]")
-    console.print(f"Would extract from: {input_file}")
-    # TODO: Implement extraction pipeline
+    # Validate input file
+    if not input_file.exists():
+        console.print(f"[red]Error:[/red] File not found: {input_file}")
+        ctx.exit(1)
+
+    config = ctx.obj.get("config")
+    if not config:
+        console.print("[red]Error:[/red] Configuration not loaded")
+        ctx.exit(1)
+
+    # Run extraction pipeline
+    console.print(f"\n[bold]Extracting from:[/bold] {input_file.name}")
+    console.print(f"[dim]Input type: {type} | Beverage: {beverage}[/dim]\n")
+
+    try:
+        with console.status("[bold green]Processing...", spinner="dots"):
+            result = asyncio.run(
+                extraction_pipeline(
+                    input_file=input_file,
+                    config=config.model_dump(),
+                    input_type=type,
+                    beverage_type=beverage,
+                )
+            )
+
+        # Display results
+        _display_extraction_results(result, review)
+
+        # Save to JSON if requested
+        if output:
+            _save_extraction_json(result, output)
+            console.print(f"\n[green]✓ Saved to:[/green] {output}")
+
+        # Exit code based on results
+        if result.errors:
+            ctx.exit(1)
+
+    except Exception as e:
+        console.print(f"\n[red]Extraction failed:[/red] {e}")
+        logger.exception("Extraction error")
+        ctx.exit(1)
 
 
 @cli.command()
@@ -222,6 +265,115 @@ def llm_list(ctx):
         if base_url != "N/A":
             console.print(f"  URL: {base_url}")
         console.print()
+
+
+def _display_extraction_results(result, show_review=True):
+    """Display extraction results in a nice format."""
+    # Summary panel
+    summary = f"""[bold]Extraction Complete[/bold]
+
+Source: {result.source_type}
+Bottles extracted: {result.total_extracted}
+High confidence: [green]{result.high_confidence_count}[/green]
+Needs review: [yellow]{result.needs_review_count}[/yellow]
+Processing time: {result.processing_time_seconds:.2f}s"""
+
+    if result.total_tokens_used > 0:
+        summary += f"\nTokens used: {result.total_tokens_used:,}"
+    if result.total_cost > 0:
+        summary += f"\nEstimated cost: ${result.total_cost:.4f}"
+
+    console.print(Panel(summary, border_style="green"))
+
+    # Show errors/warnings
+    if result.errors:
+        console.print("\n[red]Errors:[/red]")
+        for error in result.errors:
+            console.print(f"  • {error}")
+
+    if result.warnings:
+        console.print("\n[yellow]Warnings:[/yellow]")
+        for warning in result.warnings:
+            console.print(f"  • {warning}")
+
+    # High confidence bottles table
+    if result.high_confidence:
+        console.print("\n[bold green]✓ High Confidence Bottles[/bold green]")
+        table = Table(show_header=True, header_style="bold green")
+        table.add_column("Producer", style="cyan")
+        table.add_column("Name")
+        table.add_column("Year", justify="right")
+        table.add_column("Type")
+        table.add_column("Confidence", justify="right")
+
+        for bottle in result.high_confidence:
+            table.add_row(
+                bottle.producer,
+                bottle.name,
+                str(bottle.year) if bottle.year else "-",
+                bottle.beverage_type or bottle.type,
+                f"{bottle.confidence:.2f}",
+            )
+
+        console.print(table)
+
+    # Needs review bottles table
+    if result.needs_review and show_review:
+        console.print("\n[bold yellow]⚠ Needs Review[/bold yellow]")
+        table = Table(show_header=True, header_style="bold yellow")
+        table.add_column("Producer", style="cyan")
+        table.add_column("Name")
+        table.add_column("Year", justify="right")
+        table.add_column("Type")
+        table.add_column("Confidence", justify="right")
+        table.add_column("Issues", style="dim")
+
+        for bottle in result.needs_review:
+            # Identify missing fields
+            issues = []
+            if not bottle.year:
+                issues.append("no year")
+            if not bottle.beverage_type and not bottle.variety:
+                issues.append("no type")
+            if not bottle.region and not bottle.country:
+                issues.append("no location")
+            if bottle.price is None:
+                issues.append("no price")
+
+            table.add_row(
+                bottle.producer,
+                bottle.name,
+                str(bottle.year) if bottle.year else "-",
+                bottle.beverage_type or bottle.type,
+                f"{bottle.confidence:.2f}",
+                ", ".join(issues) if issues else "-",
+            )
+
+        console.print(table)
+
+
+def _save_extraction_json(result, output_path: Path):
+    """Save extraction result to JSON file."""
+    output_data = {
+        "metadata": {
+            "source_file": result.source_file,
+            "source_type": result.source_type,
+            "total_extracted": result.total_extracted,
+            "high_confidence_count": result.high_confidence_count,
+            "needs_review_count": result.needs_review_count,
+            "processing_time_seconds": result.processing_time_seconds,
+            "total_tokens_used": result.total_tokens_used,
+            "total_cost": result.total_cost,
+        },
+        "bottles": [bottle.model_dump() for bottle in result.bottles],
+        "high_confidence": [bottle.model_dump() for bottle in result.high_confidence],
+        "needs_review": [bottle.model_dump() for bottle in result.needs_review],
+        "errors": result.errors,
+        "warnings": result.warnings,
+    }
+
+    with open(output_path, "w") as f:
+        json.dump(output_data, f, indent=2, default=str)
 
 
 def main():
