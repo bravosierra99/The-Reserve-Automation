@@ -1,0 +1,33 @@
+# User Configuration Example
+# Copy this file to user.yaml and customize for your setup
+# user.yaml is gitignored so your personal settings won't be committed
+
+# REQUIRED: Path to your the-reserve vault
+paths:
+  vault: "/path/to/the-reserve"
+
+# Override LLM provider URLs with your local network IPs
+# (Only needed if LM Studio is on a different machine)
+# llm:
+#   providers:
+#     lm_studio_vision:
+#       base_url: "http://192.168.1.100:1234/v1"
+#     lm_studio_text:
+#       base_url: "http://192.168.1.100:1234/v1"
+
+# Optional: Override extraction settings
+# extraction:
+#   confidence_threshold: 0.8  # Stricter than default 0.7
+#   auto_detect_type: false  # Always require --beverage flag
+
+# Optional: Override logging
+# logging:
+#   level: "DEBUG"  # More verbose logging
+#   console: true
+#   file_logging: true
+
+# Optional: Git settings
+# git:
+#   auto_commit: true  # Auto-commit without --commit flag
+#   commit_author: "Your Name"
+#   commit_email: "your.email@example.com"

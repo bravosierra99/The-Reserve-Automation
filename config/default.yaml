@@ -1,0 +1,56 @@
+# Default configuration for The Reserve Automation
+# User-specific settings should go in user.yaml (gitignored)
+
+# Project metadata
+project:
+  name: "The Reserve Automation"
+  version: "0.1.0"
+
+# File paths (can be overridden in user.yaml)
+paths:
+  vault: null  # REQUIRED: Set in user.yaml
+  config_dir: "config"
+  templates_dir: "templates"
+  cache_dir: ".cache"
+  logs_dir: "logs"
+
+# LLM configuration
+llm:
+  config_file: "config/llm.yaml"
+
+# Parser settings
+parsers:
+  pdf:
+    use_ocr_fallback: true
+    ocr_language: "eng"
+    min_confidence: 60
+    extract_images: true
+
+  image:
+    preprocess: true
+    deskew: true
+    denoise: true
+    enhance_contrast: true
+    ocr_language: "eng"
+
+# Extraction settings
+extraction:
+  confidence_threshold: 0.7  # Bottles below this need review
+  auto_detect_type: true  # Auto-detect wine vs whiskey
+  max_bottles_per_page: 50
+  strict_validation: false  # If true, reject invalid data
+
+# Git integration settings
+git:
+  default_branch: "tastings-backup"
+  auto_commit: false  # Require explicit --commit flag
+  commit_author: "Automation Bot"
+  commit_email: "bot@reserve.local"
+
+# Logging configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/automation.log"
+  console: true
+  file_logging: true

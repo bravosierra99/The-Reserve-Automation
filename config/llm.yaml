@@ -1,0 +1,54 @@
+# LLM Provider Configuration
+# Configure LLM providers and task routing
+
+providers:
+  # Local LM Studio (primary - requires LM Studio running on your PC)
+  lm_studio_vision:
+    provider: lm_studio
+    base_url: "http://localhost:1234/v1"  # UPDATE with your PC's IP
+    model: "llava-v1.6-34b"  # or whatever vision model you have loaded
+    timeout: 180
+    max_retries: 2
+
+  lm_studio_text:
+    provider: lm_studio
+    base_url: "http://localhost:1234/v1"  # UPDATE with your PC's IP
+    model: "llama-3.1-70b-instruct"  # or your preferred text model
+    timeout: 120
+    max_retries: 2
+
+  # Cloud fallbacks (optional - requires API keys in environment)
+  anthropic_sonnet:
+    provider: anthropic
+    api_key_env: "ANTHROPIC_API_KEY"
+    model: "claude-sonnet-4"
+    timeout: 60
+    max_retries: 1
+
+  openai_gpt4:
+    provider: openai
+    api_key_env: "OPENAI_API_KEY"
+    model: "gpt-4-turbo"
+    timeout: 60
+    max_retries: 1
+
+# Task routing rules
+# Maps task types to provider names
+routing:
+  ocr: lm_studio_vision  # OCR from images
+  extraction: lm_studio_text  # Extract bottle data from text
+  type_detection: lm_studio_text  # Detect wine vs whiskey
+  web_research: lm_studio_text  # Web scraping analysis (future)
+  quality_check: lm_studio_text  # Validate extraction quality
+
+# Fallback configuration
+fallback:
+  enabled: true
+  log_warnings: true
+  rules:
+    # If local LM Studio fails, try cloud providers
+    lm_studio_vision:
+      - anthropic_sonnet
+    lm_studio_text:
+      - anthropic_sonnet
+      - openai_gpt4
