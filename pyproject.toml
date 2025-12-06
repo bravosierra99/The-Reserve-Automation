@@ -32,6 +32,7 @@ dependencies = [
 
     # CLI/UI
     "rich>=13.0",
+    "loguru>=0.7",
 ]
 
 [project.optional-dependencies]

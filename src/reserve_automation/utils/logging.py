@@ -1,9 +1,9 @@
-"""Logging configuration for The Reserve Automation."""
+"""Logging configuration for The Reserve Automation using loguru."""
 
-import logging
 import sys
 from pathlib import Path
-from typing import Optional
+
+from loguru import logger
 
 
 def setup_logging(config: dict, verbose: bool = False) -> None:
@@ -18,27 +18,18 @@ def setup_logging(config: dict, verbose: bool = False) -> None:
 
     # Determine log level
     level_str = "DEBUG" if verbose else logging_config.get("level", "INFO")
-    level = getattr(logging, level_str.upper(), logging.INFO)
 
-    # Create formatters
-    log_format = logging_config.get(
-        "format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-    formatter = logging.Formatter(log_format)
-
-    # Configure root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level)
-
-    # Remove existing handlers
-    root_logger.handlers.clear()
+    # Remove default handler
+    logger.remove()
 
     # Console handler
     if logging_config.get("console", True):
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(level)
-        console_handler.setFormatter(formatter)
-        root_logger.addHandler(console_handler)
+        logger.add(
+            sys.stdout,
+            level=level_str,
+            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+            colorize=True,
+        )
 
     # File handler
     if logging_config.get("file_logging", True):
@@ -48,18 +39,55 @@ def setup_logging(config: dict, verbose: bool = False) -> None:
         # Create logs directory if it doesn't exist
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        file_handler = logging.FileHandler(log_path)
-        file_handler.setLevel(level)
-        file_handler.setFormatter(formatter)
-        root_logger.addHandler(file_handler)
+        logger.add(
+            log_path,
+            level=level_str,
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+            rotation="10 MB",  # Rotate when file reaches 10MB
+            retention="1 week",  # Keep logs for 1 week
+            compression="zip",  # Compress rotated logs
+        )
 
-    # Reduce noise from third-party libraries
+    # Reduce noise from third-party libraries by patching their loggers
+    # Loguru doesn't intercept standard logging by default, but we can if needed
+    intercept_standard_logging()
+
+
+def intercept_standard_logging():
+    """
+    Intercept standard library logging and redirect to loguru.
+
+    This catches logs from third-party libraries using standard logging.
+    """
+    import logging
+
+    class InterceptHandler(logging.Handler):
+        def emit(self, record):
+            # Get corresponding Loguru level if it exists
+            try:
+                level = logger.level(record.levelname).name
+            except ValueError:
+                level = record.levelno
+
+            # Find caller from where originated the logged message
+            frame, depth = logging.currentframe(), 2
+            while frame.f_code.co_filename == logging.__file__:
+                frame = frame.f_back
+                depth += 1
+
+            logger.opt(depth=depth, exception=record.exc_info).log(
+                level, record.getMessage()
+            )
+
+    # Intercept standard logging
+    logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
+
+    # Reduce noise from specific libraries
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("anthropic").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)
 
 
-def get_logger(name: str) -> logging.Logger:
-    """Get a logger instance for a module."""
-    return logging.getLogger(name)
+# Export logger for easy import
+__all__ = ["logger", "setup_logging"]

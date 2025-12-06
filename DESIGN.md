@@ -286,7 +286,7 @@ class ParserDetector:
 1. Provider-agnostic API
 2. Automatic failover to backup providers
 3. Task-based routing (vision vs text, simple vs complex)
-4. Request/response logging for debugging
+4. Request/response logging for debugging (using loguru)
 5. Cost tracking (for cloud providers)
 
 **Architecture:**
@@ -296,7 +296,7 @@ class ParserDetector:
 from typing import Optional, Literal, Any
 from pydantic import BaseModel
 import httpx
-import logging
+from loguru import logger
 
 class LLMRequest(BaseModel):
     """Unified request format"""
@@ -327,7 +327,6 @@ class LLMGateway:
         self.providers = self._initialize_providers()
         self.routing = config['routing']
         self.fallback_rules = config.get('fallback', {})
-        self.logger = logging.getLogger('llm.gateway')
 
     async def complete(
         self,
@@ -367,17 +366,17 @@ class LLMGateway:
         try:
             provider = self.providers[provider_name]
             response = await provider.complete(request)
-            self.logger.info(f"✓ {task_type} via {provider_name}")
+            logger.info(f"✓ {task_type} via {provider_name}")
             return response
 
         except Exception as e:
-            self.logger.error(f"✗ {provider_name} failed: {e}")
+            logger.error(f"✗ {provider_name} failed: {e}")
 
             # Try fallback if configured
             if self.fallback_rules.get('enabled'):
                 fallback = self._get_fallback(provider_name, task_type)
                 if fallback:
-                    self.logger.info(f"↻ Retrying with {fallback}")
+                    logger.info(f"↻ Retrying with {fallback}")
                     provider = self.providers[fallback]
                     return await provider.complete(request)
 
@@ -512,6 +511,7 @@ Parsed Input → LLM Extraction → Validation → Confidence Scoring → Output
 # extractors/bottle.py
 from typing import List
 from pydantic import ValidationError
+from loguru import logger
 import json
 
 class BottleExtractor:
@@ -568,7 +568,7 @@ class BottleExtractor:
 
                 except ValidationError as e:
                     # Log validation errors but continue
-                    self.logger.warning(f"Invalid bottle data: {e}")
+                    logger.warning(f"Invalid bottle data: {e}")
 
             return bottles
 

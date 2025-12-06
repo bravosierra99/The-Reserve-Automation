@@ -6,9 +6,11 @@ from rich.console import Console
 
 from .core.config import Config
 from .core.exceptions import ConfigurationError, ReserveAutomationError
-from .utils.logging import setup_logging
+from .utils.logging import logger, setup_logging
 
 console = Console()
+
+# Usage: logger.info("message"), logger.debug("message"), logger.error("message"), etc.
 
 
 @click.group()
@@ -30,6 +32,7 @@ def cli(ctx, config, verbose):
 
         # Setup logging
         setup_logging(ctx.obj["config"].model_dump(), verbose)
+        logger.debug("Reserve Automation initialized")
 
     except ConfigurationError as e:
         console.print(f"[red]Configuration error:[/red] {e}")
