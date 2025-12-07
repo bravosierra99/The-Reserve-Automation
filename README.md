@@ -102,13 +102,19 @@ reserve-automation extract label.jpg --type image --beverage whiskey
 reserve-automation generate extraction.json --dry-run  # Preview what will be created
 reserve-automation generate extraction.json            # Create files in vault
 
-# Lookup missing metadata using LLM
+# Lookup missing metadata using LLM (for extraction JSON files)
 reserve-automation lookup extraction.json              # Enrich missing fields
 reserve-automation lookup extraction.json --fields country region  # Only specific fields
 reserve-automation lookup extraction.json --regenerate # Enrich + regenerate Obsidian files
 
-# Run full pipeline (extract → generate → commit)
-reserve-automation pipeline wine_list.pdf --commit
+# Enrich bottles already in your vault
+reserve-automation enrich-vault                        # Enrich all bottles in vault
+reserve-automation enrich-vault --beverage wine        # Only wines
+reserve-automation enrich-vault --dry-run              # Preview what would change
+
+# Run full pipeline (extract → enrich → generate)
+reserve-automation pipeline wine_list.pdf              # Full automated pipeline
+reserve-automation pipeline wine_list.pdf --skip-enrichment  # Skip enrichment step
 
 # Configuration management
 reserve-automation config show
@@ -119,7 +125,53 @@ reserve-automation llm list
 reserve-automation llm test
 ```
 
-### Example Workflow
+### Example Workflows
+
+#### Workflow 1: Process New PDF/Image (Automated Pipeline)
+
+The simplest approach - runs everything in one command:
+
+```bash
+# Extract, enrich, and generate in one command
+reserve-automation pipeline ~/Downloads/wine_list.pdf
+
+# Skip enrichment if you want to review data first
+reserve-automation pipeline wine_list.pdf --skip-enrichment
+```
+
+This runs:
+1. **Extract** bottles from PDF/image
+2. **Enrich** missing metadata using LLM knowledge
+3. **Generate** Obsidian vault files
+
+#### Workflow 2: Enrich Existing Vault Bottles
+
+If you manually added bottles to your vault or want to fill in missing data:
+
+```bash
+# Preview what would be enriched (dry-run)
+reserve-automation enrich-vault --dry-run
+
+# Enrich all bottles with missing metadata
+reserve-automation enrich-vault
+
+# Enrich only wines
+reserve-automation enrich-vault --beverage wine
+
+# Enrich only specific fields
+reserve-automation enrich-vault --fields country region
+```
+
+This:
+- Reads bottles from your vault
+- Identifies missing fields (country, region, variety, etc.)
+- Uses LLM to fill in missing data
+- Regenerates vault files with enriched metadata
+- **Never overwrites existing data**
+
+#### Workflow 3: Manual Step-by-Step
+
+For more control, run each step independently:
 
 1. **Extract bottles from a PDF:**
    ```bash
@@ -128,31 +180,17 @@ reserve-automation llm test
 
 2. **Review and edit low-confidence extractions** (interactive prompts)
 
-3. **Enrich missing metadata** (optional but recommended):
+3. **Enrich missing metadata:**
    ```bash
-   # Uses LLM to fill in missing country, region, variety, etc.
    reserve-automation lookup extraction.json
-
-   # Or enrich specific fields only
-   reserve-automation lookup extraction.json --fields country region
    ```
 
 4. **Generate Obsidian files:**
    ```bash
-   # Preview what will be created (dry-run)
-   reserve-automation generate extraction.json --dry-run
-
-   # Generate files in vault (uses config vault path)
    reserve-automation generate extraction.json
-
-   # Or enrich + regenerate in one command
-   reserve-automation lookup extraction.json --regenerate
-
-   # Override vault path
-   reserve-automation generate extraction.json --vault ~/the-reserve
    ```
 
-5. **Result:** Bottle markdown files created in structured directories:
+#### Result
    - Wines: `Cellar/1_Wines/Producer - Name - Year/Producer - Name - Year.md`
    - Whiskeys: `Cellar/1_Whiskeys/Producer - Name - Year/Producer - Name - Year.md`
 
