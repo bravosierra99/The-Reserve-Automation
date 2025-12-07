@@ -74,6 +74,7 @@ class BottleExtractor:
                 prompt=prompt,
                 system=EXTRACTION_SYSTEM_PROMPT,
                 response_format="json",
+                max_tokens=4000,  # Allow ~200 tokens per bottle for up to 20 bottles
             )
 
             logger.debug(f"LLM response: {len(response.content)} chars, {response.tokens_used} tokens")

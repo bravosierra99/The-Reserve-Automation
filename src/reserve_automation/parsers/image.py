@@ -118,7 +118,7 @@ class ImageParser(BaseParser):
                     ocr_method_used = "tesseract"
 
                     # Check if quality is poor
-                    if self._is_poor_quality(text):
+                    if self._is_poor_quality(text, image_size=original_size):
                         logger.warning(
                             f"Tesseract OCR produced poor quality output ({len(text)} chars). "
                             "Falling back to vision model..."
@@ -195,15 +195,8 @@ class ImageParser(BaseParser):
         # Encode image to base64 for LLM
         # (Already in bytes, vision models typically expect this)
 
-        # Create OCR prompt
-        ocr_prompt = """Extract all visible text from this image.
-
-Return ONLY the raw text you see, preserving:
-- Line breaks and spacing
-- Numbers and punctuation
-- All visible text content
-
-Do not add any commentary, descriptions, or analysis. Just return the exact text you see in the image."""
+        # Create OCR prompt (keep short to save context tokens for output)
+        ocr_prompt = """Extract all text from this image, top to bottom. Return only the text, preserving line breaks. Do not repeat lines."""
 
         try:
             response = await self.llm_gateway.complete(
@@ -211,6 +204,7 @@ Do not add any commentary, descriptions, or analysis. Just return the exact text
                 prompt=ocr_prompt,
                 images=[img_bytes],
                 temperature=0.0,  # Deterministic for OCR
+                max_tokens=2000,  # Reserve context for output
             )
 
             text = response.content.strip()
@@ -220,12 +214,13 @@ Do not add any commentary, descriptions, or analysis. Just return the exact text
         except Exception as e:
             raise ParserError(f"Vision model OCR failed: {e}") from e
 
-    def _is_poor_quality(self, text: str) -> bool:
+    def _is_poor_quality(self, text: str, image_size: tuple[int, int] = None) -> bool:
         """
-        Detect if OCR output is poor quality.
+        Detect if OCR output is poor quality or incomplete.
 
         Args:
             text: OCR extracted text
+            image_size: Optional (width, height) of the image in pixels
 
         Returns:
             True if quality is poor, False otherwise
@@ -246,6 +241,23 @@ Do not add any commentary, descriptions, or analysis. Just return the exact text
             # If less than 60% alphanumeric+space, likely gibberish
             if ratio < 0.6:
                 return True
+
+        # Check for incomplete extraction based on image size
+        # Large images (photos/scans) should produce more text
+        if image_size:
+            width, height = image_size
+            total_pixels = width * height
+
+            # For images > 1MP, expect at least 0.0001 chars/pixel
+            # e.g., 3024x4032 (12MP) should have ~1200+ chars for a document
+            if total_pixels > 1_000_000:  # 1 megapixel
+                min_expected_chars = total_pixels * 0.0001
+                if len(text) < min_expected_chars:
+                    logger.debug(
+                        f"Possible incomplete extraction: {len(text)} chars from {total_pixels/1_000_000:.1f}MP image "
+                        f"(expected ~{int(min_expected_chars)}+ chars for document)"
+                    )
+                    return True
 
         return False
 

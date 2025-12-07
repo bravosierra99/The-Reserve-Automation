@@ -150,8 +150,13 @@ For WINES:
 For WHISKEYS:
 {_format_schema(WHISKEY_SCHEMA["items"])}
 
+CRITICAL - Read carefully:
+- You MUST extract EVERY SINGLE bottle mentioned in the text from start to finish
+- Do NOT stop after a few bottles - scan the ENTIRE text thoroughly
+- Count the bottles before and after to ensure you got them all
+- Missing even one bottle is considered a failure
+
 Important rules:
-- Extract ALL bottles mentioned
 - Use null for missing fields (never guess)
 - Infer type as "wine" or "whiskey" based on context
 - For wines: year is the vintage
@@ -178,8 +183,13 @@ Return ONLY a JSON array, no other text. Format:
 Return a JSON array where each item represents one wine with this exact structure:
 {_format_schema(schema)}
 
+CRITICAL - Read carefully:
+- You MUST extract EVERY SINGLE wine mentioned in the text from start to finish
+- Do NOT stop after a few wines - scan the ENTIRE text thoroughly
+- Count the wines before and after to ensure you got them all
+- Missing even one wine is considered a failure
+
 Important rules:
-- Extract ALL wines mentioned
 - Use null for missing fields
 - year = vintage year (4 digits)
 - Standardize country names
@@ -199,8 +209,13 @@ Return ONLY a JSON array, no other text."""
 Return a JSON array where each item represents one whiskey with this exact structure:
 {_format_schema(schema)}
 
+CRITICAL - Read carefully:
+- You MUST extract EVERY SINGLE whiskey mentioned in the text from start to finish
+- Do NOT stop after a few whiskeys - scan the ENTIRE text thoroughly
+- Count the whiskeys before and after to ensure you got them all
+- Missing even one whiskey is considered a failure
+
 Important rules:
-- Extract ALL whiskeys mentioned
 - Use null for missing fields
 - year = release year (if mentioned)
 - age_statement = age in years (e.g., 12 for "12 Year Old")
