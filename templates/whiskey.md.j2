@@ -1,0 +1,222 @@
+---
+fileClass: Whiskey
+Name: {{ name }}
+Distiller: {{ producer }}
+WhiskeyName: {{ whiskey_name }}
+AgeStatement: {% if age_statement %}{{ age_statement }}{% endif %}
+Year: {% if year %}"{{ year }}"{% endif %}
+Type: {% if beverage_type %}{{ beverage_type }}{% endif %}
+MashBill: {% if mash_bill %}{{ mash_bill }}{% endif %}
+BarrelType: {% if barrel_type %}{{ barrel_type }}{% endif %}
+Proof: {% if proof %}{{ proof }}{% endif %}
+Region-State: {% if region %}{{ region }}{% endif %}
+BatchNumber:
+BottleNumber:
+Price: {% if price %}"{{ price }}"{% endif %}
+PurchaseSource:
+PurchaseLink:
+Inventory: 0
+Buy: 0
+Stars: --
+ValueForMoney:
+BottleOpenedDate:
+BottleImage:
+---
+
+## Bottle Information
+
+### Product Details
+{% if notes %}
+{{ notes }}
+{% endif %}
+
+### Tasting Notes Summary
+{% raw %}
+```dataviewjs
+// Get the current bottle name
+const currentBottle = dv.current().file.name;
+
+// Get all tastings for this bottle (in subdirectory)
+const tastings = dv.pages('"1_Whiskeys/' + currentBottle + '"')
+    .where(p => p.fileClass === "Tasting")
+    .sort(p => p.Date, 'desc');
+
+if (tastings.length === 0) {
+    dv.paragraph("No tastings recorded yet. [Add a tasting](#)");
+} else {
+    // Calculate per-taster averages
+    const tasterStats = {};
+
+    for (let tasting of tastings) {
+        const taster = tasting.TasterName || "Unknown";
+        if (!tasterStats[taster]) {
+            tasterStats[taster] = {
+                count: 0,
+                nose: 0,
+                palate: 0,
+                finish: 0,
+                overall: 0,
+                total: 0
+            };
+        }
+        tasterStats[taster].count++;
+        tasterStats[taster].nose += tasting.Nose || 0;
+        tasterStats[taster].palate += tasting.Palate || 0;
+        tasterStats[taster].finish += tasting.Finish || 0;
+        tasterStats[taster].overall += tasting.Overall || 0;
+        tasterStats[taster].total += tasting.TotalScore || 0;
+    }
+
+    // Display per-taster averages
+    dv.header(3, "Average Scores by Taster");
+    const tasterRows = Object.entries(tasterStats).map(([taster, stats]) => [
+        taster,
+        stats.count,
+        (stats.nose / stats.count).toFixed(1),
+        (stats.palate / stats.count).toFixed(1),
+        (stats.finish / stats.count).toFixed(1),
+        (stats.overall / stats.count).toFixed(1),
+        (stats.total / stats.count).toFixed(1)
+    ]);
+    dv.table(
+        ["Taster", "Tastings", "Nose", "Palate", "Finish", "Overall", "Total"],
+        tasterRows
+    );
+
+    // Display all tastings
+    dv.header(3, "All Tastings");
+    const rows = tastings.map(p => [
+        p.file.link,
+        p.Date,
+        p.TasterName,
+        p.DaysFromCrack,
+        p.FillLevel + "%",
+        p.Nose,
+        p.Palate,
+        p.Finish,
+        p.Overall,
+        p.TotalScore
+    ]);
+    dv.table(
+        ["Tasting", "Date", "Taster", "Days", "Fill", "Nose", "Palate", "Finish", "Overall", "Total"],
+        rows
+    );
+}
+```
+{% endraw %}
+### Create New Tasting
+{% raw %}
+```dataviewjs
+const bottleName = dv.current().file.name;
+const folderPath = `1_Whiskeys/${bottleName}`;
+
+// Create container
+const container = dv.container;
+
+// Create button
+const button = dv.el('button', 'Add New Tasting');
+button.style.padding = '8px 16px';
+button.style.backgroundColor = '#4CAF50';
+button.style.color = 'white';
+button.style.border = 'none';
+button.style.borderRadius = '4px';
+button.style.cursor = 'pointer';
+button.style.fontSize = '14px';
+button.style.marginBottom = '10px';
+
+// Create form (hidden by default)
+const form = container.createEl('div');
+form.style.display = 'none';
+form.style.padding = '15px';
+form.style.border = '1px solid #ccc';
+form.style.borderRadius = '4px';
+form.style.marginTop = '10px';
+form.style.backgroundColor = 'var(--background-primary)';
+
+form.innerHTML = `
+    <h3>New Tasting</h3>
+    <div style="margin-bottom: 10px;">
+        <label style="display: block; margin-bottom: 5px;">Date (YYYY-MM-DD):</label>
+        <input type="text" id="tasting-date" value="${new Date().toISOString().split('T')[0]}" style="width: 100%; padding: 5px;">
+    </div>
+    <div style="margin-bottom: 10px;">
+        <label style="display: block; margin-bottom: 5px;">Taster Name:</label>
+        <input type="text" id="tasting-taster" style="width: 100%; padding: 5px;">
+    </div>
+    <div style="margin-bottom: 10px;">
+        <label style="display: block; margin-bottom: 5px;">Days from crack:</label>
+        <input type="number" id="tasting-days" value="0" style="width: 100%; padding: 5px;">
+    </div>
+    <div style="margin-bottom: 10px;">
+        <label style="display: block; margin-bottom: 5px;">Fill level (%):</label>
+        <input type="number" id="tasting-fill" value="100" style="width: 100%; padding: 5px;">
+    </div>
+    <button id="create-tasting-btn" style="padding: 8px 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Create</button>
+    <button id="cancel-tasting-btn" style="padding: 8px 16px; background-color: #ccc; color: black; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+`;
+
+// Toggle form visibility
+button.addEventListener('click', () => {
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+});
+
+// Cancel button
+form.querySelector('#cancel-tasting-btn').addEventListener('click', () => {
+    form.style.display = 'none';
+});
+
+// Create button
+form.querySelector('#create-tasting-btn').addEventListener('click', async () => {
+    try {
+        const date = form.querySelector('#tasting-date').value;
+        const taster = form.querySelector('#tasting-taster').value;
+        const days = form.querySelector('#tasting-days').value;
+        const fill = form.querySelector('#tasting-fill').value;
+
+        if (!date || !taster) {
+            new Notice("Date and Taster Name are required!");
+            return;
+        }
+
+        // Read template
+        const templatePath = "9_Templates/Tasting.md";
+        const template = await app.vault.adapter.read(templatePath);
+
+        // Replace template variables
+        let content = template
+            .replace(/{{value:Date}}/g, date)
+            .replace(/{{value:TasterName}}/g, taster)
+            .replace(/{{value:DaysFromCrack}}/g, days)
+            .replace(/{{value:FillLevel}}/g, fill)
+            .replace(/{{value:LinkedBottle}}/g, `[[${bottleName}]]`);
+
+        // Create file
+        const fileName = `Tasting-${date}-${taster}.md`;
+        const filePath = `${folderPath}/${fileName}`;
+
+        await app.vault.create(filePath, content);
+
+        // Open the new file
+        const file = app.vault.getAbstractFileByPath(filePath);
+        await app.workspace.getLeaf().openFile(file);
+
+        new Notice("Tasting created successfully!");
+
+        // Hide and reset form
+        form.style.display = 'none';
+        form.querySelector('#tasting-date').value = new Date().toISOString().split('T')[0];
+        form.querySelector('#tasting-taster').value = '';
+        form.querySelector('#tasting-days').value = '0';
+        form.querySelector('#tasting-fill').value = '100';
+    } catch (error) {
+        console.error("Error creating tasting:", error);
+        new Notice(`Error: ${error.message}`);
+    }
+});
+```
+{% endraw %}
+## Bottle Image
+BottleImage::
+
+## Label
+Label::

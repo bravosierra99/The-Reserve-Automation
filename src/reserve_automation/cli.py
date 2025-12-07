@@ -9,7 +9,9 @@ from rich.table import Table
 from rich.panel import Panel
 
 from .core.config import Config
-from .core.exceptions import ConfigurationError, ReserveAutomationError
+from .core.exceptions import ConfigurationError, ReserveAutomationError, GenerationError
+from .core.models import BottleMetadata
+from .generators import ObsidianGenerator
 from .pipeline import extraction_pipeline
 from .utils.logging import logger, setup_logging
 
@@ -128,9 +130,89 @@ def generate(ctx, extraction_json, vault, branch, commit, dry_run):
         reserve-automation generate bottles.json --commit
         reserve-automation generate bottles.json --dry-run
     """
-    console.print("[yellow]Generate command not yet implemented[/yellow]")
-    console.print(f"Would generate from: {extraction_json}")
-    # TODO: Implement generation
+    config = ctx.obj["config"]
+
+    try:
+        # Validate extraction JSON exists
+        if not extraction_json.exists():
+            console.print(f"[red]Error:[/red] File not found: {extraction_json}")
+            ctx.exit(1)
+
+        # Load extraction results
+        console.print(f"Loading extraction results from: {extraction_json}")
+        with open(extraction_json) as f:
+            extraction_data = json.load(f)
+
+        # Parse bottles
+        bottles_data = extraction_data.get("bottles", [])
+        if not bottles_data:
+            console.print("[yellow]No bottles found in extraction results[/yellow]")
+            ctx.exit(0)
+
+        bottles = [BottleMetadata(**b) for b in bottles_data]
+        console.print(f"Found {len(bottles)} bottles to process")
+
+        # Determine vault path
+        vault_path = vault or config.vault_path
+        if not vault_path:
+            console.print("[red]Error:[/red] Vault path not specified. Use --vault or set in config.")
+            ctx.exit(1)
+
+        # Determine template directory
+        template_dir = Path("templates")  # Relative to project root
+        if not template_dir.exists():
+            console.print(f"[red]Error:[/red] Template directory not found: {template_dir}")
+            ctx.exit(1)
+
+        # Initialize generator
+        console.print(f"Vault path: {vault_path}")
+        if dry_run:
+            console.print("[yellow]DRY RUN MODE - No files will be created[/yellow]")
+
+        generator = ObsidianGenerator(vault_path=vault_path, template_dir=template_dir)
+
+        # Generate files
+        with console.status("[bold green]Generating Obsidian files..."):
+            generated = generator.generate_batch(bottles, dry_run=dry_run)
+
+        # Display results
+        console.print("\n")
+        console.print(Panel(
+            f"[green]Generated {len(generated)} files[/green]\n"
+            f"Vault: {vault_path}",
+            title="Generation Complete"
+        ))
+
+        # Show generated files
+        if generated:
+            table = Table(title="Generated Files")
+            table.add_column("Producer", style="cyan")
+            table.add_column("Name", style="magenta")
+            table.add_column("Year", style="yellow")
+            table.add_column("Path", style="dim")
+
+            for file in generated:
+                table.add_row(
+                    file.bottle.producer,
+                    file.bottle.name,
+                    str(file.bottle.year) if file.bottle.year else "NV",
+                    str(file.file_path.relative_to(vault_path))
+                )
+
+            console.print(table)
+
+        # Git commit (if requested and not dry run)
+        if commit and not dry_run:
+            console.print("\n[yellow]Git commit not yet implemented[/yellow]")
+            # TODO: Implement git commit
+
+    except GenerationError as e:
+        console.print(f"[red]Generation error:[/red] {e}")
+        ctx.exit(1)
+    except Exception as e:
+        console.print(f"[red]Unexpected error:[/red] {e}")
+        logger.exception("Generate command failed")
+        ctx.exit(1)
 
 
 @cli.command()
