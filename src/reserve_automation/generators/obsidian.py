@@ -63,8 +63,7 @@ class ObsidianGenerator:
         try:
             self.env = Environment(
                 loader=FileSystemLoader(str(self.template_dir)),
-                trim_blocks=True,
-                lstrip_blocks=True,
+                keep_trailing_newline=True,
             )
         except Exception as e:
             raise GenerationError(f"Failed to initialize Jinja2 environment: {e}") from e

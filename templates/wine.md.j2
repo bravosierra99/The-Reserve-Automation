@@ -6,7 +6,7 @@ WineName: {{ wine_name }}
 Vintage: {% if year %}"{{ year }}"{% endif %}
 Type: {% if beverage_type %}{{ beverage_type }}{% endif %}
 Variety: {% if variety %}{{ variety }}{% endif %}
-Country-Region: {% if country and region %}{{ country }} - {{ region }}{% elif region %}{{ region }}{% elif country %}{{ country }}{% endif %}
+Country-Region: {% if country %}{% if region %}{{ country }} - {{ region }}{% else %}{{ country }}{% endif %}{% else %}{% if region %}{{ region }}{% endif %}{% endif %}
 Vineyard: {% if vineyard %}{{ vineyard }}{% endif %}
 Style:
 Price: {% if price %}"{{ price }}"{% endif %}
