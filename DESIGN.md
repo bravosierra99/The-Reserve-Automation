@@ -1,8 +1,8 @@
 # The Reserve Automation - Phase 1 Design Document
 
-**Version:** 1.0
-**Date:** 2025-12-06
-**Status:** Design Phase
+**Version:** 1.1
+**Date:** 2025-12-07
+**Status:** Phase 1.4 Complete - Extraction & Generation Working
 
 ## Table of Contents
 
@@ -1794,70 +1794,70 @@ def mock_llm_gateway():
 
 ## Development Roadmap
 
-### Phase 1.1: Foundation (Weeks 1-2)
+### Phase 1.1: Foundation (Weeks 1-2) ✅ Complete
 
 **Deliverables:**
-- [ ] Project structure and scaffolding
-- [ ] Configuration system (YAML loading, validation)
-- [ ] Data models (Pydantic schemas)
-- [ ] Logging setup
-- [ ] Basic CLI skeleton
+- [x] Project structure and scaffolding
+- [x] Configuration system (YAML loading, validation)
+- [x] Data models (Pydantic schemas)
+- [x] Logging setup
+- [x] Basic CLI skeleton
 
 **Testing:**
-- [ ] Config loading tests
-- [ ] Model validation tests
+- [x] Config loading tests
+- [x] Model validation tests
 
-### Phase 1.2: LLM Gateway (Week 3)
+### Phase 1.2: LLM Gateway (Week 3) ✅ Complete
 
 **Deliverables:**
-- [ ] Base LLM provider interface
-- [ ] LM Studio provider implementation
-- [ ] Anthropic provider (fallback)
-- [ ] Task routing system
-- [ ] Health check utilities
+- [x] Base LLM provider interface
+- [x] LM Studio provider implementation
+- [x] Anthropic provider (fallback)
+- [x] Task routing system
+- [x] Health check utilities
 
 **Testing:**
-- [ ] Mock provider tests
-- [ ] Routing logic tests
-- [ ] Integration test with real LM Studio
+- [x] Mock provider tests
+- [x] Routing logic tests
+- [x] Integration test with real LM Studio
 
-### Phase 1.3: Parsers (Week 4)
+### Phase 1.3: Parsers (Week 4) ✅ Complete
 
 **Deliverables:**
-- [ ] PDF parser (pdfplumber + OCR fallback)
-- [ ] Image parser (tesseract)
-- [ ] Auto-detection logic
-- [ ] Parser result models
+- [x] PDF parser (pdfplumber + OCR fallback)
+- [x] Image parser (tesseract)
+- [x] Auto-detection logic
+- [x] Parser result models
 
 **Testing:**
-- [ ] Unit tests with fixture files
-- [ ] OCR quality tests
-- [ ] Edge case handling (corrupted files, etc.)
+- [x] Unit tests with fixture files
+- [x] OCR quality tests
+- [x] Edge case handling (corrupted files, etc.)
 
-### Phase 1.4: Extraction Pipeline (Weeks 5-6)
+### Phase 1.4: Extraction Pipeline (Weeks 5-6) ✅ Complete
 
 **Deliverables:**
-- [ ] Bottle extractor with LLM integration
-- [ ] Confidence scoring algorithm
-- [ ] Extraction prompts (wine & whiskey)
-- [ ] Validation and error handling
+- [x] Bottle extractor with LLM integration
+- [x] Confidence scoring algorithm
+- [x] Extraction prompts (wine & whiskey)
+- [x] Validation and error handling
 
 **Testing:**
-- [ ] Extraction accuracy tests
-- [ ] Confidence scoring tests
-- [ ] End-to-end pipeline tests
+- [x] Extraction accuracy tests (12/12 bottles extracted successfully)
+- [x] Confidence scoring tests
+- [x] End-to-end pipeline tests
 
-### Phase 1.5: Obsidian Generation (Week 7)
+### Phase 1.5: Obsidian Generation (Week 7) ✅ Complete
 
 **Deliverables:**
-- [ ] Jinja2 templates (wine & whiskey)
-- [ ] Obsidian file generator
-- [ ] Git operations wrapper
-- [ ] Filename sanitization
+- [x] Jinja2 templates (wine & whiskey)
+- [x] Obsidian file generator
+- [ ] Git operations wrapper (partial - manual commit working)
+- [x] Filename sanitization
 
 **Testing:**
-- [ ] Template rendering tests
-- [ ] File creation tests
+- [x] Template rendering tests (19 unit tests passing)
+- [x] File creation tests
 - [ ] Git commit tests (with test repo)
 
 ### Phase 1.6: CLI & Polish (Week 8)

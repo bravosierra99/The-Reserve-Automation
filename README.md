@@ -2,21 +2,21 @@
 
 Bottle ingestion automation for [The Reserve](../the-reserve/) spirits collection.
 
-**Status:** 🚧 Phase 1 - In Development
+**Status:** 🚧 Phase 1.4 - Extraction & Generation Working!
 
 ## Overview
 
 The Reserve Automation is a Python-based CLI tool and (future) web application for automating bottle metadata extraction and tasting management. It uses local and cloud LLMs to parse bottle information from PDFs, images, and other sources, then generates Obsidian-compatible markdown files for your spirits collection.
 
-### Features (Planned)
+### Features
 
-**Phase 1: CLI Tool** (In Progress)
-- 📄 Parse PDFs (sommelier lists, wine catalogs)
-- 🖼️ Extract data from images (labels, screenshots)
-- 🤖 LLM-based structured data extraction
+**Phase 1: CLI Tool** ✅ Core Features Working!
+- ✅ Parse PDFs (sommelier lists, wine catalogs)
+- ✅ Extract data from images (labels, screenshots)
+- ✅ LLM-based structured data extraction
 - ✅ Confidence scoring and review workflows
-- 📝 Generate Obsidian markdown files
-- 🔀 Git integration with the-reserve repository
+- ✅ Generate Obsidian markdown files
+- 🚧 Git integration with the-reserve repository (partial)
 
 **Future Phases:**
 - 🌐 Web research for missing metadata
@@ -98,7 +98,8 @@ reserve-automation extract sommelier_list.pdf
 reserve-automation extract label.jpg --type image --beverage whiskey
 
 # Generate Obsidian files from extraction results
-reserve-automation generate bottles.json --commit
+reserve-automation generate extraction.json --dry-run  # Preview what will be created
+reserve-automation generate extraction.json            # Create files in vault
 
 # Run full pipeline (extract → generate → commit)
 reserve-automation pipeline wine_list.pdf --commit
@@ -123,10 +124,25 @@ reserve-automation llm test
 
 3. **Generate Obsidian files:**
    ```bash
-   reserve-automation generate extraction.json --vault ~/the-reserve --commit
+   # Preview what will be created (dry-run)
+   reserve-automation generate extraction.json --dry-run
+
+   # Generate files in vault (uses config vault path)
+   reserve-automation generate extraction.json
+
+   # Override vault path
+   reserve-automation generate extraction.json --vault ~/the-reserve
    ```
 
-4. **Result:** Bottle markdown files created in `the-reserve/Cellar/1_Wines/` or `1_Whiskeys/` and committed to git!
+4. **Result:** Bottle markdown files created in structured directories:
+   - Wines: `Cellar/1_Wines/Producer - Name - Year/Producer - Name - Year.md`
+   - Whiskeys: `Cellar/1_Whiskeys/Producer - Name - Year/Producer - Name - Year.md`
+
+   Each file includes:
+   - YAML frontmatter with all metadata
+   - DataviewJS queries for tasting notes
+   - Interactive "Add New Tasting" button
+   - Proper folder structure for tastings
 
 ## Configuration
 
@@ -213,24 +229,38 @@ mypy src/
 
 ## Roadmap
 
-**Phase 1.1: Foundation** ✅ (Complete)
+**Phase 1.1: Foundation** ✅ Complete
 - [x] Project scaffolding
 - [x] Configuration system
 - [x] Data models
 - [x] CLI skeleton
 
-**Phase 1.2: LLM Gateway** (Next)
-- [ ] Base LLM provider interface
-- [ ] LM Studio provider
-- [ ] Anthropic provider
-- [ ] Task routing
+**Phase 1.2: LLM Gateway** ✅ Complete
+- [x] Base LLM provider interface
+- [x] LM Studio provider
+- [x] Anthropic provider
+- [x] Task routing
 
-**Phase 1.3: Parsers** (Week 4)
-- [ ] PDF parser
-- [ ] Image parser
-- [ ] Auto-detection
+**Phase 1.3: Parsers** ✅ Complete
+- [x] PDF parser
+- [x] Image parser
+- [x] Auto-detection
 
-**Phase 1.4-1.7:** See [DESIGN.md](DESIGN.md) for full roadmap
+**Phase 1.4: Extraction & Generation** ✅ Complete
+- [x] Bottle metadata extraction from PDFs/images
+- [x] Confidence scoring
+- [x] Obsidian markdown generation
+- [x] Template system (Jinja2)
+- [x] Unit tests
+
+**Phase 1.5: Polish & Integration** 🚧 In Progress
+- [ ] Full pipeline command (extract → generate → commit)
+- [ ] Git auto-commit integration
+- [ ] Interactive review workflows
+- [ ] Enhanced error handling
+- [ ] Integration tests
+
+**Phase 1.6-2.0:** See [DESIGN.md](DESIGN.md) for full roadmap
 
 ## Related Projects
 
