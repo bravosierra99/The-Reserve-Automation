@@ -39,10 +39,11 @@ WINE_SCHEMA = {
             "type": {
                 "type": "string",
                 "enum": ["wine"],
+                "description": "MUST be exactly 'wine' (do not use 'Red wine' or other variants here)",
             },
             "beverage_type": {
                 "type": ["string", "null"],
-                "description": "Red wine, White wine, Rosé, Champagne, Sparkling, etc.",
+                "description": "Specific wine type: 'Red wine', 'White wine', 'Rosé', 'Champagne', 'Sparkling', etc.",
             },
             "variety": {
                 "type": ["string", "null"],
@@ -90,10 +91,11 @@ WHISKEY_SCHEMA = {
             "type": {
                 "type": "string",
                 "enum": ["whiskey"],
+                "description": "MUST be exactly 'whiskey' (do not use 'Bourbon' or other variants here)",
             },
             "beverage_type": {
                 "type": ["string", "null"],
-                "description": "Bourbon, Rye, Scotch, Irish, Japanese, etc.",
+                "description": "Specific whiskey type: 'Bourbon', 'Rye', 'Scotch', 'Irish', 'Japanese', etc.",
             },
             "age_statement": {
                 "type": ["integer", "null"],

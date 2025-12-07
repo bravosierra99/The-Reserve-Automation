@@ -82,9 +82,9 @@ class LMStudioProvider(BaseLLMProvider):
                 "temperature": request.temperature,
             }
 
-            # Add response format if JSON requested
-            if request.response_format == "json":
-                payload["response_format"] = {"type": "json_object"}
+            # Note: LM Studio has inconsistent support for response_format
+            # Some versions support {"type": "json_object"}, others don't
+            # We rely on prompt engineering instead (safer for compatibility)
 
             # Make API request
             logger.debug(f"LM Studio request to {self.base_url}/chat/completions")
