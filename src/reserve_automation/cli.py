@@ -16,6 +16,7 @@ from .generators import ObsidianGenerator
 from .llm import LLMGateway
 from .pipeline import extraction_pipeline
 from .utils.logging import logger, setup_logging
+from .utils.vault_reader import VaultReader
 
 console = Console()
 
@@ -217,6 +218,130 @@ def generate(ctx, extraction_json, vault, branch, commit, dry_run):
         ctx.exit(1)
 
 
+@cli.command(name="enrich-vault")
+@click.option("--beverage", type=click.Choice(["wine", "whiskey", "all"]), default="all", help="Filter by beverage type")
+@click.option("--fields", multiple=True, help="Specific fields to enrich (default: all missing)")
+@click.option("--dry-run", is_flag=True, help="Show what would be enriched without making changes")
+@click.pass_context
+def enrich_vault(ctx, beverage, fields, dry_run):
+    """
+    Enrich bottles already in your Obsidian vault.
+
+    Reads existing bottle files from the vault, enriches missing metadata
+    using LLM knowledge, and regenerates the files with enriched data.
+
+    Only fills in missing (null/empty) fields - never overwrites existing data.
+
+    \b
+    Examples:
+        reserve-automation enrich-vault                    # Enrich all bottles
+        reserve-automation enrich-vault --beverage wine    # Only wines
+        reserve-automation enrich-vault --fields country region  # Specific fields
+        reserve-automation enrich-vault --dry-run          # Preview changes
+    """
+    config = ctx.obj["config"]
+
+    try:
+        vault_path = config.vault_path
+        if not vault_path:
+            console.print("[red]Error:[/red] Vault path not configured")
+            ctx.exit(1)
+
+        # Read bottles from vault
+        console.print(f"Reading bottles from vault: {vault_path}")
+        reader = VaultReader(vault_path)
+
+        beverage_filter = None if beverage == "all" else beverage
+        bottles = reader.read_all_bottles(beverage_type=beverage_filter)
+
+        if not bottles:
+            console.print("[yellow]No bottles found in vault[/yellow]")
+            ctx.exit(0)
+
+        console.print(f"Found {len(bottles)} bottles\n")
+
+        # Initialize LLM and enricher
+        llm_config = config.llm
+        llm_gateway = LLMGateway(llm_config)
+        enricher = MetadataEnricher(llm_gateway)
+
+        # Convert fields tuple to list
+        fields_list = list(fields) if fields else None
+        if fields_list:
+            console.print(f"[dim]Enriching only: {', '.join(fields_list)}[/dim]\n")
+
+        if dry_run:
+            console.print("[yellow]DRY RUN MODE - No files will be modified[/yellow]\n")
+
+        # Run enrichment
+        with console.status("[bold green]Enriching metadata..."):
+            enriched_bottles, summary = asyncio.run(
+                enricher.enrich_batch(bottles, fields=fields_list)
+            )
+
+        # Display results
+        console.print("\n")
+        console.print(Panel(
+            f"[green]Enriched {summary['enriched']} bottles[/green]\n"
+            f"Fields added: {summary['total_fields_added']}\n"
+            f"Tokens used: {summary['total_tokens']:,}\n"
+            f"Skipped: {summary['skipped']} (no missing fields)\n"
+            f"Errors: {summary['errors']}",
+            title="Enrichment Complete"
+        ))
+
+        # Show enriched bottles
+        if summary['enriched'] > 0:
+            table = Table(title="Enriched Bottles")
+            table.add_column("Producer", style="cyan")
+            table.add_column("Name", style="magenta")
+            table.add_column("Type", style="yellow")
+            table.add_column("Added Fields", style="green")
+
+            for original, enriched in zip(bottles, enriched_bottles):
+                if enriched.enriched:
+                    added = []
+                    if original.country != enriched.country:
+                        added.append("country")
+                    if original.region != enriched.region:
+                        added.append("region")
+                    if original.variety != enriched.variety:
+                        added.append("variety")
+                    if original.vineyard != enriched.vineyard:
+                        added.append("vineyard")
+                    if original.mash_bill != enriched.mash_bill:
+                        added.append("mash_bill")
+                    if original.barrel_type != enriched.barrel_type:
+                        added.append("barrel_type")
+
+                    if added:
+                        table.add_row(
+                            enriched.producer,
+                            enriched.name,
+                            enriched.type,
+                            ", ".join(added)
+                        )
+
+            console.print(table)
+
+        # Regenerate vault files (unless dry run)
+        if not dry_run and summary['enriched'] > 0:
+            console.print("\n[bold]Regenerating vault files...[/bold]")
+
+            template_dir = Path("templates")
+            generator = ObsidianGenerator(vault_path=vault_path, template_dir=template_dir)
+
+            with console.status("[bold green]Regenerating files..."):
+                generated = generator.generate_batch(enriched_bottles, dry_run=False)
+
+            console.print(f"[green]✓ Regenerated {len(generated)} files[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Vault enrichment failed:[/red] {e}")
+        logger.exception("Enrich vault command failed")
+        ctx.exit(1)
+
+
 @cli.command()
 @click.argument("extraction_json", type=Path)
 @click.option("--fields", multiple=True, help="Specific fields to enrich (default: all missing)")
@@ -344,27 +469,133 @@ def lookup(ctx, extraction_json, fields, output, regenerate):
 
 @cli.command()
 @click.argument("input_file", type=Path)
-@click.option("--output-dir", type=Path, help="Output directory for results")
+@click.option("--skip-enrichment", is_flag=True, help="Skip metadata enrichment step")
+@click.option("--output", "-o", type=Path, help="Output JSON file (default: temp file)")
 @click.option("--commit/--no-commit", default=False, help="Auto-commit to git")
 @click.pass_context
-def pipeline(ctx, input_file, output_dir, commit):
+def pipeline(ctx, input_file, skip_enrichment, output, commit):
     """
-    Run full pipeline: extract → generate → commit.
+    Run full pipeline: extract → enrich → generate.
 
     INPUT_FILE: Path to PDF, image, or screenshot to process
 
     This is a convenience command that combines:
-      1. extract (with review)
-      2. generate
-      3. git commit (if --commit)
+      1. extract (from PDF/image)
+      2. enrich (lookup missing metadata)
+      3. generate (create Obsidian files)
+      4. commit (optional, with --commit flag)
 
     \b
-    Example:
-        reserve-automation pipeline sommelier_list.pdf --commit
+    Examples:
+        reserve-automation pipeline wine_list.pdf
+        reserve-automation pipeline wine_list.pdf --skip-enrichment
+        reserve-automation pipeline wine_list.pdf --commit
     """
-    console.print("[yellow]Pipeline command not yet implemented[/yellow]")
-    console.print(f"Would run pipeline on: {input_file}")
-    # TODO: Implement full pipeline
+    config = ctx.obj["config"]
+
+    try:
+        # Validate input file
+        if not input_file.exists():
+            console.print(f"[red]Error:[/red] File not found: {input_file}")
+            ctx.exit(1)
+
+        # Determine output path for extraction
+        if output:
+            extraction_path = output
+        else:
+            # Use temp file in current directory
+            extraction_path = Path(f"extraction_{input_file.stem}.json")
+
+        console.print(f"\n[bold]Pipeline: {input_file.name}[/bold]\n")
+
+        # STEP 1: Extract
+        console.print("[bold cyan]Step 1/3: Extracting bottles...[/bold cyan]")
+        with console.status("[bold green]Extracting...", spinner="dots"):
+            result = asyncio.run(
+                extraction_pipeline(
+                    input_file=input_file,
+                    config=config.model_dump(),
+                    input_type="auto",
+                    beverage_type="auto",
+                )
+            )
+
+        # Display extraction results
+        _display_extraction_results(result, review=False)
+
+        # Save extraction results
+        _save_extraction_json(result, extraction_path)
+        console.print(f"[green]✓ Extracted {result.total_extracted} bottles[/green]")
+
+        if result.total_extracted == 0:
+            console.print("[yellow]No bottles extracted, stopping pipeline[/yellow]")
+            ctx.exit(0)
+
+        # Load bottles for next steps
+        bottles = result.bottles
+
+        # STEP 2: Enrich (optional)
+        if not skip_enrichment:
+            console.print("\n[bold cyan]Step 2/3: Enriching metadata...[/bold cyan]")
+
+            llm_config = config.llm
+            llm_gateway = LLMGateway(llm_config)
+            enricher = MetadataEnricher(llm_gateway)
+
+            with console.status("[bold green]Enriching...", spinner="dots"):
+                enriched_bottles, summary = asyncio.run(
+                    enricher.enrich_batch(bottles)
+                )
+
+            if summary['enriched'] > 0:
+                console.print(
+                    f"[green]✓ Enriched {summary['enriched']} bottles, "
+                    f"added {summary['total_fields_added']} fields[/green]"
+                )
+                bottles = enriched_bottles
+
+                # Update extraction file with enriched data
+                result.bottles = enriched_bottles
+                _save_extraction_json(result, extraction_path)
+            else:
+                console.print("[dim]No missing fields to enrich[/dim]")
+        else:
+            console.print("\n[dim]Step 2/3: Skipping enrichment (--skip-enrichment)[/dim]")
+
+        # STEP 3: Generate
+        console.print("\n[bold cyan]Step 3/3: Generating Obsidian files...[/bold cyan]")
+
+        vault_path = config.vault_path
+        template_dir = Path("templates")
+
+        generator = ObsidianGenerator(vault_path=vault_path, template_dir=template_dir)
+
+        with console.status("[bold green]Generating...", spinner="dots"):
+            generated = generator.generate_batch(bottles, dry_run=False)
+
+        console.print(f"[green]✓ Generated {len(generated)} files[/green]")
+
+        # STEP 4: Commit (optional)
+        if commit:
+            console.print("\n[bold cyan]Step 4: Git commit...[/bold cyan]")
+            console.print("[yellow]Git commit not yet implemented[/yellow]")
+            # TODO: Implement git commit
+
+        # Summary
+        console.print("\n")
+        console.print(Panel(
+            f"[bold green]Pipeline Complete![/bold green]\n\n"
+            f"Extracted: {result.total_extracted} bottles\n"
+            f"Enriched: {summary['enriched'] if not skip_enrichment else 0} bottles\n"
+            f"Generated: {len(generated)} files\n\n"
+            f"Extraction saved to: {extraction_path}",
+            title="Success"
+        ))
+
+    except Exception as e:
+        console.print(f"\n[red]Pipeline failed:[/red] {e}")
+        logger.exception("Pipeline error")
+        ctx.exit(1)
 
 
 # Config management commands
