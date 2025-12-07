@@ -88,10 +88,11 @@ class ImageParser(BaseParser):
 
             # Load image
             image = Image.open(input_file)
+            original_image = image.copy()  # Keep original for tesseract
             original_size = image.size
 
-            # Preprocess if enabled
-            if self.preprocess and self.ocr_method != "vision":
+            # Preprocess if enabled (but not for tesseract - PSM works better on originals)
+            if self.preprocess and self.ocr_method == "vision":
                 image = self._preprocess_image(image)
 
             # Convert image to bytes for storage
@@ -104,7 +105,7 @@ class ImageParser(BaseParser):
             ocr_method_used = None
 
             if self.ocr_method == "tesseract":
-                text = await self._ocr_tesseract(image)
+                text = await self._ocr_tesseract(original_image)  # Use original
                 ocr_method_used = "tesseract"
 
             elif self.ocr_method == "vision":
@@ -112,9 +113,9 @@ class ImageParser(BaseParser):
                 ocr_method_used = "vision"
 
             elif self.ocr_method == "auto":
-                # Try tesseract first
+                # Try tesseract first on original image (PSM works better without preprocessing)
                 try:
-                    text = await self._ocr_tesseract(image)
+                    text = await self._ocr_tesseract(original_image)
                     ocr_method_used = "tesseract"
 
                     # Check if quality is poor
@@ -168,7 +169,8 @@ class ImageParser(BaseParser):
             Exception: If tesseract fails
         """
         logger.debug("Running Tesseract OCR...")
-        text = pytesseract.image_to_string(image, lang=self.language)
+        # PSM 4 = single column of text (works well for invoices/documents)
+        text = pytesseract.image_to_string(image, lang=self.language, config='--psm 4')
         return text
 
     async def _ocr_vision(self, img_bytes: bytes) -> str:

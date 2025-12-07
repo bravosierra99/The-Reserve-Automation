@@ -80,6 +80,8 @@ class LMStudioProvider(BaseLLMProvider):
                 "messages": messages,
                 "max_tokens": request.max_tokens,
                 "temperature": request.temperature,
+                "frequency_penalty": 0.5,  # Reduce repetition (OpenAI-compatible param)
+                "presence_penalty": 0.5,   # Encourage diversity
             }
 
             # Note: LM Studio has inconsistent support for response_format
