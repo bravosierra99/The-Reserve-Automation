@@ -15,11 +15,12 @@ The Reserve Automation is a Python-based CLI tool and (future) web application f
 - ✅ Extract data from images (labels, screenshots)
 - ✅ LLM-based structured data extraction
 - ✅ Confidence scoring and review workflows
+- ✅ Metadata enrichment using LLM knowledge
 - ✅ Generate Obsidian markdown files
 - 🚧 Git integration with the-reserve repository (partial)
 
 **Future Phases:**
-- 🌐 Web research for missing metadata
+- 🌐 Web search API integration (Tavily, etc.)
 - 🏷️ Label image finding and cropping
 - 🖥️ Web interface for uploads and management
 - 👥 Multi-user tasting sessions
@@ -101,6 +102,11 @@ reserve-automation extract label.jpg --type image --beverage whiskey
 reserve-automation generate extraction.json --dry-run  # Preview what will be created
 reserve-automation generate extraction.json            # Create files in vault
 
+# Lookup missing metadata using LLM
+reserve-automation lookup extraction.json              # Enrich missing fields
+reserve-automation lookup extraction.json --fields country region  # Only specific fields
+reserve-automation lookup extraction.json --regenerate # Enrich + regenerate Obsidian files
+
 # Run full pipeline (extract → generate → commit)
 reserve-automation pipeline wine_list.pdf --commit
 
@@ -122,7 +128,16 @@ reserve-automation llm test
 
 2. **Review and edit low-confidence extractions** (interactive prompts)
 
-3. **Generate Obsidian files:**
+3. **Enrich missing metadata** (optional but recommended):
+   ```bash
+   # Uses LLM to fill in missing country, region, variety, etc.
+   reserve-automation lookup extraction.json
+
+   # Or enrich specific fields only
+   reserve-automation lookup extraction.json --fields country region
+   ```
+
+4. **Generate Obsidian files:**
    ```bash
    # Preview what will be created (dry-run)
    reserve-automation generate extraction.json --dry-run
@@ -130,11 +145,14 @@ reserve-automation llm test
    # Generate files in vault (uses config vault path)
    reserve-automation generate extraction.json
 
+   # Or enrich + regenerate in one command
+   reserve-automation lookup extraction.json --regenerate
+
    # Override vault path
    reserve-automation generate extraction.json --vault ~/the-reserve
    ```
 
-4. **Result:** Bottle markdown files created in structured directories:
+5. **Result:** Bottle markdown files created in structured directories:
    - Wines: `Cellar/1_Wines/Producer - Name - Year/Producer - Name - Year.md`
    - Whiskeys: `Cellar/1_Whiskeys/Producer - Name - Year/Producer - Name - Year.md`
 

@@ -38,6 +38,7 @@ routing:
   ocr: lm_studio_vision  # OCR from images
   extraction: lm_studio_text  # Extract bottle data from text
   type_detection: lm_studio_text  # Detect wine vs whiskey
+  metadata_enrichment: lm_studio_text  # Lookup missing metadata
   web_research: lm_studio_text  # Web scraping analysis (future)
   quality_check: lm_studio_text  # Validate extraction quality
 

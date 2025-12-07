@@ -11,7 +11,9 @@ from rich.panel import Panel
 from .core.config import Config
 from .core.exceptions import ConfigurationError, ReserveAutomationError, GenerationError
 from .core.models import BottleMetadata
+from .enrichment import MetadataEnricher
 from .generators import ObsidianGenerator
+from .llm import LLMGateway
 from .pipeline import extraction_pipeline
 from .utils.logging import logger, setup_logging
 
@@ -212,6 +214,131 @@ def generate(ctx, extraction_json, vault, branch, commit, dry_run):
     except Exception as e:
         console.print(f"[red]Unexpected error:[/red] {e}")
         logger.exception("Generate command failed")
+        ctx.exit(1)
+
+
+@cli.command()
+@click.argument("extraction_json", type=Path)
+@click.option("--fields", multiple=True, help="Specific fields to enrich (default: all missing)")
+@click.option("--output", "-o", type=Path, help="Output JSON file (default: overwrite input)")
+@click.option("--regenerate/--no-regenerate", default=False, help="Regenerate Obsidian files after enrichment")
+@click.pass_context
+def lookup(ctx, extraction_json, fields, output, regenerate):
+    """
+    Lookup missing metadata using LLM knowledge.
+
+    EXTRACTION_JSON: Path to extraction result JSON file
+
+    Uses LLM to fill in missing metadata (country, region, variety, etc.)
+    based on producer name, wine name, and context clues.
+
+    \b
+    Examples:
+        reserve-automation lookup bottles.json
+        reserve-automation lookup bottles.json --fields country region
+        reserve-automation lookup bottles.json --output enriched.json --regenerate
+    """
+    config = ctx.obj["config"]
+
+    try:
+        # Validate extraction JSON exists
+        if not extraction_json.exists():
+            console.print(f"[red]Error:[/red] File not found: {extraction_json}")
+            ctx.exit(1)
+
+        # Load extraction results
+        console.print(f"Loading bottles from: {extraction_json}")
+        with open(extraction_json) as f:
+            extraction_data = json.load(f)
+
+        # Parse bottles
+        bottles_data = extraction_data.get("bottles", [])
+        if not bottles_data:
+            console.print("[yellow]No bottles found in extraction results[/yellow]")
+            ctx.exit(0)
+
+        bottles = [BottleMetadata(**b) for b in bottles_data]
+        console.print(f"Found {len(bottles)} bottles\n")
+
+        # Initialize LLM gateway and enricher
+        llm_config = config.llm
+        llm_gateway = LLMGateway(llm_config)
+        enricher = MetadataEnricher(llm_gateway)
+
+        # Convert fields tuple to list (or None)
+        fields_list = list(fields) if fields else None
+        if fields_list:
+            console.print(f"[dim]Enriching only: {', '.join(fields_list)}[/dim]\n")
+
+        # Run enrichment
+        with console.status("[bold green]Enriching metadata..."):
+            enriched_bottles, summary = asyncio.run(
+                enricher.enrich_batch(bottles, fields=fields_list)
+            )
+
+        # Display results
+        console.print("\n")
+        console.print(Panel(
+            f"[green]Enriched {summary['enriched']} bottles[/green]\n"
+            f"Fields added: {summary['total_fields_added']}\n"
+            f"Tokens used: {summary['total_tokens']:,}\n"
+            f"Skipped: {summary['skipped']} (no missing fields)\n"
+            f"Errors: {summary['errors']}",
+            title="Enrichment Complete"
+        ))
+
+        # Show enriched bottles
+        if summary['enriched'] > 0:
+            table = Table(title="Enriched Bottles")
+            table.add_column("Producer", style="cyan")
+            table.add_column("Name", style="magenta")
+            table.add_column("Added Fields", style="green")
+
+            for original, enriched in zip(bottles, enriched_bottles):
+                if enriched.enriched:
+                    added = []
+                    if original.country != enriched.country:
+                        added.append("country")
+                    if original.region != enriched.region:
+                        added.append("region")
+                    if original.variety != enriched.variety:
+                        added.append("variety")
+
+                    if added:
+                        table.add_row(
+                            enriched.producer,
+                            enriched.name,
+                            ", ".join(added)
+                        )
+
+            console.print(table)
+
+        # Save enriched data
+        output_path = output or extraction_json
+        extraction_data["bottles"] = [b.model_dump() for b in enriched_bottles]
+
+        with open(output_path, "w") as f:
+            json.dump(extraction_data, f, indent=2, default=str)
+
+        console.print(f"\n[green]✓ Saved enriched data to:[/green] {output_path}")
+
+        # Regenerate Obsidian files if requested
+        if regenerate and summary['enriched'] > 0:
+            console.print("\n[bold]Regenerating Obsidian files...[/bold]")
+
+            vault_path = config.vault_path
+            template_dir = Path("templates")
+
+            generator = ObsidianGenerator(vault_path=vault_path, template_dir=template_dir)
+
+            with console.status("[bold green]Generating Obsidian files..."):
+                generated = generator.generate_batch(enriched_bottles, dry_run=False)
+
+            console.print(f"[green]✓ Regenerated {len(generated)} files[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Lookup failed:[/red] {e}")
+        logger.exception("Lookup command failed")
         ctx.exit(1)
 
 
