@@ -41,10 +41,18 @@ class LLMLabelFinder:
                 temperature=0.3,  # Lower temperature for more focused results
             )
 
+            # Log raw response for debugging
+            logger.debug(f"LLM raw response: {response.content[:500]}")
+
             # Parse JSON response
             images = self._parse_llm_response(response.content)
 
             logger.info(f"Found {len(images)} label images")
+
+            # Log found URLs for verification
+            for img in images:
+                logger.debug(f"  URL: {img['url']} from {img['source']}")
+
             return images
 
         except Exception as e:
@@ -56,44 +64,42 @@ class LLMLabelFinder:
         query = f"{bottle.producer} {bottle.name}"
         if bottle.year:
             query += f" {bottle.year}"
-        query += f" {bottle.type} bottle"
+        query += f" {bottle.type} bottle label"
 
-        prompt = f"""You have access to web search tools. Use them to find high-quality bottle label images for this bottle:
+        prompt = f"""CRITICAL: You MUST use your web search tool to find REAL URLs. Do NOT make up or guess URLs.
 
-**Bottle Information:**
-- Producer: {bottle.producer}
-- Name: {bottle.name}
-- Year: {bottle.year or 'N/A'}
-- Type: {bottle.type}
+**Task: Find bottle label image URLs**
 
-**Your Task:**
-1. Search the web for "{query}"
-2. Look for official product pages from:
-   - Winery/distillery websites
-   - Major retailers (wine.com, totalwine.com, etc.)
-   - Review sites (vivino.com, wine-searcher.com, etc.)
-3. Extract direct image URLs for bottle/label photos
-4. Prioritize high-resolution product images
+Bottle: {bottle.producer} {bottle.name} {bottle.year or ''} {bottle.type}
 
-**Requirements:**
-- Find 3-5 different image URLs
-- Images should show the bottle label clearly
-- Prefer official sources over user photos
-- Include the source domain for each image
+**REQUIRED STEPS:**
+1. USE WEB SEARCH TOOL to search: "{query}"
+2. From search results, visit 3-5 promising pages (wine.com, totalwine.com, vivino.com, wine-searcher.com, winery sites)
+3. Extract ACTUAL image URLs from those pages (look for <img> tags, product photos)
+4. Verify each URL starts with http:// or https://
+5. Return ONLY real URLs you found
+
+**DO NOT:**
+- Make up placeholder URLs
+- Return example.com URLs
+- Guess at URL patterns
+- Return URLs you didn't find via search
 
 **Output Format:**
-Return ONLY a JSON array (no other text):
+Return ONLY valid JSON with REAL URLs you found:
 ```json
 [
   {{
-    "url": "https://example.com/bottle.jpg",
-    "source": "wine.com",
-    "description": "Official product image"
+    "url": "https://ACTUAL-DOMAIN.com/path/to/REAL-image.jpg",
+    "source": "ACTUAL-DOMAIN.com",
+    "description": "What you see on the page"
   }}
 ]
 ```
 
-Use your web search tools to find these images now. Return ONLY the JSON array."""
+If you cannot find any images, return an empty array: []
+
+NOW: Use your web search tool and find REAL image URLs."""
 
         return prompt
 
