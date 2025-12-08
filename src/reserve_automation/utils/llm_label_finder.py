@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from ..core.models import BottleMetadata, LLMRequest
+from ..core.models import BottleMetadata
 from ..llm.gateway import LLMGateway
 
 logger = logging.getLogger(__name__)
@@ -33,15 +33,13 @@ class LLMLabelFinder:
         logger.info(f"Searching for labels: {bottle.producer} {bottle.name}")
 
         # Send request to LLM (which has web search tools)
-        request = LLMRequest(
-            prompt=prompt,
-            task_type="web_search",  # Route to text model with tools
-            max_tokens=2000,
-            temperature=0.3,  # Lower temperature for more focused results
-        )
-
         try:
-            response = await self.llm.complete(request)
+            response = await self.llm.complete(
+                task_type="web_research",  # Route to text model with tools
+                prompt=prompt,
+                max_tokens=2000,
+                temperature=0.3,  # Lower temperature for more focused results
+            )
 
             # Parse JSON response
             images = self._parse_llm_response(response.content)

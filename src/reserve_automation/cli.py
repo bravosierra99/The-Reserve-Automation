@@ -749,8 +749,9 @@ def _display_tasting_extraction(result):
 @click.option("--missing-only", is_flag=True, help="Only find labels for bottles without existing label images")
 @click.option("--limit", type=int, help="Limit number of bottles to process")
 @click.option("--dry-run", is_flag=True, help="Preview search queries without downloading")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
 @click.pass_context
-def find_labels(ctx, beverage, missing_only, limit, dry_run):
+def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
     """
     Find and download bottle label images for vault bottles.
 
@@ -820,11 +821,12 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run):
             ctx.exit(0)
 
         # Process each bottle
-        console.print("\n[yellow]⚠ Label finding requires internet access and may take a while[/yellow]")
-        console.print("[dim]Tip: Use Ctrl+C to skip to next bottle[/dim]\n")
+        if not yes:
+            console.print("\n[yellow]⚠ Label finding requires internet access and may take a while[/yellow]")
+            console.print("[dim]Tip: Use Ctrl+C to skip to next bottle[/dim]\n")
 
-        if not click.confirm("Continue?"):
-            ctx.exit(0)
+            if not click.confirm("Continue?"):
+                ctx.exit(0)
 
         total_found = 0
         total_downloaded = 0
