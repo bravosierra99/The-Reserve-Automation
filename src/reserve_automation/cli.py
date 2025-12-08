@@ -18,6 +18,7 @@ from .generators.tasting_generator import TastingGenerator
 from .llm import LLMGateway
 from .pipeline import extraction_pipeline
 from .utils.bottle_matcher import BottleMatcher
+from .utils.image_search import BottleLabelSearcher
 from .utils.logging import logger, setup_logging
 from .utils.vault_reader import VaultReader
 
@@ -740,6 +741,168 @@ def _display_tasting_extraction(result):
         )
 
     console.print(table)
+
+
+@cli.command(name="find-labels")
+@click.option("--beverage", type=click.Choice(["wine", "whiskey", "all"]), default="all", help="Beverage type filter")
+@click.option("--missing-only", is_flag=True, help="Only find labels for bottles without existing label images")
+@click.option("--limit", type=int, help="Limit number of bottles to process")
+@click.option("--dry-run", is_flag=True, help="Preview search queries without downloading")
+@click.pass_context
+def find_labels(ctx, beverage, missing_only, limit, dry_run):
+    """
+    Find and download bottle label images for vault bottles.
+
+    Searches web for official bottle label images and saves them to bottle folders.
+
+    Uses web search + LLM to find high-quality label images from:
+      - Official distillery/winery websites
+      - Retailer sites (Total Wine, Binny's, etc.)
+      - Review sites and databases
+
+    \b
+    Examples:
+        reserve-automation find-labels --missing-only
+        reserve-automation find-labels --beverage whiskey --limit 5
+        reserve-automation find-labels --dry-run
+    """
+    config = ctx.obj["config"]
+
+    try:
+        console.print("\n[bold]Finding Bottle Label Images[/bold]\n")
+
+        # Read bottles from vault
+        vault_reader = VaultReader(config.vault_path)
+
+        beverage_filter = None if beverage == "all" else beverage
+        bottles = vault_reader.read_all_bottles(beverage_type=beverage_filter)
+
+        if len(bottles) == 0:
+            console.print("[yellow]No bottles found in vault[/yellow]")
+            ctx.exit(0)
+
+        console.print(f"Found {len(bottles)} bottles in vault")
+
+        # Initialize searcher
+        searcher = BottleLabelSearcher()
+
+        # Filter to bottles missing labels if requested
+        if missing_only:
+            bottles_to_process = []
+            for bottle in bottles:
+                folder_path = _get_bottle_folder_from_name(bottle, config.vault_path)
+                if folder_path and not searcher.has_label(folder_path):
+                    bottles_to_process.append(bottle)
+            console.print(f"Filtering to {len(bottles_to_process)} bottles missing labels")
+        else:
+            bottles_to_process = bottles
+
+        # Apply limit
+        if limit and limit < len(bottles_to_process):
+            bottles_to_process = bottles_to_process[:limit]
+            console.print(f"Limited to first {limit} bottles")
+
+        if len(bottles_to_process) == 0:
+            console.print("[green]All bottles already have labels![/green]")
+            ctx.exit(0)
+
+        # Display bottles to process
+        console.print(f"\n[bold cyan]Processing {len(bottles_to_process)} bottles[/bold cyan]\n")
+
+        if dry_run:
+            console.print("[yellow]DRY RUN: Showing search queries only[/yellow]\n")
+            for bottle in bottles_to_process:
+                query = searcher.construct_search_query(bottle)
+                console.print(f"• {bottle.producer} {bottle.name} → [dim]{query}[/dim]")
+            ctx.exit(0)
+
+        # Process each bottle
+        console.print("\n[yellow]⚠ Label finding requires internet access and may take a while[/yellow]")
+        console.print("[dim]Tip: Use Ctrl+C to skip to next bottle[/dim]\n")
+
+        if not click.confirm("Continue?"):
+            ctx.exit(0)
+
+        total_found = 0
+        total_downloaded = 0
+
+        for i, bottle in enumerate(bottles_to_process, 1):
+            console.print(f"\n[bold cyan][{i}/{len(bottles_to_process)}] {bottle.producer} - {bottle.name}[/bold cyan]")
+
+            # Get bottle folder
+            folder_path = _get_bottle_folder_from_name(bottle, config.vault_path)
+            if not folder_path:
+                console.print("[red]  ✗ Could not find bottle folder[/red]")
+                continue
+
+            # Check if already has label
+            if searcher.has_label(folder_path):
+                console.print("[dim]  ✓ Already has label image[/dim]")
+                continue
+
+            # Create search prompt
+            search_prompt = searcher.create_search_task_prompt(bottle)
+
+            # Show search query
+            query = searcher.construct_search_query(bottle)
+            console.print(f"  [dim]Searching: {query}[/dim]")
+
+            console.print("\n[yellow]  TODO: Implement Task agent for image search[/yellow]")
+            console.print(f"  [dim]This would use WebSearch + WebFetch to find label images[/dim]")
+
+            # TODO: Launch Task agent with search_prompt
+            # task_result = await task_agent.execute(search_prompt)
+            # images = parse_task_result(task_result)
+            #
+            # if images:
+            #     # Present images to user for selection
+            #     selected = prompt_user_to_select_image(images)
+            #     if selected:
+            #         success = searcher.download_image(selected['url'], searcher.get_label_path(folder_path))
+            #         if success:
+            #             total_downloaded += 1
+
+        # Summary
+        console.print("\n")
+        console.print(Panel(
+            f"[bold]Label Finding Complete[/bold]\n\n"
+            f"Processed: {len(bottles_to_process)} bottles\n"
+            f"Found: {total_found} images\n"
+            f"Downloaded: {total_downloaded} images",
+            title="Summary"
+        ))
+
+        searcher.close()
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted by user[/yellow]")
+        ctx.exit(0)
+    except Exception as e:
+        console.print(f"\n[red]Label finding failed:[/red] {e}")
+        logger.exception("Label finding error")
+        ctx.exit(1)
+
+
+def _get_bottle_folder_from_name(bottle: BottleMetadata, vault_path: Path) -> Optional[Path]:
+    """Get bottle folder path from bottle metadata."""
+    # Construct expected folder name
+    parts = [bottle.producer, bottle.name]
+    if bottle.year:
+        parts.append(str(bottle.year))
+    folder_name = " - ".join(parts)
+
+    # Search in appropriate cellar directory
+    if bottle.type == "wine":
+        cellar_dir = vault_path / "Cellar" / "1_Wines"
+    else:
+        cellar_dir = vault_path / "Cellar" / "1_Whiskeys"
+
+    # Find matching folder
+    for folder in cellar_dir.glob("*"):
+        if folder.is_dir() and folder.name == folder_name:
+            return folder
+
+    return None
 
 
 # Config management commands

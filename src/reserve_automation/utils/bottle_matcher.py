@@ -5,7 +5,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
 
-from ..core.bottle import BottleMetadata
+from ..core.models import BottleMetadata
 from ..utils.vault_reader import VaultReader
 
 logger = logging.getLogger(__name__)

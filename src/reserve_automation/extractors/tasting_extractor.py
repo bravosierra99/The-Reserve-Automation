@@ -5,8 +5,9 @@ from datetime import date
 from pathlib import Path
 from typing import Literal, Optional
 
+from ..core.models import LLMRequest
 from ..core.tasting_note import TastingExtractionResult, TastingNote
-from ..llm.gateway import LLMGateway, LLMTaskType
+from ..llm.gateway import LLMGateway
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +73,12 @@ Return ONLY the template type as a single word:
 - "bourbon" for Bourbon Tasting Sheet
 """
 
-        response = await self.llm.complete(
-            task_type=LLMTaskType.OCR,
+        request = LLMRequest(
             prompt=prompt,
-            images=[image_path],
+            images=[str(image_path)],
+            task_type="ocr",
         )
+        response = await self.llm.complete(request)
 
         result = response.content.strip().lower()
         if "aws_wine" in result:
@@ -139,12 +141,13 @@ Important:
 - Return valid JSON only, no other text
 """
 
-        response = await self.llm.complete(
-            task_type=LLMTaskType.STRUCTURED_EXTRACTION,
+        request = LLMRequest(
             prompt=prompt,
-            images=[image_path],
+            images=[str(image_path)],
+            task_type="structured_extraction",
             response_format="json",
         )
+        response = await self.llm.complete(request)
 
         # Parse response and create TastingNote objects
         import json
@@ -223,12 +226,13 @@ If the tasting date is not visible, use today's date.
 Return valid JSON only, no other text.
 """
 
-        response = await self.llm.complete(
-            task_type=LLMTaskType.STRUCTURED_EXTRACTION,
+        request = LLMRequest(
             prompt=prompt,
-            images=[image_path],
+            images=[str(image_path)],
+            task_type="structured_extraction",
             response_format="json",
         )
+        response = await self.llm.complete(request)
 
         # Parse response and create TastingNote object
         import json
