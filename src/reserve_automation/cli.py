@@ -19,6 +19,7 @@ from .llm import LLMGateway
 from .pipeline import extraction_pipeline
 from .utils.bottle_matcher import BottleMatcher
 from .utils.image_search import BottleLabelSearcher
+from .utils.llm_label_finder import LLMLabelFinder
 from .utils.logging import logger, setup_logging
 from .utils.vault_reader import VaultReader
 
@@ -783,8 +784,10 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run):
 
         console.print(f"Found {len(bottles)} bottles in vault")
 
-        # Initialize searcher
+        # Initialize components
         searcher = BottleLabelSearcher()
+        llm_gateway = LLMGateway(config.llm)
+        llm_finder = LLMLabelFinder(llm_gateway)
 
         # Filter to bottles missing labels if requested
         if missing_only:
@@ -825,6 +828,7 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run):
 
         total_found = 0
         total_downloaded = 0
+        total_skipped = 0
 
         for i, bottle in enumerate(bottles_to_process, 1):
             console.print(f"\n[bold cyan][{i}/{len(bottles_to_process)}] {bottle.producer} - {bottle.name}[/bold cyan]")
@@ -833,34 +837,75 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run):
             folder_path = _get_bottle_folder_from_name(bottle, config.vault_path)
             if not folder_path:
                 console.print("[red]  ✗ Could not find bottle folder[/red]")
+                total_skipped += 1
                 continue
 
             # Check if already has label
             if searcher.has_label(folder_path):
                 console.print("[dim]  ✓ Already has label image[/dim]")
+                total_skipped += 1
                 continue
 
-            # Create search prompt
-            search_prompt = searcher.create_search_task_prompt(bottle)
+            try:
+                # Use LLM with web search tools to find images
+                console.print(f"  [dim]Searching web for label images...[/dim]")
 
-            # Show search query
-            query = searcher.construct_search_query(bottle)
-            console.print(f"  [dim]Searching: {query}[/dim]")
+                with console.status("  [bold green]LLM searching...", spinner="dots"):
+                    images = asyncio.run(llm_finder.find_label_images(bottle))
 
-            console.print("\n[yellow]  TODO: Implement Task agent for image search[/yellow]")
-            console.print(f"  [dim]This would use WebSearch + WebFetch to find label images[/dim]")
+                if not images:
+                    console.print("  [yellow]⚠ No images found[/yellow]")
+                    total_skipped += 1
+                    continue
 
-            # TODO: Launch Task agent with search_prompt
-            # task_result = await task_agent.execute(search_prompt)
-            # images = parse_task_result(task_result)
-            #
-            # if images:
-            #     # Present images to user for selection
-            #     selected = prompt_user_to_select_image(images)
-            #     if selected:
-            #         success = searcher.download_image(selected['url'], searcher.get_label_path(folder_path))
-            #         if success:
-            #             total_downloaded += 1
+                console.print(f"  [green]✓ Found {len(images)} images[/green]\n")
+
+                # Display images to user for selection
+                console.print("  [bold]Select an image to download:[/bold]")
+                for idx, img in enumerate(images, 1):
+                    console.print(f"    [{idx}] {img['url']}")
+                    console.print(f"        [dim]Source: {img['source']} - {img.get('description', '')}[/dim]")
+
+                console.print(f"    [0] Skip this bottle")
+                console.print()
+
+                # Get user selection
+                choice = click.prompt("  Enter choice", type=int, default=0)
+
+                if choice == 0:
+                    console.print("  [dim]Skipping[/dim]")
+                    total_skipped += 1
+                    continue
+
+                if choice < 1 or choice > len(images):
+                    console.print("  [red]Invalid choice, skipping[/red]")
+                    total_skipped += 1
+                    continue
+
+                # Download selected image
+                selected_image = images[choice - 1]
+                label_path = searcher.get_label_path(folder_path)
+
+                console.print(f"  [dim]Downloading from {selected_image['source']}...[/dim]")
+
+                success = searcher.download_image(selected_image['url'], label_path)
+                if success:
+                    console.print(f"  [green]✓ Downloaded to {label_path}[/green]")
+                    total_downloaded += 1
+                    total_found += len(images)
+                else:
+                    console.print(f"  [red]✗ Download failed[/red]")
+                    total_skipped += 1
+
+            except KeyboardInterrupt:
+                console.print("\n  [yellow]Skipped by user[/yellow]")
+                total_skipped += 1
+                continue
+            except Exception as e:
+                console.print(f"  [red]✗ Error: {e}[/red]")
+                logger.exception(f"Error processing {bottle.producer} {bottle.name}")
+                total_skipped += 1
+                continue
 
         # Summary
         console.print("\n")
