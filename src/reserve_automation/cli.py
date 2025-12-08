@@ -12,9 +12,12 @@ from .core.config import Config
 from .core.exceptions import ConfigurationError, ReserveAutomationError, GenerationError
 from .core.models import BottleMetadata
 from .enrichment import MetadataEnricher
+from .extractors.tasting_extractor import TastingExtractor
 from .generators import ObsidianGenerator
+from .generators.tasting_generator import TastingGenerator
 from .llm import LLMGateway
 from .pipeline import extraction_pipeline
+from .utils.bottle_matcher import BottleMatcher
 from .utils.logging import logger, setup_logging
 from .utils.vault_reader import VaultReader
 
@@ -596,6 +599,147 @@ def pipeline(ctx, input_file, skip_enrichment, output, commit):
         console.print(f"\n[red]Pipeline failed:[/red] {e}")
         logger.exception("Pipeline error")
         ctx.exit(1)
+
+
+@cli.command(name="extract-tasting")
+@click.argument("image_file", type=Path)
+@click.option("--template", type=click.Choice(["aws_wine", "bourbon"]), help="Template type (auto-detected if omitted)")
+@click.option("--dry-run", is_flag=True, help="Preview matches without creating files")
+@click.option("--auto-match-threshold", type=float, default=0.8, help="Auto-accept match score threshold (0.0-1.0)")
+@click.pass_context
+def extract_tasting(ctx, image_file, template, dry_run, auto_match_threshold):
+    """
+    Extract tasting notes from filled-out tasting card images.
+
+    IMAGE_FILE: Path to photo of filled-out tasting card
+
+    Supported templates:
+      - aws_wine: AWS Wine Evaluation Chart (20-point scale)
+      - bourbon: Bourbon Tasting Sheet (1-5 rating)
+
+    This command will:
+      1. Extract tasting notes from the image using vision LLM
+      2. Match extracted wines/whiskeys to bottles in your vault
+      3. Generate tasting markdown files in the correct bottle folders
+
+    \b
+    Examples:
+        reserve-automation extract-tasting wine_tasting.jpg
+        reserve-automation extract-tasting bourbon_card.jpg --template bourbon
+        reserve-automation extract-tasting wines.jpg --dry-run
+    """
+    config = ctx.obj["config"]
+
+    try:
+        # Validate input file
+        if not image_file.exists():
+            console.print(f"[red]Error:[/red] File not found: {image_file}")
+            ctx.exit(1)
+
+        console.print(f"\n[bold]Extracting Tasting Notes: {image_file.name}[/bold]\n")
+
+        # Initialize components
+        llm_gateway = LLMGateway(config.llm)
+        extractor = TastingExtractor(llm_gateway)
+        matcher = BottleMatcher(config.vault_path)
+        generator = TastingGenerator(
+            vault_path=config.vault_path,
+            templates_path=Path("templates"),
+        )
+
+        # STEP 1: Extract tasting notes from image
+        console.print("[bold cyan]Step 1/3: Extracting tasting notes...[/bold cyan]")
+        with console.status("[bold green]Processing image...", spinner="dots"):
+            result = asyncio.run(extractor.extract_from_image(image_file, template_type=template))
+
+        console.print(f"[green]✓ Extracted {len(result.tastings)} tasting(s) from {result.template_type} template[/green]")
+
+        if len(result.tastings) == 0:
+            console.print("[yellow]No tastings found in image[/yellow]")
+            ctx.exit(0)
+
+        # Display extracted tastings
+        _display_tasting_extraction(result)
+
+        # STEP 2: Match to bottles in vault
+        console.print("\n[bold cyan]Step 2/3: Matching to vault bottles...[/bold cyan]")
+
+        matches = []
+        for tasting in result.tastings:
+            console.print(f"\n[dim]Searching for:[/dim] {tasting.bottle_name}")
+
+            best_match = matcher.find_best_match(
+                tasting.bottle_name,
+                tasting.beverage_type,
+                auto_accept_threshold=auto_match_threshold,
+            )
+
+            if best_match:
+                matches.append((tasting, best_match))
+                console.print(f"[green]✓ Matched:[/green] {best_match.folder_path.name} (score: {best_match.score:.2f})")
+            else:
+                console.print(f"[red]✗ No match found[/red]")
+
+        if len(matches) == 0:
+            console.print("\n[red]No bottles matched. Cannot generate tasting files.[/red]")
+            console.print("\n[yellow]Hint:[/yellow] Check bottle names or adjust --auto-match-threshold")
+            ctx.exit(1)
+
+        console.print(f"\n[green]✓ Matched {len(matches)}/{len(result.tastings)} tastings[/green]")
+
+        # STEP 3: Generate tasting files
+        console.print("\n[bold cyan]Step 3/3: Generating tasting files...[/bold cyan]")
+
+        if dry_run:
+            console.print("[dim]DRY RUN: Preview only, no files will be created[/dim]\n")
+
+        generated_paths = generator.generate_batch(matches, dry_run=dry_run)
+
+        # Display results
+        if dry_run:
+            console.print(f"\n[yellow]Would create {len(generated_paths)} tasting files:[/yellow]")
+        else:
+            console.print(f"\n[green]✓ Created {len(generated_paths)} tasting files:[/green]")
+
+        for path in generated_paths:
+            console.print(f"  • {path}")
+
+        # Summary
+        console.print("\n")
+        console.print(Panel(
+            f"[bold green]Tasting Extraction Complete![/bold green]\n\n"
+            f"Extracted: {len(result.tastings)} tasting(s)\n"
+            f"Matched: {len(matches)} bottle(s)\n"
+            f"Generated: {len(generated_paths)} file(s)\n"
+            f"Template: {result.template_type}",
+            title="Success" if not dry_run else "Dry Run"
+        ))
+
+    except Exception as e:
+        console.print(f"\n[red]Tasting extraction failed:[/red] {e}")
+        logger.exception("Tasting extraction error")
+        ctx.exit(1)
+
+
+def _display_tasting_extraction(result):
+    """Display extracted tasting notes."""
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Bottle", style="cyan")
+    table.add_column("Taster")
+    table.add_column("Date")
+    table.add_column("Score", justify="right")
+    table.add_column("Type")
+
+    for tasting in result.tastings:
+        table.add_row(
+            tasting.bottle_name,
+            tasting.taster_name,
+            tasting.tasting_date.isoformat(),
+            f"{tasting.total_score()}/{tasting.max_score()}",
+            tasting.beverage_type,
+        )
+
+    console.print(table)
 
 
 # Config management commands

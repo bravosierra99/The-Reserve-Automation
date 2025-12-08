@@ -1,0 +1,41 @@
+---
+fileClass: Tasting
+Date: {{ tasting_date }}
+TasterName: {{ taster_name }}
+Nose: {{ whiskey_nose }}
+Palate: {{ whiskey_palate }}
+Finish: {{ whiskey_finish }}
+Overall: {{ whiskey_overall }}
+TotalScore: {{ total_score }}
+LinkedBottle: "[[{{ bottle_name }}]]"
+{%- if color %}
+Color: {{ color }}
+{%- endif %}
+---
+
+## Tasting Notes
+
+### Nose
+
+{% if nose_notes %}
+{%- for note in nose_notes %}
+#{{ note | replace(' ', '_') }} {% endfor %}
+{% endif %}
+
+### Palate
+
+{% if palate_notes %}
+{%- for note in palate_notes %}
+#{{ note | replace(' ', '_') }} {% endfor %}
+{% endif %}
+
+### Finish
+
+{% if finish_notes %}
+{%- for note in finish_notes %}
+#{{ note | replace(' ', '_') }} {% endfor %}
+{% endif %}
+
+### Overall Impression
+
+{% if overall_notes %}{{ overall_notes }}{% endif %}

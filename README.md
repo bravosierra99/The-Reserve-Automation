@@ -2,7 +2,7 @@
 
 Bottle ingestion automation for [The Reserve](../the-reserve/) spirits collection.
 
-**Status:** 🚧 Phase 1.4 - Extraction & Generation Working!
+**Status:** 🚀 Phase 1.5 - Tasting Card Extraction Ready!
 
 ## Overview
 
@@ -17,6 +17,8 @@ The Reserve Automation is a Python-based CLI tool and (future) web application f
 - ✅ Confidence scoring and review workflows
 - ✅ Metadata enrichment using LLM knowledge
 - ✅ Generate Obsidian markdown files
+- ✅ **Extract tasting notes from physical tasting cards** (AWS Wine Chart, Bourbon Sheet)
+- ✅ Fuzzy bottle matching for tasting notes
 - 🚧 Git integration with the-reserve repository (partial)
 
 **Future Phases:**
@@ -116,6 +118,11 @@ reserve-automation enrich-vault --dry-run              # Preview what would chan
 reserve-automation pipeline wine_list.pdf              # Full automated pipeline
 reserve-automation pipeline wine_list.pdf --skip-enrichment  # Skip enrichment step
 
+# Extract tasting notes from filled-out tasting cards
+reserve-automation extract-tasting wine_tasting.jpg    # Extract from image (auto-detects template)
+reserve-automation extract-tasting bourbon_card.jpg --template bourbon  # Specify template type
+reserve-automation extract-tasting tastings.jpg --dry-run  # Preview matches without creating files
+
 # Configuration management
 reserve-automation config show
 reserve-automation config validate
@@ -169,7 +176,32 @@ This:
 - Regenerates vault files with enriched metadata
 - **Never overwrites existing data**
 
-#### Workflow 3: Manual Step-by-Step
+#### Workflow 3: Extract Tasting Notes from Cards
+
+If you use physical tasting cards (AWS Wine Chart, Bourbon Tasting Sheet):
+
+```bash
+# Take a photo of your filled-out tasting card(s)
+# Then extract the notes automatically
+
+reserve-automation extract-tasting ~/Photos/wine_tasting.jpg
+
+# Preview what would be created (dry-run)
+reserve-automation extract-tasting bourbon_card.jpg --dry-run
+```
+
+This:
+- Uses vision LLM to read your handwriting/filled-out cards
+- Extracts tasting notes and scores
+- Matches bottles to your vault using fuzzy matching
+- Generates tasting markdown files in the correct bottle folders
+- Supports AWS Wine Evaluation Chart (20-point scale) and Bourbon Tasting Sheet (1-5 rating)
+
+**Supported tasting card templates:**
+- **AWS Wine Evaluation Chart** - 20-point scale (Appearance, Aroma, Taste, Aftertaste, Overall)
+- **Bourbon Tasting Sheet** - 1-5 rating scale (automatically converts to 10-point format)
+
+#### Workflow 4: Manual Step-by-Step
 
 For more control, run each step independently:
 

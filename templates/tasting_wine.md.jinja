@@ -1,0 +1,51 @@
+---
+fileClass: Tasting
+Date: {{ tasting_date }}
+TasterName: {{ taster_name }}
+Appearance: {{ wine_appearance }}
+Aroma: {{ wine_aroma }}
+Taste: {{ wine_taste }}
+Aftertaste: {{ wine_aftertaste }}
+Overall: {{ wine_overall }}
+TotalScore: {{ total_score }}
+LinkedBottle: "[[{{ bottle_name }}]]"
+{%- if place %}
+Place: {{ place }}
+{%- endif %}
+{%- if theme %}
+Theme: {{ theme }}
+{%- endif %}
+{%- if price %}
+Price: {{ price }}
+{%- endif %}
+---
+
+## Tasting Notes
+
+### Appearance ({{ wine_appearance }}/3)
+
+{% if nose_notes %}
+{%- for note in nose_notes %}
+#{{ note }} {% endfor %}
+{% endif %}
+
+### Aroma / Bouquet ({{ wine_aroma }}/6)
+
+{% if palate_notes %}
+{%- for note in palate_notes %}
+#{{ note }} {% endfor %}
+{% endif %}
+
+### Taste / Texture ({{ wine_taste }}/6)
+
+{% if finish_notes %}
+{%- for note in finish_notes %}
+#{{ note }} {% endfor %}
+{% endif %}
+
+### Aftertaste ({{ wine_aftertaste }}/3)
+
+
+### Overall Impression ({{ wine_overall }}/2)
+
+{% if overall_notes %}{{ overall_notes }}{% endif %}
