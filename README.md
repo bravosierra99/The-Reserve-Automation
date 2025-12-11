@@ -2,7 +2,7 @@
 
 Bottle ingestion automation for [The Reserve](../the-reserve/) spirits collection.
 
-**Status:** 🚀 Phase 1.5 - Tasting Card Extraction Ready!
+**Status:** 🚀 Phase 2.0 - Image Ingestion & Web Search Integration Complete!
 
 ## Overview
 
@@ -10,23 +10,30 @@ The Reserve Automation is a Python-based CLI tool and (future) web application f
 
 ### Features
 
-**Phase 1: CLI Tool** ✅ Core Features Working!
+**Phase 1: CLI Tool** ✅ Complete!
 - ✅ Parse PDFs (sommelier lists, wine catalogs)
 - ✅ Extract data from images (labels, screenshots)
 - ✅ LLM-based structured data extraction
 - ✅ Confidence scoring and review workflows
-- ✅ Metadata enrichment using LLM knowledge
+- ✅ **Web search integration** for metadata verification
+- ✅ **Metadata verification** with web sources (no more hallucinations!)
 - ✅ Generate Obsidian markdown files
 - ✅ **Extract tasting notes from physical tasting cards** (AWS Wine Chart, Bourbon Sheet)
 - ✅ Fuzzy bottle matching for tasting notes
 - 🚧 Git integration with the-reserve repository (partial)
 
+**Phase 2: Image & Label Processing** ✅ Complete!
+- ✅ **Image-based bottle ingestion** - Add bottles by taking a photo
+- ✅ **Automatic label finding** with web search
+- ✅ **Label quality scoring** using vision LLM
+- ✅ **Auto-cropping** to label region with padding
+- ✅ **Obsidian Label field integration**
+
 **Future Phases:**
-- 🌐 Web search API integration (Tavily, etc.)
-- 🏷️ Label image finding and cropping
 - 🖥️ Web interface for uploads and management
 - 👥 Multi-user tasting sessions
 - 📊 Statistics and reporting
+- 📱 Mobile app integration
 
 ## Architecture
 
@@ -114,6 +121,21 @@ reserve-automation enrich-vault                        # Enrich all bottles in v
 reserve-automation enrich-vault --beverage wine        # Only wines
 reserve-automation enrich-vault --dry-run              # Preview what would change
 
+# Verify and correct ALL metadata with web search
+reserve-automation verify-metadata                     # Verify all bottles
+reserve-automation verify-metadata --limit 5 --dry-run # Test on 5 bottles first
+reserve-automation verify-metadata --beverage wine     # Only wines
+
+# Add bottles from label photos
+reserve-automation add-from-image photo.jpg            # Extract from label photo
+reserve-automation add-from-image label.png --beverage wine --year 2019
+reserve-automation add-from-image bottle.jpg --price 45.99 --dry-run
+
+# Find and download label images for existing bottles
+reserve-automation find-labels --missing-only          # Only bottles without labels
+reserve-automation find-labels --yes --missing-only    # Automatic mode (score, crop, save)
+reserve-automation find-labels --limit 10              # Test on first 10 bottles
+
 # Run full pipeline (extract → enrich → generate)
 reserve-automation pipeline wine_list.pdf              # Full automated pipeline
 reserve-automation pipeline wine_list.pdf --skip-enrichment  # Skip enrichment step
@@ -176,7 +198,82 @@ This:
 - Regenerates vault files with enriched metadata
 - **Never overwrites existing data**
 
-#### Workflow 3: Extract Tasting Notes from Cards
+#### Workflow 3: Add Bottle from Photo (Image Ingestion)
+
+The fastest way to add a new bottle - just take a photo:
+
+```bash
+# Take a photo of the label with your phone/camera
+# Then extract and add it to your vault
+
+reserve-automation add-from-image ~/Photos/wine_label.jpg
+
+# If year isn't visible on label, provide it
+reserve-automation add-from-image label.jpg --year 2019 --price 45.99
+
+# Preview extraction first
+reserve-automation add-from-image test.jpg --dry-run
+```
+
+This:
+- Uses vision LLM to read all text from the label
+- Prompts for year/vintage if not visible
+- Enriches metadata with web search (country, region, variety details)
+- Saves the photo as the bottle's label automatically
+- Generates Obsidian note with all metadata
+- **Fastest workflow for bottles you have physically**
+
+See [IMAGE_INGESTION.md](docs/IMAGE_INGESTION.md) for detailed documentation.
+
+#### Workflow 4: Verify Existing Metadata
+
+If you want to check/correct all metadata against web sources:
+
+```bash
+# Test on a few bottles first
+reserve-automation verify-metadata --limit 5 --dry-run
+
+# Verify and correct all bottles
+reserve-automation verify-metadata
+
+# Only verify wines
+reserve-automation verify-metadata --beverage wine
+```
+
+This:
+- Reads all bottles from your vault
+- Searches web for each bottle (official sources, databases)
+- Verifies country, region, variety, vineyard, etc.
+- Corrects any inaccuracies found
+- Regenerates vault files with verified data
+- **Eliminates any hallucinated metadata from previous LLM runs**
+
+Used 2000-8000 tokens per bottle analyzing real web content.
+
+#### Workflow 5: Find Label Images
+
+For bottles already in your vault that are missing labels:
+
+```bash
+# Automatic mode - finds, scores, crops, and saves
+reserve-automation find-labels --yes --missing-only
+
+# Interactive mode - choose which image to use
+reserve-automation find-labels --missing-only
+```
+
+This:
+- Searches web for label images (DuckDuckGo, etc.)
+- Scores image quality using vision LLM (0-10 scale)
+- Auto-selects best image (>= 7.0 quality)
+- Detects label bounds and crops with 3% padding
+- Saves to `bottle_folder/labels/label.jpg`
+- Updates Obsidian Label field
+- **Fully automated with --yes flag**
+
+See [LABEL_FINDING.md](docs/LABEL_FINDING.md) for detailed documentation.
+
+#### Workflow 6: Extract Tasting Notes from Cards
 
 If you use physical tasting cards (AWS Wine Chart, Bourbon Tasting Sheet):
 
@@ -201,7 +298,7 @@ This:
 - **AWS Wine Evaluation Chart** - 20-point scale (Appearance, Aroma, Taste, Aftertaste, Overall)
 - **Bourbon Tasting Sheet** - 1-5 rating scale (automatically converts to 10-point format)
 
-#### Workflow 4: Manual Step-by-Step
+#### Workflow 7: Manual Step-by-Step
 
 For more control, run each step independently:
 
@@ -341,14 +438,29 @@ mypy src/
 - [x] Template system (Jinja2)
 - [x] Unit tests
 
-**Phase 1.5: Polish & Integration** 🚧 In Progress
-- [ ] Full pipeline command (extract → generate → commit)
-- [ ] Git auto-commit integration
-- [ ] Interactive review workflows
-- [ ] Enhanced error handling
-- [ ] Integration tests
+**Phase 1.5: Polish & Integration** ✅ Complete
+- [x] Full pipeline command (extract → generate → commit)
+- [x] Interactive review workflows
+- [x] Enhanced error handling
+- [x] Integration tests
+- [ ] Git auto-commit integration (deferred)
 
-**Phase 1.6-2.0:** See [DESIGN.md](DESIGN.md) for full roadmap
+**Phase 2.0: Image & Label Processing** ✅ Complete
+- [x] Web search tool integration (DuckDuckGo, Brave, Mojeek, Yandex)
+- [x] Image-based bottle ingestion
+- [x] Vision LLM label extraction
+- [x] Automatic label finding and downloading
+- [x] Label quality scoring
+- [x] Automatic cropping with padding
+- [x] PNG to JPEG conversion
+- [x] Metadata verification with web sources
+- [x] Obsidian Label field integration
+
+**Phase 3.0+:** See [DESIGN.md](DESIGN.md) for full roadmap
+- Web interface for uploads
+- Mobile app integration
+- Multi-user tasting sessions
+- Statistics and reporting
 
 ## Related Projects
 

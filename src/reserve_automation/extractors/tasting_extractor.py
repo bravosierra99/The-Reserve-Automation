@@ -73,12 +73,15 @@ Return ONLY the template type as a single word:
 - "bourbon" for Bourbon Tasting Sheet
 """
 
-        request = LLMRequest(
-            prompt=prompt,
-            images=[str(image_path)],
+        # Read image file as bytes
+        with open(image_path, 'rb') as f:
+            image_bytes = f.read()
+
+        response = await self.llm.complete(
             task_type="ocr",
+            prompt=prompt,
+            images=[image_bytes]
         )
-        response = await self.llm.complete(request)
 
         result = response.content.strip().lower()
         if "aws_wine" in result:
@@ -141,13 +144,16 @@ Important:
 - Return valid JSON only, no other text
 """
 
-        request = LLMRequest(
-            prompt=prompt,
-            images=[str(image_path)],
+        # Read image file as bytes
+        with open(image_path, 'rb') as f:
+            image_bytes = f.read()
+
+        response = await self.llm.complete(
             task_type="structured_extraction",
-            response_format="json",
+            prompt=prompt,
+            images=[image_bytes],
+            response_format="json"
         )
-        response = await self.llm.complete(request)
 
         # Parse response and create TastingNote objects
         import json
@@ -185,73 +191,99 @@ Important:
         prompt = """
 Extract the tasting notes from this Bourbon Tasting Sheet image.
 
+This is a BOURBON TASTING for WHISKEY, so validate all flavor descriptors are appropriate for bourbon/whiskey tasting.
+
 The sheet has the following structure:
 - Header: "Your Name", "Taste No"
-- Notes sections: NOSE, PALATE, FINISH, UNIQUENESS, OVERALL (free text)
+- Notes sections: NOSE, PALATE, FINISH, UNIQUENESS, OVERALL (free text with flavor descriptors and notes)
+- Numeric scores: May have handwritten numbers (0-3 range for Nose/Palate/Finish, 0-1 for Overall)
 - Rating: 1-5 scale (1="I'd pour this out", 5="All-time favorite!")
 - Reveal: Bottle name (filled in after blind tasting)
 - Color rating: Visual assessment
+
+IMPORTANT - Extraction Rules:
+1. Look for HANDWRITTEN NUMERIC SCORES first (numbers written next to each section)
+   - Nose score: 0-3
+   - Palate score: 0-3
+   - Finish score: 0-3
+   - Overall score: 0-1
+2. If no numeric scores visible, use the 1-5 rating scale to estimate
+3. For flavor descriptors: Extract individual words/phrases from NOSE, PALATE, FINISH sections
+4. For overall notes: Extract complete text from OVERALL and UNIQUENESS sections (not just keywords)
+5. VALIDATE all flavor descriptors are plausible for bourbon (e.g., "ginger" is valid, "singer" is not)
+
+Common bourbon flavor descriptors include:
+- Spices: pepper, cinnamon, nutmeg, clove, ginger, allspice
+- Sweet: caramel, vanilla, butterscotch, toffee, honey, brown sugar, maple
+- Fruit: cherry, apple, orange, raisin, fig, dried fruit
+- Wood: oak, cedar, char, smoke, tobacco, leather
+- Grain: corn, wheat, rye, biscuit
+- Nuts: almond, walnut, pecan
+- Other: chocolate, coffee, mint, anise
 
 Extract ALL filled-in information and return JSON:
 {
   "taster_name": "...",
   "taste_number": "...",
   "bottle_name": "... (from REVEAL field)",
-  "nose_notes": ["descriptor1", "descriptor2"],
-  "palate_notes": ["descriptor1", "descriptor2"],
-  "finish_notes": ["descriptor1", "descriptor2"],
-  "uniqueness_notes": "...",
-  "overall_notes": "...",
-  "rating": 4,
-  "color": "Amber" or "Copper" etc.
+  "nose_score": 2.5,  // If handwritten number visible (0-3)
+  "palate_score": 2.5,  // If handwritten number visible (0-3)
+  "finish_score": 2.5,  // If handwritten number visible (0-3)
+  "overall_score": 0.75,  // If handwritten number visible (0-1)
+  "nose_notes": ["descriptor1", "descriptor2", ...],  // Individual keywords from NOSE section
+  "palate_notes": ["descriptor1", "descriptor2", ...],  // Individual keywords from PALATE section
+  "finish_notes": ["descriptor1", "descriptor2", ...],  // Individual keywords from FINISH section
+  "overall_notes": "Complete text from OVERALL and UNIQUENESS sections...",  // Full prose, not keywords
+  "rating": 4,  // 1-5 rating (if visible, otherwise estimate from notes quality)
+  "color": "Amber"  // Color observation
 }
-
-For the rating:
-- Convert the 1-5 rating to the 10-point scale used in the vault:
-  - Rating 5 (All-time favorite) = Nose:2.8-3.0, Palate:2.8-3.0, Finish:2.8-3.0, Overall:0.9-1.0 (Total: 9.5-10.0)
-  - Rating 4 (Happy to own) = Nose:2.3-2.7, Palate:2.3-2.7, Finish:2.3-2.7, Overall:0.7-0.8 (Total: 7.6-8.8)
-  - Rating 3 (Solid bourbon) = Nose:1.8-2.2, Palate:1.8-2.2, Finish:1.8-2.2, Overall:0.5-0.6 (Total: 5.9-7.2)
-  - Rating 2 (Mix with Coke) = Nose:1.0-1.7, Palate:1.0-1.7, Finish:1.0-1.7, Overall:0.3-0.4 (Total: 3.3-5.8)
-  - Rating 1 (Pour it out) = Nose:0.0-0.9, Palate:0.0-0.9, Finish:0.0-0.9, Overall:0.0-0.2 (Total: 0.0-3.2)
-
-Also look at the notes content to determine if Nose/Palate/Finish should be weighted differently within the range.
-
-For notes:
-- Parse the free text in each section (NOSE, PALATE, FINISH, etc.)
-- Extract individual flavor descriptors as a list
-- Keep overall impression as prose
 
 If the tasting date is not visible, use today's date.
 
 Return valid JSON only, no other text.
 """
 
-        request = LLMRequest(
-            prompt=prompt,
-            images=[str(image_path)],
+        # Read image file as bytes
+        with open(image_path, 'rb') as f:
+            image_bytes = f.read()
+
+        response = await self.llm.complete(
             task_type="structured_extraction",
-            response_format="json",
+            prompt=prompt,
+            images=[image_bytes],
+            response_format="json"
         )
-        response = await self.llm.complete(request)
 
         # Parse response and create TastingNote object
         import json
 
         data = json.loads(response.content)
 
-        # Calculate individual scores based on rating and notes detail
-        rating = data.get("rating", 3)
-        scores = self._rating_to_scores(rating)
+        # Use explicit numeric scores if provided, otherwise fall back to rating-based estimation
+        if "nose_score" in data and data["nose_score"] is not None:
+            # Explicit scores provided
+            nose_score = data.get("nose_score", 2.5)
+            palate_score = data.get("palate_score", 2.5)
+            finish_score = data.get("finish_score", 2.5)
+            overall_score = data.get("overall_score", 0.75)
+        else:
+            # Fall back to rating-based estimation
+            rating = data.get("rating", 3)
+            scores = self._rating_to_scores(rating)
+            nose_score = scores["nose"]
+            palate_score = scores["palate"]
+            finish_score = scores["finish"]
+            overall_score = scores["overall"]
 
         tasting = TastingNote(
             bottle_name=data.get("bottle_name", "Unknown Bourbon"),
             taster_name=data.get("taster_name", "Unknown"),
             tasting_date=date.today(),  # TODO: Extract if visible
             beverage_type="whiskey",
-            whiskey_nose=scores["nose"],
-            whiskey_palate=scores["palate"],
-            whiskey_finish=scores["finish"],
-            whiskey_overall=scores["overall"],
+            whiskey_nose=nose_score,
+            whiskey_palate=palate_score,
+            whiskey_finish=finish_score,
+            whiskey_overall=overall_score,
             nose_notes=data.get("nose_notes", []),
             palate_notes=data.get("palate_notes", []),
             finish_notes=data.get("finish_notes", []),

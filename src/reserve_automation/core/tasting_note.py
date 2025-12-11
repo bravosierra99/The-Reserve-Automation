@@ -36,7 +36,11 @@ class TastingNote(BaseModel):
     finish_notes: Optional[list[str]] = Field(default=None, description="Finish descriptors")
     overall_notes: Optional[str] = Field(default=None, description="Overall impression text")
 
-    # Additional metadata
+    # Additional metadata (from Obsidian FileClass)
+    days_from_crack: Optional[int] = Field(default=None, ge=0, description="Days since bottle was opened")
+    fill_level: Optional[int] = Field(default=None, ge=0, le=100, description="Bottle fill percentage (0-100)")
+
+    # Additional metadata (not in FileClass, used for extraction/display)
     place: Optional[str] = Field(default=None, description="Location of tasting")
     theme: Optional[str] = Field(default=None, description="Tasting theme/event")
     price: Optional[str] = Field(default=None, description="Price of bottle (for wine lists)")

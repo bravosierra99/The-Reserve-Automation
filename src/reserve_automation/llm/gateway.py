@@ -78,6 +78,7 @@ class LLMGateway:
         prompt: str,
         system: Optional[str] = None,
         images: Optional[list[bytes]] = None,
+        tools: Optional[list[dict]] = None,
         **kwargs,
     ) -> LLMResponse:
         """
@@ -121,6 +122,10 @@ class LLMGateway:
             temperature=kwargs.get("temperature", 0.2),
             response_format=kwargs.get("response_format"),
         )
+
+        # Add tools if provided
+        if tools:
+            request.tools = tools
 
         # 3. Execute with primary provider
         try:

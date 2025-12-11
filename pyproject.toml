@@ -14,26 +14,28 @@ dependencies = [
     "pydantic>=2.0",
     "click>=8.1",
     "pyyaml>=6.0",
-
     # LLM providers
     "httpx>=0.27",
     "anthropic>=0.20",
     "openai>=1.0",
-
     # Parsing
     "pdfplumber>=0.10",
     "pytesseract>=0.3",
     "Pillow>=10.0",
     "pdf2image>=1.16",
     "numpy>=1.24",
-
     # Generation
-    "Jinja2>=3.1",
+    "jinja2>=3.1",
     "GitPython>=3.1",
-
     # CLI/UI
     "rich>=13.0",
     "loguru>=0.7",
+    "ddgs>=9.9.3",
+    "fastapi>=0.124.2",
+    "uvicorn[standard]>=0.38.0",
+    "python-multipart>=0.0.20",
+    "sse-starlette>=3.0.3",
+    "itsdangerous>=2.2.0",
 ]
 
 [project.optional-dependencies]

@@ -7,6 +7,7 @@ from typing import Optional
 
 from ..core.models import BottleMetadata
 from ..llm.gateway import LLMGateway
+from ..llm.tools import get_tools_for_task
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +35,13 @@ class LLMLabelFinder:
 
         # Send request to LLM (which has web search tools)
         try:
+            # Get web research tools
+            tools = get_tools_for_task("web_research")
+
             response = await self.llm.complete(
                 task_type="web_research",  # Route to text model with tools
                 prompt=prompt,
+                tools=tools,  # Pass web search and fetch tools
                 max_tokens=2000,
                 temperature=0.3,  # Lower temperature for more focused results
             )
@@ -140,3 +145,65 @@ NOW: Use your web search tool and find REAL image URLs."""
         except Exception as e:
             logger.error(f"Error parsing LLM response: {e}")
             return []
+
+    async def find_and_score_label_images(
+        self, bottle: BottleMetadata, label_processor
+    ) -> list[dict]:
+        """
+        Find label images and score them by quality.
+
+        Args:
+            bottle: Bottle to search for
+            label_processor: LabelImageProcessor instance for quality scoring
+
+        Returns:
+            List of scored images sorted by quality (highest first)
+            Each dict has: {"url": "...", "source": "...", "description": "...", "score": 7.5}
+        """
+        # Find candidate images using existing method
+        images = await self.find_label_images(bottle)
+
+        if not images:
+            return []
+
+        logger.info(f"Scoring {len(images)} candidate images...")
+
+        # Score each image
+        scored_images = []
+
+        for img in images:
+            try:
+                # Download image to memory for scoring
+                import httpx
+
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(img["url"])
+                    response.raise_for_status()
+                    image_bytes = response.content
+
+                # Score quality
+                score = await label_processor.score_label_quality(image_bytes, bottle)
+
+                if score is not None:
+                    img["score"] = score
+                    scored_images.append(img)
+                    logger.info(f"  {img['source']}: {score:.1f}/10")
+                else:
+                    logger.warning(f"  {img['source']}: scoring failed, skipping")
+
+            except Exception as e:
+                logger.warning(f"  {img['source']}: download/score failed - {e}")
+                continue
+
+        # Filter to quality threshold (>= 7.0)
+        quality_images = [img for img in scored_images if img["score"] >= 7.0]
+
+        # Sort by score descending
+        quality_images.sort(key=lambda x: x["score"], reverse=True)
+
+        logger.info(
+            f"Found {len(quality_images)} high-quality images (>= 7.0) "
+            f"out of {len(images)} total"
+        )
+
+        return quality_images

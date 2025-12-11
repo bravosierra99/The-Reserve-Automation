@@ -2,15 +2,18 @@
 fileClass: Tasting
 Date: {{ tasting_date }}
 TasterName: {{ taster_name }}
+{% if days_from_crack is not none -%}
+DaysFromCrack: {{ days_from_crack }}
+{% endif -%}
+{% if fill_level is not none -%}
+FillLevel: {{ fill_level }}
+{% endif -%}
 Nose: {{ whiskey_nose }}
 Palate: {{ whiskey_palate }}
 Finish: {{ whiskey_finish }}
 Overall: {{ whiskey_overall }}
 TotalScore: {{ total_score }}
 LinkedBottle: "[[{{ bottle_name }}]]"
-{%- if color %}
-Color: {{ color }}
-{%- endif %}
 ---
 
 ## Tasting Notes

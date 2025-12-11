@@ -104,7 +104,8 @@ class TastingGenerator:
                 "whiskey_palate": tasting.whiskey_palate,
                 "whiskey_finish": tasting.whiskey_finish,
                 "whiskey_overall": tasting.whiskey_overall,
-                "color": tasting.color,
+                "days_from_crack": tasting.days_from_crack,
+                "fill_level": tasting.fill_level,
             })
 
         return context

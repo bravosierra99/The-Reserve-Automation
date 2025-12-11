@@ -1,0 +1,107 @@
+"""FastAPI web application for The Reserve Automation."""
+
+import logging
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from .config import load_web_config
+from .routes import upload, review, health
+from .services.upload_service import UploadService
+
+logger = logging.getLogger(__name__)
+
+
+# Global services (initialized on startup)
+upload_service: UploadService = None
+core_config = None
+web_config = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager."""
+    global upload_service, core_config, web_config
+
+    # Startup
+    logger.info("Starting The Reserve Automation web application")
+
+    # Load configuration
+    core_config, web_config = load_web_config()
+    logger.info(f"Loaded configuration: vault={core_config.vault_path}")
+
+    # Initialize services
+    upload_service = UploadService(
+        temp_dir=web_config.uploads.temp_dir,
+        max_file_size_mb=web_config.uploads.max_file_size_mb,
+        allowed_extensions=web_config.uploads.allowed_extensions
+    )
+
+    # Clean up old temp files on startup
+    deleted = upload_service.cleanup_old_files(
+        max_age_hours=web_config.uploads.cleanup_age_hours
+    )
+    if deleted > 0:
+        logger.info(f"Cleaned up {deleted} orphaned temp files")
+
+    logger.info("Application startup complete")
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down application")
+
+
+# Create FastAPI app
+app = FastAPI(
+    title="The Reserve Automation",
+    description="Mobile-first web interface for bottle and tasting management",
+    version="0.1.0",
+    lifespan=lifespan
+)
+
+# Mount static files
+static_path = Path(__file__).parent / "static"
+static_path.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+# Set up templates
+templates_dir = Path(__file__).parent / "templates"
+templates_dir.mkdir(exist_ok=True)
+templates = Jinja2Templates(directory=templates_dir)
+
+# Include routers
+app.include_router(health.router, prefix="/api/v1", tags=["health"])
+app.include_router(upload.router, tags=["upload"])  # Includes both /upload page and /api/v1/upload endpoint
+app.include_router(review.router, tags=["review"])  # Includes both /review page and /api/v1/* endpoints
+
+
+@app.get("/")
+async def root():
+    """Root endpoint - redirect to upload page."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/upload")
+
+
+def main():
+    """Entry point for running the web application."""
+    import uvicorn
+
+    # Load config
+    _, web_cfg = load_web_config()
+
+    # Run server
+    uvicorn.run(
+        "reserve_automation.web.app:app",
+        host=web_cfg.host,
+        port=web_cfg.port,
+        reload=True,  # Enable auto-reload for development
+        log_level="info"
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -183,6 +183,7 @@ class LLMRequest(BaseModel):
     max_tokens: int = 2000
     temperature: float = 0.2
     response_format: Optional[Literal["json", "text"]] = None
+    tools: Optional[list[dict]] = None  # Tool definitions for function calling
 
 
 class LLMResponse(BaseModel):

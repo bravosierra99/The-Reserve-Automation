@@ -1886,18 +1886,31 @@ def mock_llm_gateway():
 
 ## Future Phases
 
-### Phase 2: Web Research & Enrichment
+### Phase 2: Web Research & Enrichment ✅ Complete
 
-**Features:**
-- Web scraping for missing metadata
-- Label image finding (Google, wine databases)
-- Image downloading and cropping (vision models)
-- Metadata validation against online sources
+**Implemented Features:**
+- ✅ Web search integration (DuckDuckGo, Brave, Mojeek, Yandex)
+- ✅ Label image finding with LLM + web search tools
+- ✅ Vision LLM quality scoring (0-10 scale, 7.0 threshold)
+- ✅ Intelligent label cropping with bounding box detection
+- ✅ Image processing (PNG→JPEG, format conversion)
+- ✅ Metadata validation against online sources
+- ✅ Image-based bottle ingestion (photo → metadata extraction)
+- ✅ Obsidian Label field integration
+- ✅ Automatic and interactive modes
 
-**New Components:**
-- `enrichers/web_search.py`
-- `enrichers/image_finder.py`
-- `enrichers/vision_cropper.py`
+**Components Implemented:**
+- `enrichment/metadata_enricher.py` - Web search metadata enrichment & verification
+- `utils/llm_label_finder.py` - LLM-powered label image finding with scoring
+- `utils/label_processor.py` - Vision LLM quality scoring and cropping
+- `utils/obsidian_updater.py` - Frontmatter YAML parsing and updates
+- `extractors/image_extractor.py` - Vision LLM label text extraction
+- `llm/tools.py` - Web search tool definitions for LLM tool calling
+
+**CLI Commands:**
+- `verify-metadata` - Verify and correct all bottle metadata with web sources
+- `find-labels` - Find, score, crop, and save label images (with `--yes` for automatic mode)
+- `add-from-image` - Extract bottle metadata from label photo
 
 ### Phase 3: API Server
 

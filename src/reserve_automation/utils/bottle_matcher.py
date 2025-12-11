@@ -127,10 +127,10 @@ class BottleMatcher:
             return best_match  # Return anyway for manual review
 
     def _get_full_name(self, bottle: BottleMetadata) -> str:
-        """Get full bottle name: 'Producer - Name - Vintage'"""
+        """Get full bottle name: 'Producer - Name - Year'"""
         parts = [bottle.producer, bottle.name]
-        if bottle.vintage:
-            parts.append(str(bottle.vintage))
+        if bottle.year:
+            parts.append(str(bottle.year))
         return " - ".join(parts)
 
     def _get_bottle_folder(self, bottle: BottleMetadata) -> Optional[Path]:

@@ -1,6 +1,8 @@
 """LM Studio provider using OpenAI-compatible API."""
 
+import asyncio
 import base64
+import json
 import time
 from typing import Optional
 
@@ -9,6 +11,7 @@ from loguru import logger
 
 from ...core.exceptions import LLMError
 from ...core.models import LLMRequest, LLMResponse
+from ..tool_executor import ToolExecutor
 from .base import BaseLLMProvider
 
 
@@ -23,15 +26,32 @@ class LMStudioProvider(BaseLLMProvider):
     def __init__(self, config: dict):
         super().__init__(config)
         self.base_url = config.get("base_url", "http://localhost:1234/v1")
-        self.client = httpx.AsyncClient(
-            base_url=self.base_url,
-            timeout=self.timeout,
-        )
+        self.client = None
+        self._client_loop = None
+        self.tool_executor = ToolExecutor()
+
+    def _ensure_client(self):
+        """Ensure httpx client is using the current event loop."""
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop yet, will be created when async context starts
+            current_loop = None
+
+        # Recreate client if loop changed or client doesn't exist
+        if self.client is None or self._client_loop != current_loop:
+            # Don't try to close old client - just replace it
+            # The old client will be garbage collected
+            self.client = httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=self.timeout,
+            )
+            self._client_loop = current_loop
 
     def supports_vision(self) -> bool:
         """LM Studio supports vision if a vision model is loaded."""
         # Check if model name suggests vision capability
-        vision_indicators = ["llava", "bakllava", "vision"]
+        vision_indicators = ["llava", "bakllava", "vision", "vl", "qwen3-vl"]
         return any(ind in self.model.lower() for ind in vision_indicators)
 
     async def complete(self, request: LLMRequest) -> LLMResponse:
@@ -47,6 +67,9 @@ class LMStudioProvider(BaseLLMProvider):
         Raises:
             LLMError: If request fails
         """
+        # Ensure client is using the current event loop
+        self._ensure_client()
+
         start_time = time.time()
 
         try:
@@ -84,34 +107,84 @@ class LMStudioProvider(BaseLLMProvider):
                 "presence_penalty": 0.5,   # Encourage diversity
             }
 
+            # Add tools if provided
+            if hasattr(request, 'tools') and request.tools:
+                payload["tools"] = request.tools
+                logger.debug(f"Sending {len(request.tools)} tools to LM Studio")
+
             # Note: LM Studio has inconsistent support for response_format
             # Some versions support {"type": "json_object"}, others don't
             # We rely on prompt engineering instead (safer for compatibility)
 
-            # Make API request
-            logger.debug(f"LM Studio request to {self.base_url}/chat/completions")
-            response = await self.client.post("/chat/completions", json=payload)
-            response.raise_for_status()
+            # Tool calling loop - keep going until LLM returns content (not tool calls)
+            max_iterations = 10  # Allow more iterations for complex searches
+            iteration = 0
+            total_tokens = 0
 
-            data = response.json()
-            latency_ms = (time.time() - start_time) * 1000
+            while iteration < max_iterations:
+                iteration += 1
 
-            # Extract content from response
-            content = data["choices"][0]["message"]["content"]
-            tokens_used = data.get("usage", {}).get("total_tokens", 0)
+                # Make API request
+                logger.debug(f"LM Studio request #{iteration} to {self.base_url}/chat/completions")
+                response = await self.client.post("/chat/completions", json=payload)
+                response.raise_for_status()
 
-            logger.debug(
-                f"LM Studio response: {tokens_used} tokens, {latency_ms:.0f}ms"
-            )
+                data = response.json()
+                total_tokens += data.get("usage", {}).get("total_tokens", 0)
 
-            return LLMResponse(
-                content=content,
-                provider="lm_studio",
-                model=self.model,
-                tokens_used=tokens_used,
-                cost=0.0,  # Local model, no cost
-                latency_ms=latency_ms,
-            )
+                message = data["choices"][0]["message"]
+                finish_reason = data["choices"][0].get("finish_reason")
+
+                # Check if LLM wants to call tools
+                tool_calls = message.get("tool_calls", [])
+
+                if tool_calls and finish_reason == "tool_calls":
+                    logger.info(f"LLM calling {len(tool_calls)} tool(s)")
+
+                    # Add assistant message with tool calls to conversation
+                    payload["messages"].append({
+                        "role": "assistant",
+                        "content": message.get("content", ""),
+                        "tool_calls": tool_calls
+                    })
+
+                    # Execute each tool and add results
+                    for tool_call in tool_calls:
+                        tool_name = tool_call["function"]["name"]
+                        tool_args = json.loads(tool_call["function"]["arguments"])
+
+                        # Execute tool
+                        tool_result = self.tool_executor.execute(tool_name, tool_args)
+
+                        # Add tool result to conversation
+                        payload["messages"].append({
+                            "role": "tool",
+                            "tool_call_id": tool_call["id"],
+                            "content": json.dumps(tool_result)
+                        })
+
+                    # Continue loop to get LLM's response to tool results
+                    continue
+
+                # No tool calls - this is the final response
+                content = message.get("content", "")
+                latency_ms = (time.time() - start_time) * 1000
+
+                logger.debug(
+                    f"LM Studio complete: {total_tokens} tokens, {latency_ms:.0f}ms, {iteration} iterations"
+                )
+
+                return LLMResponse(
+                    content=content,
+                    provider="lm_studio",
+                    model=self.model,
+                    tokens_used=total_tokens,
+                    cost=0.0,  # Local model, no cost
+                    latency_ms=latency_ms,
+                )
+
+            # Max iterations reached
+            raise LLMError(f"Tool calling exceeded max iterations ({max_iterations})")
 
         except httpx.HTTPStatusError as e:
             logger.error(f"LM Studio HTTP error: {e.response.status_code} - {e.response.text}")

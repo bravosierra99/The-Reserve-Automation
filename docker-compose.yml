@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount Obsidian vault (read-write for tasting notes)
+      - /mnt/d/Users/ben/Documents/spirits/the-reserve:/vault
+      # Mount config (optional - can also use env vars)
+      - ./config:/app/config:ro
+      # Persist temp uploads across container restarts (optional)
+      - reserve_temp:/tmp/reserve_uploads
+    environment:
+      - RESERVE_VAULT_PATH=/vault
+      - WEB_SECRET_KEY=${WEB_SECRET_KEY}
+      # LM Studio connection (host.docker.internal for Docker Desktop)
+      - RESERVE_LM_STUDIO_URL=http://host.docker.internal:1234/v1
+    restart: unless-stopped
+
+volumes:
+  reserve_temp:  # Named volume for temp files

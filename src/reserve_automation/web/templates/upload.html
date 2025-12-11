@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Tasting Card - The Reserve{% endblock %}
+
+{% block content %}
+<div x-data="uploadForm()" class="max-w-2xl mx-auto">
+    <!-- Download Templates Section -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <h3 class="font-bold text-blue-900 mb-2">📄 Download Tasting Card Templates</h3>
+        <p class="text-blue-800 text-sm mb-3">Print these templates to fill out during tastings, then upload photos for automatic extraction.</p>
+        <div class="flex flex-wrap gap-3">
+            <a href="/static/AWS_Wine_Evaluation_Chart_2024.pdf" download
+               class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow transition-colors">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                AWS Wine Chart
+            </a>
+            <a href="/static/bourbon_tasting.pdf" download
+               class="inline-flex items-center px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg shadow transition-colors">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                Bourbon Tasting Sheet
+            </a>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-2xl font-bold mb-6 text-gray-800">Upload Tasting Card</h2>
+
+        <!-- File input (hidden) -->
+        <input
+            type="file"
+            x-ref="fileInput"
+            @change="handleFileSelect"
+            accept="image/*"
+            capture="environment"
+            class="hidden"
+        >
+
+        <!-- Upload buttons -->
+        <div x-show="!selectedFile" class="space-y-4">
+            <button
+                @click="$refs.fileInput.click()"
+                class="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white text-lg font-semibold rounded-lg shadow-md transition-colors"
+            >
+                📸 Take Photo
+            </button>
+
+            <button
+                @click="$refs.fileInput.removeAttribute('capture'); $refs.fileInput.click()"
+                class="w-full py-4 px-6 bg-green-600 hover:bg-green-700 text-white text-lg font-semibold rounded-lg shadow-md transition-colors"
+            >
+                🖼️ Choose from Gallery
+            </button>
+        </div>
+
+        <!-- Preview and upload -->
+        <div x-show="selectedFile && !uploading && !uploadComplete" class="space-y-4">
+            <div class="relative">
+                <img :src="previewUrl" class="w-full rounded-lg shadow-md" alt="Preview">
+                <button
+                    @click="clearFile"
+                    class="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-full text-sm font-semibold"
+                >
+                    ✕ Clear
+                </button>
+            </div>
+
+            <button
+                @click="uploadFile"
+                class="w-full py-4 px-6 bg-green-600 hover:bg-green-700 text-white text-lg font-semibold rounded-lg shadow-md transition-colors"
+            >
+                ✓ Upload & Extract
+            </button>
+        </div>
+
+        <!-- Uploading state -->
+        <div x-show="uploading" class="text-center py-8">
+            <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
+            <p class="text-gray-600 text-lg">Processing your tasting card...</p>
+            <p class="text-gray-500 text-sm mt-2">This may take 5-10 seconds</p>
+        </div>
+
+        <!-- Success state -->
+        <div x-show="uploadComplete" class="text-center py-8">
+            <div class="text-green-600 text-6xl mb-4">✓</div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-2">Extraction Complete!</h3>
+            <p class="text-gray-600 mb-4" x-text="'Found ' + tastingsCount + ' tasting(s)'"></p>
+            <a
+                :href="'/review/' + extractionId"
+                class="inline-block py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-colors"
+            >
+                Review & Approve →
+            </a>
+        </div>
+
+        <!-- Error state -->
+        <div x-show="error" class="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p class="text-red-800" x-text="errorMessage"></p>
+            <button
+                @click="clearError"
+                class="mt-2 text-red-600 hover:text-red-800 font-semibold"
+            >
+                Try Again
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function uploadForm() {
+    return {
+        selectedFile: null,
+        previewUrl: null,
+        uploading: false,
+        uploadComplete: false,
+        extractionId: null,
+        tastingsCount: 0,
+        error: false,
+        errorMessage: '',
+
+        handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            this.selectedFile = file;
+            this.previewUrl = URL.createObjectURL(file);
+        },
+
+        clearFile() {
+            this.selectedFile = null;
+            this.previewUrl = null;
+            this.$refs.fileInput.value = '';
+        },
+
+        clearError() {
+            this.error = false;
+            this.errorMessage = '';
+            this.clearFile();
+        },
+
+        async uploadFile() {
+            if (!this.selectedFile) return;
+
+            this.uploading = true;
+            this.error = false;
+
+            const formData = new FormData();
+            formData.append('file', this.selectedFile);
+            formData.append('upload_type', 'tasting_card');
+
+            try {
+                const response = await fetch('/api/v1/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('Upload failed');
+                }
+
+                const result = await response.json();
+
+                this.extractionId = result.extraction_id;
+                this.tastingsCount = result.tastings_count;
+                this.uploadComplete = true;
+            } catch (err) {
+                this.error = true;
+                this.errorMessage = err.message || 'Failed to upload file. Please try again.';
+            } finally {
+                this.uploading = false;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

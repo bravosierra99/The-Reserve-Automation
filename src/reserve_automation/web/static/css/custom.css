@@ -1,0 +1,25 @@
+/* Custom styles for The Reserve Automation */
+
+/* Ensure full height on mobile */
+html, body {
+    height: 100%;
+}
+
+/* Improve touch targets for mobile */
+button, a, input[type="file"] {
+    min-height: 44px;
+}
+
+/* Smooth transitions */
+* {
+    transition: all 0.2s ease-in-out;
+}
+
+/* Loading spinner */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}

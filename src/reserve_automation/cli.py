@@ -13,14 +13,17 @@ from .core.exceptions import ConfigurationError, ReserveAutomationError, Generat
 from .core.models import BottleMetadata
 from .enrichment import MetadataEnricher
 from .extractors.tasting_extractor import TastingExtractor
+from .extractors.image_extractor import ImageMetadataExtractor
 from .generators import ObsidianGenerator
 from .generators.tasting_generator import TastingGenerator
 from .llm import LLMGateway
 from .pipeline import extraction_pipeline
 from .utils.bottle_matcher import BottleMatcher
 from .utils.image_search import BottleLabelSearcher
+from .utils.label_processor import LabelImageProcessor
 from .utils.llm_label_finder import LLMLabelFinder
 from .utils.logging import logger, setup_logging
+from .utils.obsidian_updater import ObsidianUpdater
 from .utils.vault_reader import VaultReader
 
 console = Console()
@@ -344,6 +347,133 @@ def enrich_vault(ctx, beverage, fields, dry_run):
     except Exception as e:
         console.print(f"[red]Vault enrichment failed:[/red] {e}")
         logger.exception("Enrich vault command failed")
+        ctx.exit(1)
+
+
+@cli.command(name="verify-metadata")
+@click.option("--beverage", type=click.Choice(["wine", "whiskey", "all"]), default="all", help="Filter by beverage type")
+@click.option("--limit", type=int, help="Test on first N bottles (default: all)")
+@click.option("--dry-run", is_flag=True, help="Show what would change without modifying files")
+@click.pass_context
+def verify_metadata(ctx, beverage, limit, dry_run):
+    """
+    Verify and correct ALL bottle metadata using web search.
+
+    Unlike enrich-vault which only fills missing fields, this command
+    verifies existing data and corrects any inaccuracies found via web search.
+
+    Trusts that producer name and vintage are correct.
+    Verifies and corrects: country, region, variety, vineyard/estate.
+
+    \b
+    Examples:
+        reserve-automation verify-metadata --limit 2 --dry-run  # Test on 2 bottles
+        reserve-automation verify-metadata --beverage wine       # Verify all wines
+        reserve-automation verify-metadata                       # Verify everything
+    """
+    config = ctx.obj["config"]
+
+    try:
+        vault_path = config.vault_path
+        if not vault_path:
+            console.print("[red]Error:[/red] Vault path not configured")
+            ctx.exit(1)
+
+        # Read bottles from vault
+        console.print(f"Reading bottles from vault: {vault_path}")
+        reader = VaultReader(vault_path)
+
+        beverage_filter = None if beverage == "all" else beverage
+        bottles = reader.read_all_bottles(beverage_type=beverage_filter)
+
+        if not bottles:
+            console.print("[yellow]No bottles found in vault[/yellow]")
+            ctx.exit(0)
+
+        # Apply limit if specified
+        if limit:
+            bottles = bottles[:limit]
+            console.print(f"Testing on first {limit} bottles\n")
+        else:
+            console.print(f"Found {len(bottles)} bottles\n")
+
+        # Initialize LLM and enricher
+        llm_config = config.llm
+        llm_gateway = LLMGateway(llm_config)
+        enricher = MetadataEnricher(llm_gateway)
+
+        if dry_run:
+            console.print("[yellow]DRY RUN MODE - No files will be modified[/yellow]\n")
+
+        # Run verification
+        with console.status("[bold green]Verifying metadata..."):
+            verified_bottles, summary = asyncio.run(
+                enricher.verify_batch(bottles)
+            )
+
+        # Display results
+        console.print("\n")
+        console.print(Panel(
+            f"[green]Verified {summary['verified']} bottles[/green]\n"
+            f"Corrections made: {summary['total_corrections']}\n"
+            f"Tokens used: {summary['total_tokens']:,}\n"
+            f"Errors: {summary['errors']}",
+            title="Verification Complete"
+        ))
+
+        # Show corrected bottles
+        if summary['total_corrections'] > 0:
+            table = Table(title="Corrected Metadata")
+            table.add_column("Producer", style="cyan")
+            table.add_column("Name", style="magenta")
+            table.add_column("Field", style="yellow")
+            table.add_column("Old Value", style="red")
+            table.add_column("New Value", style="green")
+
+            for original, verified in zip(bottles, verified_bottles):
+                # Check for changes
+                changes = {}
+                if original.country != verified.country:
+                    changes["country"] = (original.country, verified.country)
+                if original.region != verified.region:
+                    changes["region"] = (original.region, verified.region)
+                if original.variety != verified.variety:
+                    changes["variety"] = (original.variety, verified.variety)
+                if original.vineyard != verified.vineyard:
+                    changes["vineyard"] = (original.vineyard, verified.vineyard)
+                if original.mash_bill != verified.mash_bill:
+                    changes["mash_bill"] = (original.mash_bill, verified.mash_bill)
+                if original.barrel_type != verified.barrel_type:
+                    changes["barrel_type"] = (original.barrel_type, verified.barrel_type)
+
+                for field, (old_val, new_val) in changes.items():
+                    table.add_row(
+                        verified.producer,
+                        verified.name,
+                        field,
+                        str(old_val) if old_val else "(empty)",
+                        str(new_val)
+                    )
+
+            console.print(table)
+        else:
+            console.print("\n[green]✓ All metadata verified correct - no corrections needed[/green]")
+
+        # Regenerate vault files (unless dry run)
+        if not dry_run and summary['total_corrections'] > 0:
+            console.print("\n[bold]Regenerating vault files with corrected metadata...[/bold]")
+
+            template_dir = Path("templates")
+            generator = ObsidianGenerator(vault_path=vault_path, template_dir=template_dir)
+
+            with console.status("[bold green]Regenerating files..."):
+                generated = generator.generate_batch(verified_bottles, dry_run=False)
+
+            console.print(f"[green]✓ Regenerated {len(generated)} files[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Metadata verification failed:[/red] {e}")
+        logger.exception("Verify metadata command failed")
         ctx.exit(1)
 
 
@@ -828,9 +958,20 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
             if not click.confirm("Continue?"):
                 ctx.exit(0)
 
+        # Initialize automatic mode components
+        label_processor = None
+        obsidian_updater = None
+        if yes:
+            label_processor = LabelImageProcessor(llm_gateway)
+            obsidian_updater = ObsidianUpdater(config.vault_path)
+
         total_found = 0
         total_downloaded = 0
         total_skipped = 0
+        total_cropped = 0
+        total_updated = 0
+        total_needs_review = 0
+        review_log = []  # List of (bottle_name, issue, details) tuples
 
         for i, bottle in enumerate(bottles_to_process, 1):
             console.print(f"\n[bold cyan][{i}/{len(bottles_to_process)}] {bottle.producer} - {bottle.name}[/bold cyan]")
@@ -852,52 +993,166 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
                 # Use LLM with web search tools to find images
                 console.print(f"  [dim]Searching web for label images...[/dim]")
 
+                # Define async function for finding images
+                async def find_images_async():
+                    if yes and label_processor:
+                        # Automatic mode: score and filter images
+                        return await llm_finder.find_and_score_label_images(bottle, label_processor)
+                    else:
+                        # Interactive mode: use existing behavior
+                        return await llm_finder.find_label_images(bottle)
+
                 with console.status("  [bold green]LLM searching...", spinner="dots"):
-                    images = asyncio.run(llm_finder.find_label_images(bottle))
+                    images = asyncio.run(find_images_async())
 
                 if not images:
                     console.print("  [yellow]⚠ No images found[/yellow]")
+                    if yes:
+                        bottle_name = f"{bottle.producer} - {bottle.name}"
+                        if bottle.year:
+                            bottle_name += f" - {bottle.year}"
+                        review_log.append((
+                            bottle_name,
+                            "no_images" if not yes or not label_processor else "no_quality_images",
+                            "No suitable images found" if not yes or not label_processor else "No images scored >= 7.0"
+                        ))
+                        total_needs_review += 1
                     total_skipped += 1
                     continue
 
-                console.print(f"  [green]✓ Found {len(images)} images[/green]\n")
+                # Display images based on mode
+                if yes:
+                    # Automatic mode: show scored results and auto-select
+                    console.print(f"  [green]✓ Found {len(images)} quality images (>= 7.0)[/green]")
 
-                # Display images to user for selection
-                console.print("  [bold]Select an image to download:[/bold]")
-                for idx, img in enumerate(images, 1):
-                    console.print(f"    [{idx}] {img['url']}")
-                    console.print(f"        [dim]Source: {img['source']} - {img.get('description', '')}[/dim]")
+                    # Auto-select highest scored image
+                    selected_image = images[0]
+                    console.print(
+                        f"  [dim]Selected: {selected_image['url']} "
+                        f"(score: {selected_image.get('score', 'N/A'):.1f}/10)[/dim]"
+                    )
+                    console.print(f"  [dim]Source: {selected_image['source']}[/dim]\n")
+                else:
+                    # Interactive mode: display for user selection
+                    console.print(f"  [green]✓ Found {len(images)} images[/green]\n")
+                    console.print("  [bold]Select an image to download:[/bold]")
+                    for idx, img in enumerate(images, 1):
+                        console.print(f"    [{idx}] {img['url']}")
+                        console.print(f"        [dim]Source: {img['source']} - {img.get('description', '')}[/dim]")
 
-                console.print(f"    [0] Skip this bottle")
-                console.print()
+                    console.print(f"    [0] Skip this bottle")
+                    console.print()
 
-                # Get user selection
-                choice = click.prompt("  Enter choice", type=int, default=0)
+                    # Get user selection
+                    choice = click.prompt("  Enter choice", type=int, default=0)
 
-                if choice == 0:
-                    console.print("  [dim]Skipping[/dim]")
-                    total_skipped += 1
-                    continue
+                    if choice == 0:
+                        console.print("  [dim]Skipping[/dim]")
+                        total_skipped += 1
+                        continue
 
-                if choice < 1 or choice > len(images):
-                    console.print("  [red]Invalid choice, skipping[/red]")
-                    total_skipped += 1
-                    continue
+                    if choice < 1 or choice > len(images):
+                        console.print("  [red]Invalid choice, skipping[/red]")
+                        total_skipped += 1
+                        continue
 
-                # Download selected image
-                selected_image = images[choice - 1]
+                    # Download selected image
+                    selected_image = images[choice - 1]
                 label_path = searcher.get_label_path(folder_path)
 
                 console.print(f"  [dim]Downloading from {selected_image['source']}...[/dim]")
 
                 success = searcher.download_image(selected_image['url'], label_path)
-                if success:
-                    console.print(f"  [green]✓ Downloaded to {label_path}[/green]")
-                    total_downloaded += 1
-                    total_found += len(images)
-                else:
+                if not success:
                     console.print(f"  [red]✗ Download failed[/red]")
+                    if yes:
+                        bottle_name = f"{bottle.producer} - {bottle.name}"
+                        if bottle.year:
+                            bottle_name += f" - {bottle.year}"
+                        review_log.append((
+                            bottle_name,
+                            "download_failed",
+                            f"URL: {selected_image['url']}"
+                        ))
+                        total_needs_review += 1
                     total_skipped += 1
+                    continue
+
+                console.print(f"  [green]✓ Downloaded to {label_path}[/green]")
+                total_downloaded += 1
+                total_found += len(images)
+
+                # Automatic mode: crop and update frontmatter
+                if yes and label_processor and obsidian_updater:
+                    bottle_name = f"{bottle.producer} - {bottle.name}"
+                    if bottle.year:
+                        bottle_name += f" - {bottle.year}"
+
+                    # Detect label bounds
+                    console.print(f"  [dim]Detecting label bounds...[/dim]")
+
+                    # Define async function for bounds detection
+                    async def detect_bounds_async():
+                        image_bytes = label_path.read_bytes()
+                        return await label_processor.detect_label_bounds(image_bytes, bottle)
+
+                    # Run in async context (using our fixed httpx client)
+                    bounds = asyncio.run(detect_bounds_async())
+
+                    if bounds:
+                        console.print(f"  [dim]Cropping to label...[/dim]")
+
+                        cropped_path = label_processor.crop_to_label(label_path, bounds)
+
+                        if cropped_path:
+                            console.print(f"  [green]✓ Cropped label image[/green]")
+                            total_cropped += 1
+                        else:
+                            console.print(f"  [yellow]⚠ Crop failed, saved uncropped[/yellow]")
+                            review_log.append((
+                                bottle_name,
+                                "crop_failed",
+                                f"Bounds: {bounds}"
+                            ))
+                            total_needs_review += 1
+                    else:
+                        console.print(f"  [yellow]⚠ Could not detect label, saved uncropped[/yellow]")
+                        review_log.append((
+                            bottle_name,
+                            "detection_failed",
+                            "Vision LLM could not detect label bounds"
+                        ))
+                        total_needs_review += 1
+
+                    # Update Obsidian frontmatter
+                    console.print(f"  [dim]Updating Obsidian metadata...[/dim]")
+
+                    bottle_file = obsidian_updater.get_bottle_file_path(folder_path)
+                    if bottle_file:
+                        update_success = obsidian_updater.update_label_field(
+                            bottle_file,
+                            "labels/label.jpg"
+                        )
+
+                        if update_success:
+                            console.print(f"  [green]✓ Updated Label field in Obsidian[/green]")
+                            total_updated += 1
+                        else:
+                            console.print(f"  [yellow]⚠ Failed to update frontmatter[/yellow]")
+                            review_log.append((
+                                bottle_name,
+                                "frontmatter_failed",
+                                str(bottle_file)
+                            ))
+                            total_needs_review += 1
+                    else:
+                        console.print(f"  [yellow]⚠ Could not find bottle markdown file[/yellow]")
+                        review_log.append((
+                            bottle_name,
+                            "file_not_found",
+                            str(folder_path)
+                        ))
+                        total_needs_review += 1
 
             except KeyboardInterrupt:
                 console.print("\n  [yellow]Skipped by user[/yellow]")
@@ -906,18 +1161,62 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
             except Exception as e:
                 console.print(f"  [red]✗ Error: {e}[/red]")
                 logger.exception(f"Error processing {bottle.producer} {bottle.name}")
+                if yes:
+                    bottle_name = f"{bottle.producer} - {bottle.name}"
+                    if bottle.year:
+                        bottle_name += f" - {bottle.year}"
+                    review_log.append((
+                        bottle_name,
+                        "processing_error",
+                        str(e)
+                    ))
+                    total_needs_review += 1
                 total_skipped += 1
                 continue
 
+        # Write review log if there are items needing review
+        if review_log and yes:
+            from datetime import datetime
+            log_path = Path.cwd() / "label_review.log"
+
+            try:
+                with open(log_path, 'w', encoding='utf-8') as f:
+                    f.write("# Bottles Needing Manual Review\n")
+                    f.write(f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+
+                    for bottle_name, issue, details in review_log:
+                        f.write(f"- {bottle_name}\n")
+                        f.write(f"  Issue: {issue}\n")
+                        f.write(f"  Details: {details}\n\n")
+
+                console.print(f"\n[yellow]⚠ {len(review_log)} bottles need manual review[/yellow]")
+                console.print(f"[dim]See {log_path} for details[/dim]")
+            except Exception as e:
+                logger.error(f"Failed to write review log: {e}")
+
         # Summary
         console.print("\n")
-        console.print(Panel(
-            f"[bold]Label Finding Complete[/bold]\n\n"
-            f"Processed: {len(bottles_to_process)} bottles\n"
-            f"Found: {total_found} images\n"
-            f"Downloaded: {total_downloaded} images",
-            title="Summary"
-        ))
+        if yes:
+            # Automatic mode summary
+            console.print(Panel(
+                f"[bold]Label Finding Complete[/bold]\n\n"
+                f"Processed: {len(bottles_to_process)} bottles\n"
+                f"Found: {total_found} images\n"
+                f"Downloaded: {total_downloaded} images\n"
+                f"Cropped: {total_cropped} images\n"
+                f"Updated: {total_updated} in Obsidian\n"
+                f"Needs review: {total_needs_review} bottles",
+                title="Summary"
+            ))
+        else:
+            # Interactive mode summary
+            console.print(Panel(
+                f"[bold]Label Finding Complete[/bold]\n\n"
+                f"Processed: {len(bottles_to_process)} bottles\n"
+                f"Found: {total_found} images\n"
+                f"Downloaded: {total_downloaded} images",
+                title="Summary"
+            ))
 
         searcher.close()
 
@@ -1170,6 +1469,180 @@ def _save_extraction_json(result, output_path: Path):
         json.dump(output_data, f, indent=2, default=str)
 
 
+@cli.command(name="add-from-image")
+@click.argument("image_path", type=Path)
+@click.option("--beverage", type=click.Choice(["wine", "whiskey"]), help="Beverage type hint")
+@click.option("--year", type=int, help="Vintage/year if not visible on label")
+@click.option("--price", type=float, help="Purchase price")
+@click.option("--dry-run", is_flag=True, help="Preview extraction without creating file")
+@click.pass_context
+def add_from_image(ctx, image_path, beverage, year, price, dry_run):
+    """
+    Add a bottle to your vault from a label image.
+
+    Takes a photo of a bottle/label, extracts metadata using vision LLM,
+    enriches with web search, and generates an Obsidian note.
+
+    The provided image is automatically saved as the bottle's label.
+
+    \b
+    Examples:
+        reserve-automation add-from-image photo.jpg
+        reserve-automation add-from-image label.png --beverage wine
+        reserve-automation add-from-image bottle.jpg --year 2019 --price 45.99
+        reserve-automation add-from-image image.jpg --dry-run  # Preview only
+    """
+    config = ctx.obj["config"]
+
+    try:
+        # Validate image exists
+        if not image_path.exists():
+            console.print(f"[red]Error:[/red] Image not found: {image_path}")
+            ctx.exit(1)
+
+        vault_path = config.vault_path
+        if not vault_path:
+            console.print("[red]Error:[/red] Vault path not configured")
+            ctx.exit(1)
+
+        console.print(f"\n[bold]Adding bottle from image:[/bold] {image_path.name}\n")
+
+        # Initialize components
+        llm_config = config.llm
+        llm_gateway = LLMGateway(llm_config)
+        image_extractor = ImageMetadataExtractor(llm_gateway)
+        enricher = MetadataEnricher(llm_gateway)
+
+        # Extract metadata from image
+        with console.status("[bold green]Extracting metadata from label..."):
+            bottle, extraction_meta = asyncio.run(
+                image_extractor.extract_from_image(image_path, beverage)
+            )
+
+        if not bottle:
+            error = extraction_meta.get("error", "Unknown error")
+            console.print(f"[red]✗ Extraction failed:[/red] {error}")
+            ctx.exit(1)
+
+        # Display extracted metadata
+        console.print(Panel(
+            f"[cyan]Producer:[/cyan] {bottle.producer}\n"
+            f"[cyan]Name:[/cyan] {bottle.name}\n"
+            f"[cyan]Year:[/cyan] {bottle.year or '[yellow]MISSING[/yellow]'}\n"
+            f"[cyan]Type:[/cyan] {bottle.beverage_type or bottle.type}\n"
+            f"[cyan]Region:[/cyan] {bottle.region or '(will enrich)'}\n"
+            f"[cyan]Variety:[/cyan] {bottle.variety or '(will enrich)'}\n"
+            f"[cyan]Confidence:[/cyan] {extraction_meta.get('confidence', 'unknown')}",
+            title="Extracted from Label",
+            border_style="green"
+        ))
+
+        # Handle missing year
+        if not bottle.year and not year:
+            if extraction_meta.get("missing_year"):
+                console.print("\n[yellow]⚠ Year/vintage not visible on label[/yellow]")
+                year_input = click.prompt(
+                    "Enter vintage/year (or press Enter to skip)",
+                    type=int,
+                    default=0,
+                    show_default=False
+                )
+                if year_input > 0:
+                    bottle.year = year_input
+        elif year:
+            # User provided year via CLI
+            bottle.year = year
+
+        # Set price if provided
+        if price:
+            bottle.price = price
+
+        # Enrich metadata with web search
+        console.print("\n[bold]Enriching metadata with web search...[/bold]")
+        with console.status("[bold green]Searching web for bottle details..."):
+            enriched_bottle, enrich_meta = asyncio.run(
+                enricher.verify_bottle(bottle)
+            )
+
+        if enrich_meta.get("verified"):
+            changes = enrich_meta.get("changes", {})
+            if changes:
+                console.print(f"\n[green]✓ Found {len(changes)} additional details:[/green]")
+                for field, change in changes.items():
+                    console.print(f"  • {field}: {change['new']}")
+            else:
+                console.print("\n[green]✓ Metadata verified[/green]")
+
+        # Display final metadata
+        console.print("\n")
+        console.print(Panel(
+            f"[cyan]Producer:[/cyan] {enriched_bottle.producer}\n"
+            f"[cyan]Name:[/cyan] {enriched_bottle.name}\n"
+            f"[cyan]Year:[/cyan] {enriched_bottle.year or '[yellow]Not specified[/yellow]'}\n"
+            f"[cyan]Type:[/cyan] {enriched_bottle.beverage_type or enriched_bottle.type}\n"
+            f"[cyan]Country:[/cyan] {enriched_bottle.country or '[dim]?[/dim]'}\n"
+            f"[cyan]Region:[/cyan] {enriched_bottle.region or '[dim]?[/dim]'}\n"
+            f"[cyan]Variety:[/cyan] {enriched_bottle.variety or '[dim]?[/dim]'}\n"
+            f"[cyan]Price:[/cyan] ${enriched_bottle.price:.2f}",
+            title="Final Metadata",
+            border_style="blue"
+        ))
+
+        if dry_run:
+            console.print("\n[yellow]DRY RUN - No files created[/yellow]")
+            ctx.exit(0)
+
+        # Generate Obsidian file
+        console.print("\n[bold]Generating Obsidian note...[/bold]")
+        template_dir = Path("templates")
+        generator = ObsidianGenerator(vault_path=vault_path, template_dir=template_dir)
+
+        generated_files = generator.generate_batch([enriched_bottle], dry_run=False)
+
+        if generated_files:
+            generated_path = generated_files[0]
+            console.print(f"[green]✓ Created:[/green] {generated_path}")
+
+            # Save label image
+            bottle_folder = generated_path.parent
+            labels_dir = bottle_folder / "labels"
+            labels_dir.mkdir(exist_ok=True)
+
+            label_dest = labels_dir / "label.jpg"
+
+            # Copy and convert image
+            from PIL import Image
+            import shutil
+
+            img = Image.open(image_path)
+            # Convert to RGB if needed
+            if img.mode in ('P', 'RGBA', 'LA'):
+                if img.mode == 'P':
+                    img = img.convert('RGB')
+                else:
+                    rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                    rgb_img.paste(img, mask=img.split()[-1] if 'A' in img.mode else None)
+                    img = rgb_img
+
+            img.save(label_dest, 'JPEG', quality=95, optimize=True)
+            console.print(f"[green]✓ Saved label:[/green] {label_dest}")
+
+            # Update Label field in Obsidian
+            obsidian_updater = ObsidianUpdater(vault_path)
+            if obsidian_updater.update_label_field(generated_path, "labels/label.jpg"):
+                console.print("[green]✓ Updated Label field in note[/green]")
+
+            console.print(f"\n[bold green]✓ Bottle added successfully![/bold green]")
+        else:
+            console.print("[red]✗ Failed to generate Obsidian file[/red]")
+            ctx.exit(1)
+
+    except Exception as e:
+        console.print(f"[red]Add from image failed:[/red] {e}")
+        logger.exception("Add from image command failed")
+        ctx.exit(1)
+
+
 def main():
     """Main entry point."""
     try:
@@ -1186,6 +1659,38 @@ def main():
 
         traceback.print_exc()
         return 1
+
+
+@cli.command("validate-schema")
+@click.pass_context
+def validate_schema(ctx):
+    """Validate code against Obsidian FileClass schemas.
+
+    Checks that Python models, Jinja templates, and web forms
+    match the Obsidian FileClass definitions (single source of truth).
+    """
+    try:
+        config = ctx.obj["config"]
+        project_root = Path(__file__).parent.parent.parent
+
+        from .validation.schema_validator import SchemaValidator
+
+        validator = SchemaValidator(
+            vault_path=config.vault_path,
+            project_root=project_root
+        )
+
+        success = validator.print_report()
+
+        if not success:
+            console.print("\n[yellow]💡 Tip: The Obsidian FileClass definitions are the single source of truth.[/yellow]")
+            console.print("[yellow]   Update code to match the FileClass, or update the FileClass if it's incorrect.[/yellow]")
+            ctx.exit(1)
+
+    except Exception as e:
+        console.print(f"[red]Schema validation failed:[/red] {e}")
+        logger.exception("Validate schema command failed")
+        ctx.exit(1)
 
 
 if __name__ == "__main__":

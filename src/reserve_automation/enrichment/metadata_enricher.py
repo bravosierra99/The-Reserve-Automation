@@ -7,6 +7,7 @@ from loguru import logger
 
 from ..core.models import BottleMetadata
 from ..llm import LLMGateway
+from ..llm.tools import get_tools_for_task
 
 
 class MetadataEnricher:
@@ -54,11 +55,15 @@ class MetadataEnricher:
         # Build prompt
         prompt = self._build_enrichment_prompt(bottle, missing_fields)
 
-        # Call LLM
+        # Get web search tools for enrichment
+        tools = get_tools_for_task("metadata_enrichment")
+
+        # Call LLM with web search tools
         try:
             response = await self.llm_gateway.complete(
                 task_type="metadata_enrichment",
                 prompt=prompt,
+                tools=tools,
                 temperature=0.2,
                 max_tokens=800,
             )
@@ -164,7 +169,7 @@ class MetadataEnricher:
 
         fields_str = "\n".join(field_desc)
 
-        prompt = f"""You are a {beverage_type} expert helping to complete metadata for a bottle.
+        prompt = f"""You are a {beverage_type} expert. Use web search to find accurate, current metadata for this bottle.
 
 Bottle Information:
 Producer: {bottle.producer}
@@ -175,11 +180,20 @@ Type: {bottle.beverage_type or bottle.type}
 {"Region: " + bottle.region if bottle.region else ""}
 Price: ${bottle.price}
 
-Based on your knowledge of {beverage_type} regions, producers, and appellations, provide the following missing information:
+**Task:** Search the web to find the following missing information:
 {fields_str}
 
-Consider the producer name, {beverage_type} name, and any regional indicators to make informed predictions.
-If you're highly confident, mark confidence as "high". If it's an educated guess, use "medium". If very uncertain, use "low".
+**Instructions:**
+1. Use web_search to find the producer's website, wine databases, or retailer pages
+2. Look for official product information about this specific {beverage_type}
+3. For wine: Search for the specific vintage and vineyard if applicable
+4. For whiskey: Search for mash bill, barrel type, and distillery location
+5. Verify information from multiple sources when possible
+
+**Confidence levels:**
+- "high": Found on official producer website or multiple reliable sources
+- "medium": Found on one reliable source (wine-searcher, vivino, retailer)
+- "low": Inferred from producer's typical style or general region knowledge
 
 Format your response as JSON:
 {{
@@ -190,10 +204,10 @@ Format your response as JSON:
   {"\"mash_bill\": \"...\"," if "mash_bill" in missing_fields else ""}
   {"\"barrel_type\": \"...\"," if "barrel_type" in missing_fields else ""}
   "confidence": "high/medium/low",
-  "reasoning": "Brief explanation of how you determined these values"
+  "reasoning": "Brief explanation citing your sources"
 }}
 
-Only include fields that were requested. If you don't know a value, omit it or set it to null."""
+Only include fields that were requested. Use web search to find real data - don't guess."""
 
         return prompt
 
@@ -255,6 +269,177 @@ Only include fields that were requested. If you don't know a value, omit it or s
 
         # Create new bottle instance
         return BottleMetadata(**bottle_dict)
+
+    async def verify_bottle(
+        self, bottle: BottleMetadata
+    ) -> tuple[BottleMetadata, dict]:
+        """
+        Verify and correct ALL bottle metadata using web search.
+
+        Unlike enrich_bottle which only fills missing fields, this method
+        verifies existing data and corrects any inaccuracies.
+
+        Args:
+            bottle: Bottle to verify
+
+        Returns:
+            Tuple of (corrected bottle, verification metadata dict)
+        """
+        # Determine which fields to verify based on beverage type
+        verify_fields = ["country", "region", "variety"]
+        if bottle.type == "wine":
+            verify_fields.append("vineyard")
+        else:
+            verify_fields.extend(["mash_bill", "barrel_type"])
+
+        logger.info(
+            f"Verifying {bottle.producer} - {bottle.name}: "
+            f"{', '.join(verify_fields)}"
+        )
+
+        # Build verification prompt with current values
+        current_data = []
+        for field in verify_fields:
+            value = getattr(bottle, field, None)
+            current_data.append(f"{field.title()}: {value or 'MISSING'}")
+
+        beverage_type = "wine" if bottle.type == "wine" else "whiskey"
+
+        prompt = f"""You are a {beverage_type} expert. Use web search to verify and correct the metadata for this bottle.
+
+**Bottle Information:**
+Producer: {bottle.producer}
+Name: {bottle.name}
+Vintage: {bottle.year or 'NV'}
+Type: {bottle.beverage_type or bottle.type}
+
+**Current Metadata (TO BE VERIFIED):**
+{chr(10).join(current_data)}
+
+**Task:**
+1. Search the web for this specific {beverage_type} bottle
+2. Find official sources (producer website, wine-searcher, vivino, reputable retailers)
+3. Verify EACH field above is correct
+4. Return the correct value for EVERY field (even if already correct)
+
+**Instructions:**
+- Use web_search to find authoritative information
+- For wine: verify country, region (appellation/DOC), grape variety/blend, and vineyard/estate
+- For whiskey: verify distillery country, region/state, whiskey type, mash bill %, and barrel type
+- Cross-reference multiple sources when possible
+- Be precise: "Napa Valley" is different from "California"
+- Return ALL fields, not just corrections
+
+**Return JSON:**
+{{
+  "country": "correct country name",
+  "region": "correct region/appellation",
+  "variety": "correct variety or blend",
+  {"\"vineyard\": \"vineyard or estate name\"," if bottle.type == "wine" else ""}
+  {"\"mash_bill\": \"mash bill composition\"," if bottle.type == "whiskey" else ""}
+  {"\"barrel_type\": \"barrel type\"," if bottle.type == "whiskey" else ""}
+  "confidence": "high/medium/low",
+  "reasoning": "Brief explanation citing your sources"
+}}
+
+Use web search to find accurate, current data - don't guess."""
+
+        # Get web search tools
+        tools = get_tools_for_task("metadata_enrichment")
+
+        # Call LLM with web search
+        try:
+            response = await self.llm_gateway.complete(
+                task_type="metadata_enrichment",
+                prompt=prompt,
+                tools=tools,
+                temperature=0.1,  # Very deterministic for verification
+                max_tokens=1000,
+            )
+
+            # Parse response
+            verified_data = self._parse_llm_response(response.content)
+
+            # Check what changed
+            changes = {}
+            for field in verify_fields:
+                old_value = getattr(bottle, field, None)
+                new_value = verified_data.get(field)
+
+                if new_value and new_value != old_value:
+                    changes[field] = {"old": old_value, "new": new_value}
+
+            # Create updated bottle
+            bottle_dict = bottle.model_dump()
+            for field in verify_fields:
+                if field in verified_data and verified_data[field]:
+                    bottle_dict[field] = verified_data[field]
+
+            updated_bottle = BottleMetadata(**bottle_dict)
+
+            metadata = {
+                "verified": True,
+                "changes": changes,
+                "confidence": verified_data.get("confidence", "unknown"),
+                "reasoning": verified_data.get("reasoning", ""),
+                "tokens_used": response.tokens_used,
+            }
+
+            if changes:
+                logger.info(
+                    f"✓ Corrected {bottle.producer} - {bottle.name}: "
+                    f"{len(changes)} field(s) updated"
+                )
+            else:
+                logger.info(f"✓ Verified {bottle.producer} - {bottle.name}: all correct")
+
+            return updated_bottle, metadata
+
+        except Exception as e:
+            logger.error(f"Failed to verify {bottle.producer} - {bottle.name}: {e}")
+            return bottle, {"verified": False, "error": str(e)}
+
+    async def verify_batch(
+        self, bottles: list[BottleMetadata]
+    ) -> tuple[list[BottleMetadata], dict]:
+        """
+        Verify and correct multiple bottles.
+
+        Args:
+            bottles: List of bottles to verify
+
+        Returns:
+            Tuple of (verified bottles, summary metadata)
+        """
+        verified_bottles = []
+        total_corrections = 0
+        total_tokens = 0
+        errors = 0
+
+        for bottle in bottles:
+            verified_bottle, metadata = await self.verify_bottle(bottle)
+            verified_bottles.append(verified_bottle)
+
+            if metadata.get("verified"):
+                total_corrections += len(metadata.get("changes", {}))
+                total_tokens += metadata.get("tokens_used", 0)
+            elif metadata.get("error"):
+                errors += 1
+
+        summary = {
+            "total_bottles": len(bottles),
+            "verified": len(bottles) - errors,
+            "errors": errors,
+            "total_corrections": total_corrections,
+            "total_tokens": total_tokens,
+        }
+
+        logger.info(
+            f"Batch verification complete: {summary['verified']}/{len(bottles)} bottles, "
+            f"{total_corrections} corrections made"
+        )
+
+        return verified_bottles, summary
 
     async def enrich_batch(
         self, bottles: list[BottleMetadata], fields: Optional[list[str]] = None
