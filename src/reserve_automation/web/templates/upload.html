@@ -1,12 +1,44 @@
 {% extends "base.html" %}
 
-{% block title %}Upload Tasting Card - The Reserve{% endblock %}
+{% block title %}Upload - The Reserve{% endblock %}
 
 {% block content %}
 <div x-data="uploadForm()" class="max-w-2xl mx-auto">
-    <!-- Download Templates Section -->
-    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <h3 class="font-bold text-blue-900 mb-2">📄 Download Tasting Card Templates</h3>
+    <!-- Upload Type Selection -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6" x-show="!selectedFile && !uploading && !uploadComplete">
+        <h2 class="text-2xl font-bold mb-6 text-gray-800">What would you like to upload?</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button @click="uploadType = 'tasting_card'"
+                    :class="uploadType === 'tasting_card' ? 'ring-4 ring-blue-500 bg-blue-50' : 'bg-gray-50 hover:bg-gray-100'"
+                    class="p-6 border-2 border-gray-300 rounded-lg transition-all">
+                <div class="text-4xl mb-2">📝</div>
+                <h3 class="font-bold text-lg mb-2">Tasting Card</h3>
+                <p class="text-sm text-gray-600">Upload a filled tasting card to extract notes and scores</p>
+            </button>
+
+            <button @click="uploadType = 'bottle'"
+                    :class="uploadType === 'bottle' ? 'ring-4 ring-green-500 bg-green-50' : 'bg-gray-50 hover:bg-gray-100'"
+                    class="p-6 border-2 border-gray-300 rounded-lg transition-all">
+                <div class="text-4xl mb-2">🍷</div>
+                <h3 class="font-bold text-lg mb-2">Single Bottle</h3>
+                <p class="text-sm text-gray-600">Upload a single bottle label to add to your vault</p>
+            </button>
+
+            <button @click="uploadType = 'manifest'"
+                    :class="uploadType === 'manifest' ? 'ring-4 ring-purple-500 bg-purple-50' : 'bg-gray-50 hover:bg-gray-100'"
+                    class="p-6 border-2 border-gray-300 rounded-lg transition-all">
+                <div class="text-4xl mb-2">📦</div>
+                <h3 class="font-bold text-lg mb-2">Bottle Manifest</h3>
+                <p class="text-sm text-gray-600">Upload a photo of multiple bottles at once</p>
+            </button>
+        </div>
+    </div>
+
+    <!-- Download Templates Section (shown for tasting cards) -->
+    <div x-show="uploadType === 'tasting_card' && !selectedFile && !uploading && !uploadComplete"
+         class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <h3 class="font-bold text-blue-900 mb-2">Download Tasting Card Templates</h3>
         <p class="text-blue-800 text-sm mb-3">Print these templates to fill out during tastings, then upload photos for automatic extraction.</p>
         <div class="flex flex-wrap gap-3">
             <a href="/static/AWS_Wine_Evaluation_Chart_2024.pdf" download
@@ -26,8 +58,31 @@
         </div>
     </div>
 
-    <div class="bg-white rounded-lg shadow-md p-6">
-        <h2 class="text-2xl font-bold mb-6 text-gray-800">Upload Tasting Card</h2>
+    <!-- Expected Tasting Count (shown for tasting cards) -->
+    <div x-show="uploadType === 'tasting_card' && !uploading && !uploadComplete"
+         class="bg-white rounded-lg shadow-md p-4 mb-6">
+        <label class="block text-sm font-semibold text-gray-700 mb-2">
+            How many tastings are on this card? (optional)
+        </label>
+        <p class="text-gray-500 text-xs mb-3">
+            Helps validate extraction - you'll get a warning if the count doesn't match.
+        </p>
+        <div class="flex gap-2">
+            <button @click="expectedCount = 1" :class="expectedCount === 1 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-colors">1</button>
+            <button @click="expectedCount = 2" :class="expectedCount === 2 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-colors">2</button>
+            <button @click="expectedCount = 3" :class="expectedCount === 3 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-colors">3</button>
+            <button @click="expectedCount = 4" :class="expectedCount === 4 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-colors">4</button>
+            <button @click="expectedCount = null" :class="expectedCount === null ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-colors">Skip</button>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md p-6" x-show="uploadType">
+        <h2 class="text-2xl font-bold mb-6 text-gray-800" x-text="uploadType === 'tasting_card' ? 'Upload Tasting Card' : (uploadType === 'bottle' ? 'Upload Bottle Label' : 'Upload Bottle Manifest')"></h2>
 
         <!-- File input (hidden) -->
         <input
@@ -85,14 +140,24 @@
 
         <!-- Success state -->
         <div x-show="uploadComplete" class="text-center py-8">
-            <div class="text-green-600 text-6xl mb-4">✓</div>
+            <div class="text-green-600 text-6xl mb-4">&#10003;</div>
             <h3 class="text-2xl font-bold text-gray-800 mb-2">Extraction Complete!</h3>
-            <p class="text-gray-600 mb-4" x-text="'Found ' + tastingsCount + ' tasting(s)'"></p>
+            <p class="text-gray-600 mb-4" x-text="uploadType === 'tasting_card' ? 'Found ' + tastingsCount + ' tasting(s)' : 'Found ' + bottlesCount + ' bottle(s)'"></p>
+            <!-- Count mismatch warning -->
+            <div x-show="uploadType === 'tasting_card' && expectedCount && tastingsCount !== expectedCount"
+                 class="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-4 text-left">
+                <p class="text-yellow-800 font-semibold">
+                    &#9888; Count mismatch: Expected <span x-text="expectedCount"></span>, found <span x-text="tastingsCount"></span>
+                </p>
+                <p class="text-yellow-700 text-sm mt-1">
+                    You can skip individual tastings during review if some were incorrectly detected.
+                </p>
+            </div>
             <a
-                :href="'/review/' + extractionId"
+                :href="uploadType === 'tasting_card' ? '/review-tastings/' + extractionId : '/review-bottles/' + extractionId"
                 class="inline-block py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-colors"
             >
-                Review & Approve →
+                Review & Approve &#8594;
             </a>
         </div>
 
@@ -112,14 +177,17 @@
 <script>
 function uploadForm() {
     return {
+        uploadType: null,  // 'tasting_card' or 'bottle'
         selectedFile: null,
         previewUrl: null,
         uploading: false,
         uploadComplete: false,
         extractionId: null,
         tastingsCount: 0,
+        bottlesCount: 0,
         error: false,
         errorMessage: '',
+        expectedCount: null,  // Expected number of tastings (1-4)
 
         handleFileSelect(event) {
             const file = event.target.files[0];
@@ -142,17 +210,33 @@ function uploadForm() {
         },
 
         async uploadFile() {
-            if (!this.selectedFile) return;
+            if (!this.selectedFile || !this.uploadType) return;
 
             this.uploading = true;
             this.error = false;
 
             const formData = new FormData();
             formData.append('file', this.selectedFile);
-            formData.append('upload_type', 'tasting_card');
+
+            let endpoint;
+            if (this.uploadType === 'tasting_card') {
+                formData.append('upload_type', 'tasting_card');
+                if (this.expectedCount) {
+                    formData.append('expected_count', this.expectedCount);
+                }
+                endpoint = '/api/v1/upload';
+            } else if (this.uploadType === 'bottle') {
+                formData.append('upload_type', 'bottle_image');
+                formData.append('beverage_type', 'auto');
+                endpoint = '/api/v1/bottles/upload';
+            } else if (this.uploadType === 'manifest') {
+                formData.append('upload_type', 'manifest');
+                formData.append('beverage_type', 'auto');
+                endpoint = '/api/v1/bottles/upload';
+            }
 
             try {
-                const response = await fetch('/api/v1/upload', {
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     body: formData
                 });
@@ -164,7 +248,13 @@ function uploadForm() {
                 const result = await response.json();
 
                 this.extractionId = result.extraction_id;
-                this.tastingsCount = result.tastings_count;
+
+                if (this.uploadType === 'tasting_card') {
+                    this.tastingsCount = result.tastings_count || 0;
+                } else {
+                    this.bottlesCount = result.bottles_count || 0;
+                }
+
                 this.uploadComplete = true;
             } catch (err) {
                 this.error = true;

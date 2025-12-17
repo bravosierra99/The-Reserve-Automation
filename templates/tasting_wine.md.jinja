@@ -1,51 +1,48 @@
+#CLAUDE_REQ: This template MUST match the-reserve/Cellar/9_Templates/Wine Tasting.md - always compare before modifying
+#CLAUDE_REQ: fileClass must be "Wine Tasting" (matches DataviewJS queries in bottle templates that search for p.fileClass === "Wine Tasting")
+#CLAUDE_REQ: Section headers (Appearance, Aroma, Taste, Aftertaste, Overall Impression) must match Obsidian template exactly
 ---
-fileClass: Tasting
-Date: {{ tasting_date }}
-TasterName: {{ taster_name }}
+fileClass: Wine Tasting
+Date: "{{ tasting_date }}"
+TasterName: "{{ taster_name }}"
 Appearance: {{ wine_appearance }}
 Aroma: {{ wine_aroma }}
 Taste: {{ wine_taste }}
 Aftertaste: {{ wine_aftertaste }}
 Overall: {{ wine_overall }}
-TotalScore: {{ total_score }}
+AWS Score: {{ aws_score }}
+100pt Scale: {{ scale_100pt }}
 LinkedBottle: "[[{{ bottle_name }}]]"
-{%- if place %}
-Place: {{ place }}
-{%- endif %}
-{%- if theme %}
-Theme: {{ theme }}
-{%- endif %}
-{%- if price %}
-Price: {{ price }}
-{%- endif %}
 ---
 
 ## Tasting Notes
 
-### Appearance ({{ wine_appearance }}/3)
+### Appearance
+{% if appearance_notes %}
+{% for note in appearance_notes %}
+{{ note }}
+{% endfor %}
+{% endif %}
 
+### Aroma
 {% if nose_notes %}
-{%- for note in nose_notes %}
+{% for note in nose_notes %}
 #{{ note }} {% endfor %}
 {% endif %}
 
-### Aroma / Bouquet ({{ wine_aroma }}/6)
-
+### Taste
 {% if palate_notes %}
-{%- for note in palate_notes %}
+{% for note in palate_notes %}
 #{{ note }} {% endfor %}
 {% endif %}
 
-### Taste / Texture ({{ wine_taste }}/6)
-
+### Aftertaste
 {% if finish_notes %}
-{%- for note in finish_notes %}
+{% for note in finish_notes %}
 #{{ note }} {% endfor %}
 {% endif %}
 
-### Aftertaste ({{ wine_aftertaste }}/3)
-
-
-### Overall Impression ({{ wine_overall }}/2)
-
-{% if overall_notes %}{{ overall_notes }}{% endif %}
+### Overall Impression
+{% if overall_notes %}
+{{ overall_notes }}
+{% endif %}

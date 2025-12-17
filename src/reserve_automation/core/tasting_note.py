@@ -1,3 +1,8 @@
+#CLAUDE_REQ: Field names MUST match Obsidian fileClass definitions in the-reserve/Cellar/8_FileClass/
+#CLAUDE_REQ: Wine fields map to "Wine Tasting" fileClass: Appearance, Aroma, Taste, Aftertaste, Overall, AWS Score, 100pt Scale
+#CLAUDE_REQ: Whiskey fields map to "Tasting" fileClass: Nose, Palate, Finish, Overall, TotalScore, DaysFromCrack, FillLevel
+#CLAUDE_REQ: Wine uses AWS 20-point scale (3+6+6+3+2); Whiskey uses 10-point scale (3+3+3+1)
+#CLAUDE_REQ: Notes fields (nose_notes, palate_notes, finish_notes, overall_notes) populate template sections
 """Data models for tasting notes."""
 
 from datetime import date

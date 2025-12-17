@@ -1,3 +1,8 @@
+#CLAUDE_REQ: Vault structure MUST match Obsidian vault layout in the-reserve/Cellar/
+#CLAUDE_REQ: Wine bottles: Cellar/1_Wines/{BottleName}/{BottleName}.md with fileClass: Wine
+#CLAUDE_REQ: Whiskey bottles: Cellar/1_Whiskeys/{BottleName}/{BottleName}.md with fileClass: Whiskey
+#CLAUDE_REQ: Bottle file naming: folder name MUST match bottle filename (e.g., "Producer - Name - Year" folder contains "Producer - Name - Year.md")
+#CLAUDE_REQ: Tasting files in same folder as bottle: Tasting-YYYY-MM-DD-TasterName.md
 """Utility for reading bottle metadata from Obsidian vault."""
 
 import re
@@ -37,13 +42,13 @@ class VaultReader:
 
         # Read wines
         if not beverage_type or beverage_type == "wine":
-            wine_dir = self.vault_path / "Cellar" / "1_Wines"
+            wine_dir = self.vault_path / "1_Wines"
             if wine_dir.exists():
                 bottles.extend(self._read_bottles_from_dir(wine_dir, "wine"))
 
         # Read whiskeys
         if not beverage_type or beverage_type == "whiskey":
-            whiskey_dir = self.vault_path / "Cellar" / "1_Whiskeys"
+            whiskey_dir = self.vault_path / "1_Whiskeys"
             if whiskey_dir.exists():
                 bottles.extend(self._read_bottles_from_dir(whiskey_dir, "whiskey"))
 

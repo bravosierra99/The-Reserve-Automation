@@ -1,19 +1,17 @@
 """Review and approval endpoints."""
 
-import logging
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Cookie, HTTPException, Response, Request
 from fastapi.templating import Jinja2Templates
+from loguru import logger
 from pydantic import BaseModel
 
 from ..sessions import SessionManager
 from ..services.extraction_service import ExtractionService
 from ..services.review_service import ReviewService
 from ..services.upload_service import UploadService
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

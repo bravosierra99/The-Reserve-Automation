@@ -1,3 +1,9 @@
+#CLAUDE_REQ: This template creates whiskey bottle files that MUST match the-reserve/Cellar/9_Templates/Bottle.md structure
+#CLAUDE_REQ: fileClass must be "Whiskey" (not "whiskey" or "Whiskey Bottle")
+#CLAUDE_REQ: Embedded DataviewJS queries search for tasting files with fileClass === "Tasting" (NOT "Whiskey Tasting") in bottle subdirectory
+#CLAUDE_REQ: Field names (Nose, Palate, Finish, Overall, TotalScore, DaysFromCrack, FillLevel) must match what tasting templates generate
+#CLAUDE_REQ: DataviewJS references template path "9_Templates/Tasting.md" - must exist in vault
+#CLAUDE_REQ: Vault structure: 1_Whiskeys/{BottleName}/{BottleName}.md + Tasting-YYYY-MM-DD-Name.md files
 ---
 fileClass: Whiskey
 Name: {{ name }}

@@ -36,6 +36,11 @@ dependencies = [
     "python-multipart>=0.0.20",
     "sse-starlette>=3.0.3",
     "itsdangerous>=2.2.0",
+    "opencv-python>=4.11.0.86",
+    "opencv-python-headless>=4.11.0.86",
+    "easyocr>=1.7.2",
+    "requests>=2.32.5",
+    "llmwhisperer-client>=2.3.1",
 ]
 
 [project.optional-dependencies]

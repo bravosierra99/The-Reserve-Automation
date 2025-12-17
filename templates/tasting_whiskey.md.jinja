@@ -1,7 +1,10 @@
+#CLAUDE_REQ: This template MUST match the-reserve/Cellar/9_Templates/Tasting.md - always compare before modifying
+#CLAUDE_REQ: fileClass must be "Tasting" (matches DataviewJS queries in bottle templates that search for p.fileClass === "Tasting")
+#CLAUDE_REQ: Date, TasterName, and LinkedBottle must be quoted strings
 ---
 fileClass: Tasting
-Date: {{ tasting_date }}
-TasterName: {{ taster_name }}
+Date: "{{ tasting_date }}"
+TasterName: "{{ taster_name }}"
 {% if days_from_crack is not none -%}
 DaysFromCrack: {{ days_from_crack }}
 {% endif -%}

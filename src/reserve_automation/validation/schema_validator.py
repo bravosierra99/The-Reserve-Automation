@@ -31,7 +31,7 @@ class FileClassParser:
 
     def __init__(self, vault_path: Path):
         self.vault_path = Path(vault_path)
-        self.fileclass_dir = vault_path / "Cellar" / "8_FileClass"
+        self.fileclass_dir = vault_path / "8_FileClass"
 
     def parse_fileclass(self, name: str) -> list[FieldDefinition]:
         """

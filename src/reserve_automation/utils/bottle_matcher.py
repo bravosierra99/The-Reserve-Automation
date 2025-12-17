@@ -1,3 +1,7 @@
+#CLAUDE_REQ: Bottle matching uses folder names from vault structure (see vault_reader.py)
+#CLAUDE_REQ: folder_path is used for LinkedBottle field in tastings - MUST be folder name, not full path
+#CLAUDE_REQ: Bottle names follow convention: "{Producer} - {Name} - {Year}" for wines, "{Distiller} - {WhiskeyName} - {Year}" for whiskeys
+#CLAUDE_REQ: When generating tastings, LinkedBottle must use [[FolderName]] syntax matching the bottle folder
 """Fuzzy match tasting notes to bottles in the vault."""
 
 import logging
@@ -29,6 +33,7 @@ class BottleMatcher:
     def __init__(self, vault_path: Path):
         self.vault_path = Path(vault_path)
         self.vault_reader = VaultReader(vault_path)
+        self._cache = {}  # Cache bottles by beverage_type
 
     def find_matches(
         self,
@@ -36,24 +41,58 @@ class BottleMatcher:
         beverage_type: str,
         top_n: int = 5,
         min_score: float = 0.3,
+        strict_substring: bool = False,
     ) -> list[BottleMatch]:
         """
-        Find matching bottles in the vault using fuzzy matching.
+        Find matching bottles in the vault using fuzzy or substring matching.
 
         Args:
             bottle_name: Name from tasting card (e.g., "Stagg Jr Batch 24D")
             beverage_type: "wine" or "whiskey"
             top_n: Return top N matches
-            min_score: Minimum similarity score (0.0-1.0)
+            min_score: Minimum similarity score (0.0-1.0) - ignored if strict_substring=True
+            strict_substring: If True, use strict substring matching instead of fuzzy matching
 
         Returns:
             List of BottleMatch objects, sorted by score (highest first)
         """
-        logger.info(f"Searching for bottle: '{bottle_name}' (type: {beverage_type})")
+        logger.info(f"Searching for bottle: '{bottle_name}' (type: {beverage_type}, strict={strict_substring})")
 
-        # Read all bottles of this type from vault
-        vault_bottles = self.vault_reader.read_all_bottles(beverage_type=beverage_type)
+        # Get bottles from cache or read from vault
+        if beverage_type in self._cache:
+            logger.debug(f"Using cached bottles for {beverage_type}")
+            vault_bottles = self._cache[beverage_type]
+        else:
+            logger.debug(f"Reading bottles from vault for {beverage_type}")
+            vault_bottles = self.vault_reader.read_all_bottles(beverage_type=beverage_type)
+            self._cache[beverage_type] = vault_bottles
 
+        if strict_substring:
+            # Use strict substring matching
+            matches = self._substring_matches(bottle_name, vault_bottles)
+        else:
+            # Use fuzzy matching
+            matches = self._fuzzy_matches(bottle_name, vault_bottles, min_score)
+
+        # Sort by score (highest first)
+        matches.sort(key=lambda m: m.score, reverse=True)
+
+        # Return top N
+        result = matches[:top_n]
+
+        logger.info(f"Found {len(result)} matches (strict={strict_substring})")
+        for match in result:
+            logger.info(f"  {match}")
+
+        return result
+
+    def _fuzzy_matches(
+        self,
+        bottle_name: str,
+        vault_bottles: list,
+        min_score: float
+    ) -> list[BottleMatch]:
+        """Find matches using fuzzy string matching."""
         matches = []
         for bottle in vault_bottles:
             # Calculate similarity scores for different name combinations
@@ -82,17 +121,56 @@ class BottleMatcher:
             if best_score >= min_score:
                 matches.append(BottleMatch(bottle, best_score, folder_path))
 
-        # Sort by score (highest first)
-        matches.sort(key=lambda m: m.score, reverse=True)
+        return matches
 
-        # Return top N
-        result = matches[:top_n]
+    def _substring_matches(
+        self,
+        query: str,
+        vault_bottles: list
+    ) -> list[BottleMatch]:
+        """Find matches using strict substring matching."""
+        query_lower = query.lower().strip()
+        matches = []
 
-        logger.info(f"Found {len(result)} matches (min_score={min_score})")
-        for match in result:
-            logger.info(f"  {match}")
+        for bottle in vault_bottles:
+            folder_path = self._get_bottle_folder(bottle)
 
-        return result
+            # Check if query appears in any of these fields
+            full_name = self._get_full_name(bottle)
+            producer_name = f"{bottle.producer} {bottle.name}"
+            folder_name = folder_path.name if folder_path else ""
+
+            # Check all possible name variants
+            searchable_texts = [
+                full_name.lower(),
+                producer_name.lower(),
+                bottle.name.lower(),
+                folder_name.lower(),
+            ]
+
+            # Find if substring matches any field
+            match_found = any(query_lower in text for text in searchable_texts)
+
+            if match_found:
+                # Calculate score based on match quality
+                # Exact match = 1.0, contains at start = 0.9, contains elsewhere = 0.7
+                score = 0.7  # Default for substring match
+
+                for text in searchable_texts:
+                    if text == query_lower:
+                        score = 1.0
+                        break
+                    elif text.startswith(query_lower):
+                        score = max(score, 0.9)
+                    elif query_lower in text:
+                        # Calculate score based on position (earlier is better)
+                        position = text.find(query_lower)
+                        position_score = 0.7 + (0.2 * (1 - position / len(text)))
+                        score = max(score, position_score)
+
+                matches.append(BottleMatch(bottle, score, folder_path))
+
+        return matches
 
     def find_best_match(
         self,
@@ -140,9 +218,9 @@ class BottleMatcher:
 
         # Search in appropriate cellar directory
         if bottle.type == "wine":
-            cellar_dir = self.vault_path / "Cellar" / "1_Wines"
+            cellar_dir = self.vault_path / "1_Wines"
         else:
-            cellar_dir = self.vault_path / "Cellar" / "1_Whiskeys"
+            cellar_dir = self.vault_path / "1_Whiskeys"
 
         # Find matching folder
         for folder in cellar_dir.glob("*"):

@@ -1,18 +1,17 @@
 """FastAPI web application for The Reserve Automation."""
 
-import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from loguru import logger
 
 from .config import load_web_config
-from .routes import upload, review, health
+from .logging_config import setup_web_logging
+from .routes import upload, review, health, bottles, tastings
 from .services.upload_service import UploadService
-
-logger = logging.getLogger(__name__)
 
 
 # Global services (initialized on startup)
@@ -26,7 +25,8 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     global upload_service, core_config, web_config
 
-    # Startup
+    # Startup - Initialize logging first
+    setup_web_logging(log_level="DEBUG")  # Enable DEBUG logging during development
     logger.info("Starting The Reserve Automation web application")
 
     # Load configuration
@@ -75,8 +75,10 @@ templates = Jinja2Templates(directory=templates_dir)
 
 # Include routers
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
-app.include_router(upload.router, tags=["upload"])  # Includes both /upload page and /api/v1/upload endpoint
-app.include_router(review.router, tags=["review"])  # Includes both /review page and /api/v1/* endpoints
+app.include_router(upload.router, tags=["upload"])  # Unified upload page (/upload) and /review-bottles routes
+app.include_router(review.router, tags=["review"])  # Tasting card review page (/review) and API endpoints
+app.include_router(bottles.router, tags=["bottles"])  # Bottle API endpoints (/api/v1/bottles/*)
+app.include_router(tastings.router, tags=["tastings"])  # New tasting review workflow
 
 
 @app.get("/")

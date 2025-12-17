@@ -127,17 +127,23 @@ WHISKEY_SCHEMA = {
 }
 
 
-def build_extraction_prompt(text: str, beverage_type: str = "auto") -> str:
+def build_extraction_prompt(text: str, beverage_type: str = "auto", expected_count: int = None) -> str:
     """
     Build extraction prompt for bottle data.
 
     Args:
         text: Text to extract from
         beverage_type: 'wine', 'whiskey', or 'auto'
+        expected_count: Expected number of bottles (helps LLM validate completeness)
 
     Returns:
         Formatted prompt with schema
     """
+    # Build expected count instruction if provided
+    count_instruction = ""
+    if expected_count is not None:
+        count_instruction = f"\n- EXPECTED COUNT: This text should contain approximately {expected_count} bottles - make sure you extract all of them!"
+
     if beverage_type == "auto":
         # Use a combined schema that can handle both
         prompt = f"""Extract all wine and whiskey bottles from the following text.
@@ -154,10 +160,11 @@ CRITICAL - Read carefully:
 - You MUST extract EVERY SINGLE bottle mentioned in the text from start to finish
 - Do NOT stop after a few bottles - scan the ENTIRE text thoroughly
 - Count the bottles before and after to ensure you got them all
-- Missing even one bottle is considered a failure
+- Missing even one bottle is considered a failure{count_instruction}
 
 Important rules:
-- Use null for missing fields (never guess)
+- REQUIRED FIELDS (producer, name, type) MUST NEVER be null - if you can't determine them, skip that bottle entirely
+- Use null for OPTIONAL fields only (never guess)
 - Infer type as "wine" or "whiskey" based on context
 - For wines: year is the vintage
 - For whiskeys: year is the release year (if mentioned)
@@ -187,10 +194,11 @@ CRITICAL - Read carefully:
 - You MUST extract EVERY SINGLE wine mentioned in the text from start to finish
 - Do NOT stop after a few wines - scan the ENTIRE text thoroughly
 - Count the wines before and after to ensure you got them all
-- Missing even one wine is considered a failure
+- Missing even one wine is considered a failure{count_instruction}
 
 Important rules:
-- Use null for missing fields
+- REQUIRED FIELDS (producer, name, type) MUST NEVER be null - if you can't determine them, skip that bottle entirely
+- Use null for OPTIONAL fields only
 - year = vintage year (4 digits)
 - Standardize country names
 - beverage_type: "Red wine", "White wine", "Rosé", "Champagne", etc.
@@ -213,10 +221,11 @@ CRITICAL - Read carefully:
 - You MUST extract EVERY SINGLE whiskey mentioned in the text from start to finish
 - Do NOT stop after a few whiskeys - scan the ENTIRE text thoroughly
 - Count the whiskeys before and after to ensure you got them all
-- Missing even one whiskey is considered a failure
+- Missing even one whiskey is considered a failure{count_instruction}
 
 Important rules:
-- Use null for missing fields
+- REQUIRED FIELDS (producer, name, type) MUST NEVER be null - if you can't determine them, skip that bottle entirely
+- Use null for OPTIONAL fields only
 - year = release year (if mentioned)
 - age_statement = age in years (e.g., 12 for "12 Year Old")
 - proof = US proof (e.g., 100, not 50% ABV)

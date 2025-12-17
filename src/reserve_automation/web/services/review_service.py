@@ -1,15 +1,14 @@
 """Review and approval service for extracted tastings."""
 
-import logging
 from pathlib import Path
 from typing import Optional
+
+from loguru import logger
 
 from reserve_automation.core.config import Config
 from reserve_automation.core.tasting_note import TastingExtractionResult, TastingNote
 from reserve_automation.generators.tasting_generator import TastingGenerator
 from reserve_automation.utils.bottle_matcher import BottleMatcher, BottleMatch
-
-logger = logging.getLogger(__name__)
 
 
 class ReviewService:

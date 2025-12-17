@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Bottles - The Reserve{% endblock %}
+
+{% block content %}
+<div x-data="bottleUploadForm()" class="max-w-2xl mx-auto">
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-2xl font-bold mb-6 text-gray-800">Add Bottles to Collection</h2>
+
+        <!-- Upload Type Selection -->
+        <div x-show="!selectedFile && !uploading && !uploadComplete" class="space-y-6">
+            <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                <h3 class="font-semibold text-gray-800 mb-2">Choose Upload Type:</h3>
+                <p class="text-sm text-gray-600">Upload a single bottle photo or a wine manifest with multiple bottles</p>
+            </div>
+
+            <!-- Bottle Image Upload -->
+            <div class="border-2 border-gray-200 rounded-lg p-6 hover:border-blue-400 transition-colors">
+                <h3 class="text-lg font-bold text-gray-800 mb-2">📸 Single Bottle</h3>
+                <p class="text-sm text-gray-600 mb-4">Take a photo of a bottle label or upload an existing image</p>
+
+                <input
+                    type="file"
+                    x-ref="bottleImageInput"
+                    @change="handleFileSelect('bottle_image')"
+                    accept="image/*"
+                    capture="environment"
+                    class="hidden"
+                >
+
+                <div class="space-y-2">
+                    <button
+                        @click="$refs.bottleImageInput.click()"
+                        class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow transition-colors"
+                    >
+                        📸 Take Photo of Bottle
+                    </button>
+                    <button
+                        @click="$refs.bottleImageInput.removeAttribute('capture'); $refs.bottleImageInput.click()"
+                        class="w-full py-3 px-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow transition-colors"
+                    >
+                        🖼️ Choose from Gallery
+                    </button>
+                </div>
+            </div>
+
+            <!-- Manifest Upload -->
+            <div class="border-2 border-gray-200 rounded-lg p-6 hover:border-green-400 transition-colors">
+                <h3 class="text-lg font-bold text-gray-800 mb-2">📄 Wine Manifest</h3>
+                <p class="text-sm text-gray-600 mb-4">Upload a PDF or image of a wine list/manifest with multiple bottles</p>
+
+                <input
+                    type="file"
+                    x-ref="manifestInput"
+                    @change="handleFileSelect('manifest')"
+                    accept="image/*,application/pdf"
+                    class="hidden"
+                >
+
+                <button
+                    @click="$refs.manifestInput.click()"
+                    class="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow transition-colors"
+                >
+                    📄 Upload Manifest (PDF/Image)
+                </button>
+            </div>
+        </div>
+
+        <!-- Preview and Upload -->
+        <div x-show="selectedFile && !uploading && !uploadComplete" class="space-y-4">
+            <div class="bg-gray-50 rounded-lg p-4">
+                <p class="text-sm font-semibold text-gray-700">
+                    Upload Type: <span x-text="uploadType === 'bottle_image' ? 'Single Bottle' : 'Wine Manifest'" class="text-blue-600"></span>
+                </p>
+                <p class="text-sm text-gray-600" x-text="'File: ' + selectedFile?.name"></p>
+            </div>
+
+            <div class="relative">
+                <img :src="previewUrl" class="w-full rounded-lg shadow-md" alt="Preview" x-show="previewUrl">
+                <div x-show="!previewUrl" class="w-full h-32 bg-gray-100 rounded-lg flex items-center justify-center">
+                    <p class="text-gray-500">PDF selected (no preview available)</p>
+                </div>
+                <button
+                    @click="clearFile"
+                    class="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-full text-sm font-semibold"
+                >
+                    ✕ Clear
+                </button>
+            </div>
+
+            <!-- Expected Count Input (optional, for manifests) -->
+            <div x-show="uploadType === 'manifest'" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <label for="expectedCount" class="block text-sm font-semibold text-gray-700 mb-2">
+                    Expected Bottle Count (optional)
+                </label>
+                <input
+                    type="number"
+                    id="expectedCount"
+                    x-model.number="expectedCount"
+                    min="1"
+                    placeholder="e.g., 12"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                <p class="text-xs text-gray-600 mt-1">
+                    💡 If you know how many bottles are in the manifest, enter it here to help improve extraction accuracy
+                </p>
+            </div>
+
+            <button
+                @click="uploadFile"
+                class="w-full py-4 px-6 bg-green-600 hover:bg-green-700 text-white text-lg font-semibold rounded-lg shadow-md transition-colors"
+            >
+                ✓ Upload & Extract
+            </button>
+        </div>
+
+        <!-- Uploading State -->
+        <div x-show="uploading" class="text-center py-8">
+            <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
+            <p class="text-gray-600 text-lg">Extracting bottle data...</p>
+            <p class="text-gray-500 text-sm mt-2">This may take 10-30 seconds</p>
+        </div>
+
+        <!-- Success State -->
+        <div x-show="uploadComplete" class="text-center py-8">
+            <div class="text-green-600 text-6xl mb-4">✓</div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-2">Extraction Complete!</h3>
+            <p class="text-gray-600 mb-4" x-text="'Found ' + bottlesCount + ' bottle(s)'"></p>
+            <a
+                :href="'/review-bottles/' + extractionId"
+                class="inline-block py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-colors"
+            >
+                Review & Enrich →
+            </a>
+        </div>
+
+        <!-- Error State -->
+        <div x-show="error" class="bg-red-50 border border-red-200 rounded-lg p-4">
+            <h3 class="text-red-800 font-bold mb-2">Upload Failed</h3>
+            <p class="text-red-700" x-text="errorMessage"></p>
+            <button
+                @click="clearFile"
+                class="mt-3 text-blue-600 hover:text-blue-800 font-semibold"
+            >
+                ← Try Again
+            </button>
+        </div>
+    </div>
+
+    <div class="mt-6 text-center">
+        <a href="/upload" class="text-blue-600 hover:text-blue-800 font-semibold">
+            ← Upload Tasting Cards Instead
+        </a>
+    </div>
+</div>
+
+<script>
+function bottleUploadForm() {
+    return {
+        selectedFile: null,
+        previewUrl: null,
+        uploadType: null,  // 'bottle_image' or 'manifest'
+        uploading: false,
+        uploadComplete: false,
+        error: false,
+        errorMessage: '',
+        extractionId: null,
+        bottlesCount: 0,
+        expectedCount: null,  // Optional expected bottle count
+
+        handleFileSelect(type) {
+            const input = type === 'bottle_image' ? this.$refs.bottleImageInput : this.$refs.manifestInput;
+            const file = input.files[0];
+
+            if (!file) return;
+
+            this.selectedFile = file;
+            this.uploadType = type;
+            this.error = false;
+
+            // Create preview for images
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    this.previewUrl = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                // PDF - no preview
+                this.previewUrl = null;
+            }
+        },
+
+        clearFile() {
+            this.selectedFile = null;
+            this.previewUrl = null;
+            this.uploadType = null;
+            this.uploading = false;
+            this.uploadComplete = false;
+            this.error = false;
+            this.errorMessage = '';
+
+            // Reset file inputs
+            if (this.$refs.bottleImageInput) this.$refs.bottleImageInput.value = '';
+            if (this.$refs.manifestInput) this.$refs.manifestInput.value = '';
+        },
+
+        async uploadFile() {
+            if (!this.selectedFile) return;
+
+            this.uploading = true;
+            this.error = false;
+
+            try {
+                const formData = new FormData();
+                formData.append('file', this.selectedFile);
+                formData.append('upload_type', this.uploadType);
+                formData.append('beverage_type', 'auto');  // Auto-detect wine vs whiskey
+
+                // Add expected count if provided (only for manifests)
+                if (this.expectedCount && this.uploadType === 'manifest') {
+                    formData.append('expected_count', this.expectedCount.toString());
+                }
+
+                const response = await fetch('/api/v1/bottles/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Upload failed');
+                }
+
+                const result = await response.json();
+
+                this.extractionId = result.extraction_id;
+                this.bottlesCount = result.bottles_count;
+                this.uploading = false;
+                this.uploadComplete = true;
+
+            } catch (err) {
+                this.uploading = false;
+                this.error = true;
+                this.errorMessage = err.message || 'An unexpected error occurred';
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

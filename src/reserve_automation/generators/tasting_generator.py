@@ -79,7 +79,6 @@ class TastingGenerator:
             "tasting_date": tasting.tasting_date.isoformat(),
             "taster_name": tasting.taster_name,
             "bottle_name": bottle_name,
-            "total_score": tasting.total_score(),
             "nose_notes": tasting.nose_notes or [],
             "palate_notes": tasting.palate_notes or [],
             "finish_notes": tasting.finish_notes or [],
@@ -88,15 +87,29 @@ class TastingGenerator:
 
         # Add type-specific fields
         if tasting.beverage_type == "wine":
+            # Calculate AWS Score (sum of all component scores, max 20 points)
+            # Appearance: /3, Aroma: /6, Taste: /6, Aftertaste: /3, Overall: /2
+            aws_score = (
+                (tasting.wine_appearance or 0) +
+                (tasting.wine_aroma or 0) +
+                (tasting.wine_taste or 0) +
+                (tasting.wine_aftertaste or 0) +
+                (tasting.wine_overall or 0)
+            )
+
+            # Calculate 100-point scale: 50 + (AWS_Score / 20) * 50
+            # This maps 0-20 AWS scale to 50-100 point scale
+            scale_100pt = round(50 + (aws_score / 20) * 50, 1)
+
             context.update({
                 "wine_appearance": tasting.wine_appearance,
                 "wine_aroma": tasting.wine_aroma,
                 "wine_taste": tasting.wine_taste,
                 "wine_aftertaste": tasting.wine_aftertaste,
                 "wine_overall": tasting.wine_overall,
-                "place": tasting.place,
-                "theme": tasting.theme,
-                "price": tasting.price,
+                "aws_score": aws_score,
+                "scale_100pt": scale_100pt,
+                "appearance_notes": [],  # User adds freeform notes in Obsidian
             })
         else:  # whiskey
             context.update({

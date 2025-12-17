@@ -91,8 +91,8 @@ class ObsidianGenerator:
             filename = self._generate_filename(bottle)
 
             # Construct full path (bottles are in subdirectories)
-            # Format: Cellar/1_Wines/Producer - Name - Year/Producer - Name - Year.md
-            folder_path = self.vault_path / "Cellar" / subdir / filename
+            # Format: vault_path/1_Wines/Producer - Name - Year/Producer - Name - Year.md
+            folder_path = self.vault_path / subdir / filename
             file_path = folder_path / f"{filename}.md"
 
             # Render template

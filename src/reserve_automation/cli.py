@@ -1084,20 +1084,29 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
 
                 # Automatic mode: crop and update frontmatter
                 if yes and label_processor and obsidian_updater:
+                    # Save original image as label_original.jpg for manual review
+                    original_path = label_path.parent / "label_original.jpg"
+                    import shutil
+                    shutil.copy2(label_path, original_path)
+                    console.print(f"  [dim]Saved original as {original_path.name}[/dim]")
                     bottle_name = f"{bottle.producer} - {bottle.name}"
                     if bottle.year:
                         bottle_name += f" - {bottle.year}"
 
-                    # Detect label bounds
-                    console.print(f"  [dim]Detecting label bounds...[/dim]")
+                    # Detect label bounds using computer vision first, LLM as fallback
+                    console.print(f"  [dim]Detecting label bounds (computer vision)...[/dim]")
 
-                    # Define async function for bounds detection
-                    async def detect_bounds_async():
-                        image_bytes = label_path.read_bytes()
-                        return await label_processor.detect_label_bounds(image_bytes, bottle)
+                    image_bytes = label_path.read_bytes()
+                    bounds = label_processor.detect_label_bounds_cv(image_bytes)
 
-                    # Run in async context (using our fixed httpx client)
-                    bounds = asyncio.run(detect_bounds_async())
+                    # If CV detection fails, try LLM as fallback
+                    if not bounds:
+                        console.print(f"  [dim]CV detection failed, trying LLM fallback...[/dim]")
+
+                        async def detect_bounds_async():
+                            return await label_processor.detect_label_bounds(image_bytes, bottle)
+
+                        bounds = asyncio.run(detect_bounds_async())
 
                     if bounds:
                         console.print(f"  [dim]Cropping to label...[/dim]")
@@ -1105,8 +1114,29 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
                         cropped_path = label_processor.crop_to_label(label_path, bounds)
 
                         if cropped_path:
-                            console.print(f"  [green]✓ Cropped label image[/green]")
-                            total_cropped += 1
+                            # Validate crop quality
+                            console.print(f"  [dim]Validating crop quality...[/dim]")
+
+                            async def validate_crop_async():
+                                cropped_bytes = cropped_path.read_bytes()
+                                return await label_processor.validate_crop_quality(cropped_bytes, bottle)
+
+                            crop_ok = asyncio.run(validate_crop_async())
+
+                            if crop_ok:
+                                console.print(f"  [green]✓ Cropped label image (quality validated)[/green]")
+                                total_cropped += 1
+                            else:
+                                console.print(f"  [yellow]⚠ Crop quality low, restoring original[/yellow]")
+                                # Restore original (which was saved as label_original.jpg)
+                                import shutil
+                                shutil.copy2(original_path, label_path)
+                                review_log.append((
+                                    bottle_name,
+                                    "crop_quality_low",
+                                    "Check label_original.jpg for comparison"
+                                ))
+                                total_needs_review += 1
                         else:
                             console.print(f"  [yellow]⚠ Crop failed, saved uncropped[/yellow]")
                             review_log.append((
@@ -1120,7 +1150,7 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
                         review_log.append((
                             bottle_name,
                             "detection_failed",
-                            "Vision LLM could not detect label bounds"
+                            "Both CV and LLM detection failed"
                         ))
                         total_needs_review += 1
 
@@ -1239,9 +1269,9 @@ def _get_bottle_folder_from_name(bottle: BottleMetadata, vault_path: Path) -> Op
 
     # Search in appropriate cellar directory
     if bottle.type == "wine":
-        cellar_dir = vault_path / "Cellar" / "1_Wines"
+        cellar_dir = vault_path / "1_Wines"
     else:
-        cellar_dir = vault_path / "Cellar" / "1_Whiskeys"
+        cellar_dir = vault_path / "1_Whiskeys"
 
     # Find matching folder
     for folder in cellar_dir.glob("*"):

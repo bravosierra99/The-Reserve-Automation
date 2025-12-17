@@ -37,6 +37,7 @@ class BottleExtractor:
         self,
         parser_result: ParserResult,
         beverage_type: Literal["wine", "whiskey", "auto"] = "auto",
+        expected_count: int = None,
     ) -> List[BottleMetadata]:
         """
         Extract bottle metadata from parsed input.
@@ -44,6 +45,7 @@ class BottleExtractor:
         Args:
             parser_result: Result from parser (contains raw text)
             beverage_type: Type of beverage to extract ('wine', 'whiskey', 'auto')
+            expected_count: Expected number of bottles (helps improve extraction accuracy)
 
         Returns:
             List of BottleMetadata with confidence scores
@@ -64,6 +66,7 @@ class BottleExtractor:
         prompt = build_extraction_prompt(
             text=parser_result.raw_text,
             beverage_type=beverage_type if beverage_type != "mixed" else "auto",
+            expected_count=expected_count,
         )
 
         # Request structured extraction from LLM
@@ -174,6 +177,15 @@ class BottleExtractor:
         # Validate each bottle
         for i, bottle_dict in enumerate(bottles_data):
             try:
+                # Sanitize required fields - convert None to placeholder
+                if bottle_dict.get("name") is None:
+                    logger.warning(f"Bottle at index {i} has null name - using placeholder")
+                    bottle_dict["name"] = f"Unknown_{i+1}"
+
+                if bottle_dict.get("producer") is None:
+                    logger.warning(f"Bottle at index {i} has null producer - using placeholder")
+                    bottle_dict["producer"] = f"Unknown_{i+1}"
+
                 # Create BottleMetadata from dict
                 bottle = BottleMetadata(
                     **bottle_dict,
@@ -186,7 +198,8 @@ class BottleExtractor:
                 bottles.append(bottle)
 
             except ValidationError as e:
-                logger.warning(f"Invalid bottle data at index {i}: {e}")
+                logger.error(f"Invalid bottle data at index {i}: {e}")
+                logger.error(f"Problematic bottle data: {bottle_dict}")
                 # Log but continue with other bottles
                 continue
 

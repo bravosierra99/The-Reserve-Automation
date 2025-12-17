@@ -1,3 +1,9 @@
+#CLAUDE_REQ: This template creates wine bottle files that MUST match the-reserve/Cellar/9_Templates/Tasting Note.md structure
+#CLAUDE_REQ: fileClass must be "Wine" (not "wine" or "Wine Bottle")
+#CLAUDE_REQ: Embedded DataviewJS queries search for tasting files with fileClass === "Wine Tasting" in bottle subdirectory
+#CLAUDE_REQ: Field names (Appearance, Aroma, Taste, Aftertaste, Overall, AWS Score, 100pt Scale) must match what tasting templates generate
+#CLAUDE_REQ: DataviewJS references template path "9_Templates/Wine Tasting.md" - must exist in vault
+#CLAUDE_REQ: Vault structure: 1_Wines/{BottleName}/{BottleName}.md + Tasting-YYYY-MM-DD-Name.md files
 ---
 fileClass: Wine
 Name: {{ name }}
@@ -204,4 +210,4 @@ form.querySelector('#create-tasting-btn').addEventListener('click', async () => 
 ```
 {% endraw %}
 ## Label
-Label::
+Label:: ![[labels/label.jpg]]

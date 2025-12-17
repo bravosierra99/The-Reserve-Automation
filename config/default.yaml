@@ -41,6 +41,14 @@ extraction:
   max_bottles_per_page: 50
   strict_validation: false  # If true, reject invalid data
 
+  # LLMWhisperer API for layout-preserving OCR
+  llm_whisperer:
+    api_key: null  # REQUIRED: Set in user.yaml or env var LLMWHISPERER_API_KEY
+    base_url: "https://llmwhisperer-api.us-central.unstract.com/api/v2"
+    mode: "table"  # Extraction mode: "table", "form", or "text"
+    output_mode: "layout_preserving"  # Preserves spatial layout with ASCII
+    timeout: 60  # API timeout in seconds
+
 # Git integration settings
 git:
   default_branch: "tastings-backup"

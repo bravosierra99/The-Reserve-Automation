@@ -1,19 +1,17 @@
 """Upload endpoints."""
 
-import logging
 import uuid
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, UploadFile, File, Form, Response, Cookie, HTTPException, Request
 from fastapi.templating import Jinja2Templates
+from loguru import logger
 from sse_starlette.sse import EventSourceResponse
 
 from ..sessions import SessionManager
 from ..services.upload_service import UploadService
 from ..services.extraction_service import ExtractionService
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -24,8 +22,14 @@ templates = Jinja2Templates(directory=templates_dir)
 
 @router.get("/upload", include_in_schema=False)
 async def upload_page(request: Request):
-    """Serve the upload page."""
+    """Serve the unified upload page."""
     return templates.TemplateResponse("upload.html", {"request": request})
+
+
+@router.get("/review-bottles/{extraction_id}", include_in_schema=False)
+async def review_bottles_page(extraction_id: str, request: Request):
+    """Serve the bottle review page."""
+    return templates.TemplateResponse("review_bottles.html", {"request": request})
 
 
 @router.post("/api/v1/upload")
@@ -33,6 +37,7 @@ async def upload_file(
     response: Response,
     file: UploadFile = File(...),
     upload_type: str = Form("tasting_card"),
+    expected_count: Optional[int] = Form(None),
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """
@@ -90,7 +95,8 @@ async def upload_file(
             "extraction_id": session_id,
             "upload_filename": file.filename,
             "temp_file_path": str(file_path),
-            "extraction_data": extraction_data
+            "extraction_data": extraction_data,
+            "expected_count": expected_count  # Store for new review page
         }
 
         session_token = session_manager.create_session(session_data)

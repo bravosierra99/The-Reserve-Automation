@@ -1,0 +1,809 @@
+{% extends "base.html" %}
+
+{% block title %}Review Tastings - The Reserve{% endblock %}
+
+{% block content %}
+<div x-data="tastingReview()" x-init="loadSession()" class="max-w-4xl mx-auto">
+    <!-- Loading state -->
+    <div x-show="loading" class="text-center py-16">
+        <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
+        <p class="text-gray-600 text-lg">Loading tastings...</p>
+    </div>
+
+    <!-- Error state -->
+    <div x-show="error && !loading" class="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
+        <h3 class="text-red-800 font-bold text-lg mb-2">Error</h3>
+        <p class="text-red-700" x-text="errorMessage"></p>
+        <a href="/upload" class="mt-4 inline-block text-blue-600 hover:text-blue-800 font-semibold">
+            &larr; Back to Upload
+        </a>
+    </div>
+
+    <!-- Main content -->
+    <div x-show="!loading && !error && session">
+        <!-- Header with progress -->
+        <div class="bg-white rounded-lg shadow-md p-4 mb-4">
+            <div class="flex justify-between items-center mb-3">
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800">Review Tastings</h2>
+                    <p class="text-gray-600 text-sm">
+                        Template: <span x-text="session?.template_type" class="font-semibold"></span>
+                    </p>
+                </div>
+                <a href="/upload" class="text-blue-600 hover:text-blue-800 font-semibold text-sm">
+                    &larr; Upload Another
+                </a>
+            </div>
+
+            <!-- Count mismatch warning -->
+            <div x-show="session?.count_mismatch" class="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-3">
+                <p class="text-yellow-800 font-semibold">
+                    &#9888; Count mismatch: Expected <span x-text="session?.expected_count"></span>, found <span x-text="session?.actual_count"></span>
+                </p>
+                <p class="text-yellow-700 text-sm">Review each tasting and skip any that were incorrectly detected.</p>
+            </div>
+
+            <!-- Progress bar -->
+            <div class="mb-2">
+                <div class="flex justify-between text-sm text-gray-600 mb-1">
+                    <span>Tasting <span x-text="currentIndex + 1"></span> of <span x-text="session?.actual_count"></span></span>
+                    <span x-text="stats.approved + ' approved, ' + stats.skipped + ' skipped'"></span>
+                </div>
+                <div class="h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div class="h-full bg-blue-600 transition-all duration-300"
+                         :style="'width: ' + ((currentIndex + 1) / session?.actual_count * 100) + '%'"></div>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="flex gap-2 justify-center">
+                <button @click="prevTasting()" :disabled="currentIndex === 0"
+                        class="px-4 py-2 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400 rounded-lg font-semibold transition-colors">
+                    &larr; Prev
+                </button>
+                <template x-for="(t, i) in session?.tastings" :key="i">
+                    <button @click="goToTasting(i)"
+                            :class="{
+                                'bg-green-500 text-white': t.status === 'approved',
+                                'bg-gray-400 text-white': t.status === 'skipped',
+                                'bg-blue-600 text-white': i === currentIndex && t.status !== 'approved' && t.status !== 'skipped',
+                                'bg-gray-200': i !== currentIndex && t.status !== 'approved' && t.status !== 'skipped'
+                            }"
+                            class="w-10 h-10 rounded-full font-bold transition-colors"
+                            x-text="i + 1"></button>
+                </template>
+                <button @click="nextTasting()" :disabled="currentIndex >= session?.actual_count - 1"
+                        class="px-4 py-2 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400 rounded-lg font-semibold transition-colors">
+                    Next &rarr;
+                </button>
+            </div>
+        </div>
+
+        <!-- Current tasting card -->
+        <div x-show="currentTasting" class="bg-white rounded-lg shadow-md p-6 mb-4">
+            <!-- Status badge -->
+            <div class="flex justify-between items-start mb-4">
+                <h3 class="text-lg font-bold text-gray-800">
+                    Tasting #<span x-text="currentIndex + 1"></span>
+                </h3>
+                <span x-show="currentTasting?.status === 'approved'" class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">
+                    &#10003; Approved
+                </span>
+                <span x-show="currentTasting?.status === 'skipped'" class="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm font-semibold">
+                    Skipped
+                </span>
+            </div>
+
+            <!-- Duplicate warning -->
+            <div x-show="currentTasting?.duplicate_warning" class="bg-orange-50 border border-orange-300 rounded-lg p-3 mb-4">
+                <p class="text-orange-800 font-semibold">&#9888; Potential Duplicate</p>
+                <p class="text-orange-700 text-sm" x-text="currentTasting?.duplicate_warning"></p>
+            </div>
+
+            <!-- Tasting data form -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Bottle Name</label>
+                    <input type="text" x-model="currentTasting.tasting_data.bottle_name"
+                           @change="saveTastingData()"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Taster Name</label>
+                    <input type="text" x-model="currentTasting.tasting_data.taster_name"
+                           @change="saveTastingData()"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Tasting Date</label>
+                    <input type="date" x-model="currentTasting.tasting_data.tasting_date"
+                           @change="saveTastingData()"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Place</label>
+                    <input type="text" x-model="currentTasting.tasting_data.place"
+                           @change="saveTastingData()"
+                           placeholder="Location of tasting"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Theme/Event</label>
+                    <input type="text" x-model="currentTasting.tasting_data.theme"
+                           @change="saveTastingData()"
+                           placeholder="e.g., Wine club meeting, Blind tasting"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+
+                <!-- Bourbon-specific fields -->
+                <template x-if="session?.template_type === 'bourbon'">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">Days From Crack</label>
+                        <input type="number" x-model.number="currentTasting.tasting_data.days_from_crack" min="0"
+                               @change="saveTastingData()"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                </template>
+
+                <template x-if="session?.template_type === 'bourbon'">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">Fill Level (%)</label>
+                        <input type="number" x-model.number="currentTasting.tasting_data.fill_level" min="0" max="100"
+                               @change="saveTastingData()"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                </template>
+
+                <template x-if="session?.template_type === 'bourbon'">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">Color</label>
+                        <input type="text" x-model="currentTasting.tasting_data.color"
+                               @change="saveTastingData()"
+                               placeholder="e.g., Deep amber, Russet"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                </template>
+            </div>
+
+            <!-- Bottle Matching Section (moved up) -->
+            <div class="mb-6">
+                <h4 class="font-semibold text-gray-800 mb-3">Match to Bottle in Vault</h4>
+
+                <!-- Current selected match -->
+                <div x-show="currentTasting?.selected_match" class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                    <div class="flex items-center gap-4">
+                        <img x-show="getSelectedMatchThumbnail()" :src="getSelectedMatchThumbnail()"
+                             class="w-16 h-16 object-cover rounded-lg" alt="Bottle">
+                        <div class="flex-1">
+                            <p class="font-semibold text-green-800" x-text="getSelectedMatchName()"></p>
+                            <p class="text-green-700 text-sm">
+                                Match confidence: <span x-text="(getSelectedMatchConfidence() * 100).toFixed(0) + '%'"></span>
+                            </p>
+                        </div>
+                        <button @click="clearMatch()" class="text-red-600 hover:text-red-800 font-semibold text-sm">
+                            Change
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Match candidates (top matches only) -->
+                <div x-show="!currentTasting?.selected_match">
+                    <p class="text-gray-600 text-sm mb-3">Top matches from vault:</p>
+
+                    <!-- Candidate list -->
+                    <div class="space-y-2 mb-4">
+                        <template x-for="candidate in currentTasting?.match_candidates || []" :key="candidate.bottle_path">
+                            <button @click="selectMatch(candidate.bottle_path)"
+                                    class="w-full flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors text-left">
+                                <img x-show="candidate.thumbnail_url" :src="candidate.thumbnail_url"
+                                     class="w-12 h-12 object-cover rounded" alt="Bottle">
+                                <div x-show="!candidate.thumbnail_url" class="w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-gray-400">
+                                    &#127863;
+                                </div>
+                                <div class="flex-1">
+                                    <p class="font-semibold text-gray-800" x-text="candidate.bottle_name"></p>
+                                    <p class="text-gray-500 text-sm" x-text="candidate.producer"></p>
+                                </div>
+                                <div class="text-right">
+                                    <span :class="{
+                                        'text-green-600': candidate.confidence >= 0.8,
+                                        'text-yellow-600': candidate.confidence >= 0.5 && candidate.confidence < 0.8,
+                                        'text-red-600': candidate.confidence < 0.5
+                                    }" class="font-semibold" x-text="(candidate.confidence * 100).toFixed(0) + '%'"></span>
+                                </div>
+                            </button>
+                        </template>
+                    </div>
+
+                    <!-- No matches found -->
+                    <div x-show="!currentTasting?.match_candidates?.length" class="text-center py-4 bg-gray-50 rounded-lg mb-4">
+                        <p class="text-gray-600">No matching bottles found</p>
+                    </div>
+
+                    <!-- Search button -->
+                    <div class="border-t pt-4">
+                        <button @click="showSearchModal = true"
+                                class="w-full py-2 px-4 border-2 border-blue-500 text-blue-600 hover:bg-blue-50 font-semibold rounded-lg transition-colors">
+                            🔍 Search All Bottles in Vault
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scores section -->
+            <template x-if="session?.template_type === 'aws_wine'">
+                <div class="mb-6">
+                    <h4 class="font-semibold text-gray-800 mb-3">Wine Scores</h4>
+                    <div class="grid grid-cols-5 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Appearance (0-3)</label>
+                            <input type="number" step="0.5" min="0" max="3" x-model.number="currentTasting.tasting_data.wine_appearance"
+                                   @change="saveTastingData()"
+                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Aroma (0-6)</label>
+                            <input type="number" step="0.5" min="0" max="6" x-model.number="currentTasting.tasting_data.wine_aroma"
+                                   @change="saveTastingData()"
+                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Taste (0-6)</label>
+                            <input type="number" step="0.5" min="0" max="6" x-model.number="currentTasting.tasting_data.wine_taste"
+                                   @change="saveTastingData()"
+                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Aftertaste (0-3)</label>
+                            <input type="number" step="0.5" min="0" max="3" x-model.number="currentTasting.tasting_data.wine_aftertaste"
+                                   @change="saveTastingData()"
+                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Overall (0-2)</label>
+                            <input type="number" step="0.5" min="0" max="2" x-model.number="currentTasting.tasting_data.wine_overall"
+                                   @change="saveTastingData()"
+                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <template x-if="session?.template_type === 'bourbon'">
+                <div class="mb-6">
+                    <h4 class="font-semibold text-gray-800 mb-3">Whiskey Scores (10-point scale)</h4>
+                    <div class="grid grid-cols-4 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Nose (0-3)</label>
+                            <input type="number" step="0.1" min="0" max="3" x-model.number="currentTasting.tasting_data.whiskey_nose"
+                                   @change="saveTastingData()"
+                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Palate (0-3)</label>
+                            <input type="number" step="0.1" min="0" max="3" x-model.number="currentTasting.tasting_data.whiskey_palate"
+                                   @change="saveTastingData()"
+                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Finish (0-3)</label>
+                            <input type="number" step="0.1" min="0" max="3" x-model.number="currentTasting.tasting_data.whiskey_finish"
+                                   @change="saveTastingData()"
+                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Overall (0-1)</label>
+                            <input type="number" step="0.05" min="0" max="1" x-model.number="currentTasting.tasting_data.whiskey_overall"
+                                   @change="saveTastingData()"
+                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Flavor Notes Section -->
+            <div class="mb-6">
+                <h4 class="font-semibold text-gray-800 mb-3">Flavor Notes</h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Nose/Aroma</label>
+                        <input type="text" x-model="noseNotesText"
+                               @change="updateNoseNotes()"
+                               placeholder="Comma-separated notes"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
+                        <p class="text-xs text-gray-400 mt-1">e.g., vanilla, caramel, oak</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Palate/Taste</label>
+                        <input type="text" x-model="palateNotesText"
+                               @change="updatePalateNotes()"
+                               placeholder="Comma-separated notes"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
+                        <p class="text-xs text-gray-400 mt-1">e.g., cherry, spice, leather</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Finish</label>
+                        <input type="text" x-model="finishNotesText"
+                               @change="updateFinishNotes()"
+                               placeholder="Comma-separated notes"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
+                        <p class="text-xs text-gray-400 mt-1">e.g., long, warm, oaky</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Overall Notes -->
+            <div class="mb-6">
+                <label class="block text-sm font-semibold text-gray-700 mb-1">Overall Impression</label>
+                <textarea x-model="currentTasting.tasting_data.overall_notes" rows="3"
+                          @change="saveTastingData()"
+                          placeholder="Your overall thoughts, impressions, and notes"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"></textarea>
+            </div>
+        </div>
+
+        <!-- Action buttons -->
+        <div x-show="currentTasting && currentTasting.status !== 'approved' && currentTasting.status !== 'skipped'"
+             class="bg-white rounded-lg shadow-md p-4 mb-4">
+            <div class="flex gap-3">
+                <button @click="approveTasting()" :disabled="!currentTasting?.selected_match || approving"
+                        class="flex-1 py-3 px-6 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold rounded-lg shadow-md transition-colors">
+                    <span x-show="!approving">&#10003; Approve & Save</span>
+                    <span x-show="approving">Saving...</span>
+                </button>
+                <button @click="skipTasting()" :disabled="skipping"
+                        class="py-3 px-6 bg-gray-500 hover:bg-gray-600 disabled:bg-gray-300 text-white font-semibold rounded-lg shadow-md transition-colors">
+                    <span x-show="!skipping">Skip</span>
+                    <span x-show="skipping">...</span>
+                </button>
+            </div>
+            <p x-show="!currentTasting?.selected_match" class="text-center text-gray-500 text-sm mt-2">
+                Select a bottle match above to enable approval
+            </p>
+        </div>
+
+        <!-- Reject all button -->
+        <div class="text-center mb-8">
+            <button @click="rejectAll()"
+                    class="text-red-600 hover:text-red-800 font-semibold text-sm">
+                &#10005; Reject All & Cancel
+            </button>
+        </div>
+
+        <!-- All done message (only show if there was at least 1 tasting) -->
+        <div x-show="stats.all_done && stats.total > 0" class="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+            <div class="text-green-600 text-6xl mb-4">&#10003;</div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-2">All Done!</h3>
+            <p class="text-gray-600 mb-4">
+                <span x-text="stats.approved"></span> tasting(s) saved, <span x-text="stats.skipped"></span> skipped
+            </p>
+            <a href="/upload" class="inline-block py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-colors">
+                Upload Another
+            </a>
+        </div>
+
+        <!-- No tastings extracted message -->
+        <div x-show="stats.total === 0" class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+            <div class="text-yellow-600 text-6xl mb-4">&#9888;</div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-2">No Tastings Found</h3>
+            <p class="text-gray-600 mb-4">
+                The extraction didn't find any tastings in the uploaded image. This could be due to:
+            </p>
+            <ul class="text-gray-600 text-left max-w-md mx-auto mb-4">
+                <li class="mb-2">• Image quality issues</li>
+                <li class="mb-2">• Incorrect template type selected</li>
+                <li class="mb-2">• All rows in the tasting card are blank</li>
+            </ul>
+            <a href="/upload" class="inline-block py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-colors">
+                Try Again
+            </a>
+        </div>
+    </div>
+
+    <!-- Search Modal -->
+    <div x-show="showSearchModal"
+         x-cloak
+         @click.self="showSearchModal = false"
+         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col" @click.stop>
+            <!-- Modal header -->
+            <div class="p-4 border-b flex items-center justify-between">
+                <h3 class="text-xl font-bold text-gray-800">Search Vault</h3>
+                <button @click="showSearchModal = false" class="text-gray-500 hover:text-gray-700 text-2xl">
+                    &times;
+                </button>
+            </div>
+
+            <!-- Search input -->
+            <div class="p-4 border-b">
+                <div class="flex gap-2">
+                    <input type="text"
+                           x-model="searchQuery"
+                           @input="debouncedSearch()"
+                           @focus="if(searchQuery) debouncedSearch()"
+                           placeholder="Start typing bottle name..."
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <p class="text-xs text-gray-500 mt-1">Results update as you type</p>
+                </div>
+            </div>
+
+            <!-- Search results -->
+            <div class="flex-1 overflow-y-auto p-4">
+                <div x-show="searching" class="text-center py-8 text-gray-500">
+                    Searching...
+                </div>
+
+                <div x-show="!searching && searchResults.length === 0 && searchQuery.length > 0"
+                     class="text-center py-8 text-gray-500">
+                    No bottles found matching "<span x-text="searchQuery"></span>"
+                </div>
+
+                <div x-show="!searching && searchQuery.length === 0"
+                     class="text-center py-8 text-gray-400">
+                    Enter a bottle name to search
+                </div>
+
+                <div x-show="!searching && searchResults.length > 0" class="space-y-2">
+                    <p class="text-sm text-gray-600 font-semibold mb-3">
+                        Found <span x-text="searchResults.length"></span> result(s)
+                    </p>
+                    <template x-for="result in searchResults" :key="result.bottle_path">
+                        <button @click="selectMatchFromSearch(result.bottle_path)"
+                                class="w-full flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors text-left">
+                            <img x-show="result.thumbnail_url"
+                                 :src="result.thumbnail_url"
+                                 class="w-16 h-16 object-cover rounded"
+                                 alt="Bottle">
+                            <div x-show="!result.thumbnail_url"
+                                 class="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-2xl">
+                                &#127863;
+                            </div>
+                            <div class="flex-1">
+                                <p class="font-semibold text-gray-800" x-text="result.bottle_name"></p>
+                                <p class="text-gray-500 text-sm" x-text="result.producer"></p>
+                                <p class="text-xs text-gray-400" x-text="result.beverage_type"></p>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-sm text-gray-500"
+                                      x-text="(result.confidence * 100).toFixed(0) + '%'"></span>
+                            </div>
+                        </button>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function tastingReview() {
+    const extractionId = '{{ extraction_id }}';
+
+    return {
+        extractionId,
+        loading: true,
+        error: false,
+        errorMessage: '',
+        session: null,
+        currentIndex: 0,
+        stats: { approved: 0, skipped: 0, remaining: 0, all_done: false },
+        searchQuery: '',
+        searchResults: [],
+        searching: false,
+        showSearchModal: false,
+        searchTimeout: null,
+        approving: false,
+        skipping: false,
+        // Flavor notes as comma-separated strings for editing
+        noseNotesText: '',
+        palateNotesText: '',
+        finishNotesText: '',
+
+        get currentTasting() {
+            if (!this.session?.tastings) return null;
+            return this.session.tastings[this.currentIndex];
+        },
+
+        // Convert array to comma-separated string
+        arrayToText(arr) {
+            if (!arr || !Array.isArray(arr)) return '';
+            return arr.join(', ');
+        },
+
+        // Convert comma-separated string to array
+        textToArray(text) {
+            if (!text) return [];
+            return text.split(',').map(s => s.trim()).filter(s => s.length > 0);
+        },
+
+        // Update flavor notes text when tasting changes
+        syncFlavorNotesText() {
+            if (this.currentTasting?.tasting_data) {
+                this.noseNotesText = this.arrayToText(this.currentTasting.tasting_data.nose_notes);
+                this.palateNotesText = this.arrayToText(this.currentTasting.tasting_data.palate_notes);
+                this.finishNotesText = this.arrayToText(this.currentTasting.tasting_data.finish_notes);
+            }
+        },
+
+        updateNoseNotes() {
+            if (this.currentTasting?.tasting_data) {
+                this.currentTasting.tasting_data.nose_notes = this.textToArray(this.noseNotesText);
+                this.saveTastingData();
+            }
+        },
+
+        updatePalateNotes() {
+            if (this.currentTasting?.tasting_data) {
+                this.currentTasting.tasting_data.palate_notes = this.textToArray(this.palateNotesText);
+                this.saveTastingData();
+            }
+        },
+
+        updateFinishNotes() {
+            if (this.currentTasting?.tasting_data) {
+                this.currentTasting.tasting_data.finish_notes = this.textToArray(this.finishNotesText);
+                this.saveTastingData();
+            }
+        },
+
+        async loadSession() {
+            try {
+                const response = await fetch(`/api/v1/tastings/${this.extractionId}`);
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.detail || 'Failed to load session');
+                }
+                const data = await response.json();
+                this.session = data;
+                this.currentIndex = data.current_index || 0;
+                this.stats = data.stats || { approved: 0, skipped: 0, remaining: 0, all_done: false };
+                this.syncFlavorNotesText();
+                this.loading = false;
+            } catch (err) {
+                this.error = true;
+                this.errorMessage = err.message || 'Failed to load tasting session';
+                this.loading = false;
+            }
+        },
+
+        prevTasting() {
+            if (this.currentIndex > 0) {
+                this.currentIndex--;
+                this.searchResults = [];
+                this.searchQuery = '';
+                this.syncFlavorNotesText();
+            }
+        },
+
+        nextTasting() {
+            if (this.currentIndex < this.session.actual_count - 1) {
+                this.currentIndex++;
+                this.searchResults = [];
+                this.searchQuery = '';
+                this.syncFlavorNotesText();
+            }
+        },
+
+        goToTasting(index) {
+            this.currentIndex = index;
+            this.searchResults = [];
+            this.searchQuery = '';
+            this.syncFlavorNotesText();
+        },
+
+        async saveTastingData() {
+            if (!this.currentTasting) return;
+
+            try {
+                await fetch(`/api/v1/tastings/${this.extractionId}/${this.currentIndex}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tasting_data: this.currentTasting.tasting_data })
+                });
+            } catch (err) {
+                console.error('Failed to save tasting data:', err);
+            }
+        },
+
+        async selectMatch(bottlePath) {
+            try {
+                console.log(`Selecting match: ${bottlePath} for tasting ${this.currentIndex}`);
+                const response = await fetch(`/api/v1/tastings/${this.extractionId}/${this.currentIndex}/match`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bottle_path: bottlePath })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Match selection failed:', response.status, errorText);
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+
+                const data = await response.json();
+                console.log('Match selected successfully:', data);
+                this.session.tastings[this.currentIndex].selected_match = bottlePath;
+                this.session.tastings[this.currentIndex].status = 'matched';
+                this.session.tastings[this.currentIndex].duplicate_warning = data.duplicate_warning;
+                this.searchResults = [];
+            } catch (err) {
+                console.error('selectMatch error:', err);
+                alert('Failed to select match: ' + err.message);
+            }
+        },
+
+        async selectMatchFromSearch(bottlePath) {
+            await this.selectMatch(bottlePath);
+            this.showSearchModal = false;
+            this.searchQuery = '';
+            this.searchResults = [];
+        },
+
+        clearMatch() {
+            this.session.tastings[this.currentIndex].selected_match = null;
+            this.session.tastings[this.currentIndex].status = 'extracted';
+        },
+
+        getSelectedMatchThumbnail() {
+            const match = this.currentTasting?.match_candidates?.find(
+                c => c.bottle_path === this.currentTasting?.selected_match
+            );
+            return match?.thumbnail_url || null;
+        },
+
+        getSelectedMatchName() {
+            const match = this.currentTasting?.match_candidates?.find(
+                c => c.bottle_path === this.currentTasting?.selected_match
+            );
+            return match?.bottle_name || this.currentTasting?.selected_match;
+        },
+
+        getSelectedMatchConfidence() {
+            const match = this.currentTasting?.match_candidates?.find(
+                c => c.bottle_path === this.currentTasting?.selected_match
+            );
+            return match?.confidence || 0;
+        },
+
+        debouncedSearch() {
+            // Clear existing timeout
+            if (this.searchTimeout) {
+                clearTimeout(this.searchTimeout);
+            }
+
+            // If query is empty, clear results
+            if (!this.searchQuery.trim()) {
+                this.searchResults = [];
+                this.searching = false;
+                return;
+            }
+
+            // Set new timeout to search after 100ms of no typing
+            this.searching = true;
+            this.searchTimeout = setTimeout(() => {
+                this.searchBottles();
+            }, 100);
+        },
+
+        async searchBottles() {
+            if (!this.searchQuery.trim()) {
+                this.searchResults = [];
+                this.searching = false;
+                return;
+            }
+
+            console.log(`Searching for: "${this.searchQuery}", beverage_type: ${this.session?.beverage_type}`);
+            try {
+                const url = `/api/v1/bottles/search?q=${encodeURIComponent(this.searchQuery)}&beverage_type=${this.session.beverage_type}&limit=20`;
+                console.log('Search URL:', url);
+
+                const response = await fetch(url, {
+                    credentials: 'same-origin'
+                });
+                console.log('Search response status:', response.status);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Search failed:', response.status, errorText);
+                    throw new Error(`Search failed: ${response.status} - ${errorText}`);
+                }
+
+                const data = await response.json();
+                console.log('Search results:', data);
+                this.searchResults = data.results || [];
+                console.log(`Found ${this.searchResults.length} results`);
+            } catch (err) {
+                console.error('Search error:', err);
+                alert('Search failed: ' + err.message);
+                this.searchResults = [];
+            } finally {
+                this.searching = false;
+            }
+        },
+
+        async approveTasting() {
+            if (!this.currentTasting?.selected_match) return;
+
+            this.approving = true;
+            try {
+                const response = await fetch(`/api/v1/tastings/${this.extractionId}/${this.currentIndex}/approve`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.detail || 'Failed to approve');
+                }
+
+                const data = await response.json();
+                this.session.tastings[this.currentIndex].status = 'approved';
+                this.stats = data.stats;
+
+                // Move to next unapproved tasting
+                if (!this.stats.all_done) {
+                    this.findNextPending();
+                }
+            } catch (err) {
+                alert('Failed to approve: ' + err.message);
+            } finally {
+                this.approving = false;
+            }
+        },
+
+        async skipTasting() {
+            this.skipping = true;
+            try {
+                const response = await fetch(`/api/v1/tastings/${this.extractionId}/${this.currentIndex}/skip`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Failed to skip');
+
+                const data = await response.json();
+                this.session.tastings[this.currentIndex].status = 'skipped';
+                this.stats = data.stats;
+
+                // Move to next unapproved tasting
+                if (!this.stats.all_done) {
+                    this.findNextPending();
+                }
+            } catch (err) {
+                alert('Failed to skip: ' + err.message);
+            } finally {
+                this.skipping = false;
+            }
+        },
+
+        findNextPending() {
+            for (let i = 0; i < this.session.tastings.length; i++) {
+                const t = this.session.tastings[i];
+                if (t.status !== 'approved' && t.status !== 'skipped') {
+                    this.currentIndex = i;
+                    return;
+                }
+            }
+        },
+
+        async rejectAll() {
+            if (!confirm('Discard all tastings? This cannot be undone.')) return;
+
+            try {
+                const response = await fetch(`/api/v1/tastings/${this.extractionId}/reject-all`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Failed to reject');
+
+                window.location.href = '/upload';
+            } catch (err) {
+                alert('Failed to reject: ' + err.message);
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

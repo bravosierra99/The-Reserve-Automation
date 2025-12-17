@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import shutil
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -117,12 +118,8 @@ class UploadService:
         """
         session_dir = self.temp_dir / session_id
         if session_dir.exists():
-            # Remove all files in session directory
-            for file_path in session_dir.iterdir():
-                if file_path.is_file():
-                    file_path.unlink()
-            # Remove directory
-            session_dir.rmdir()
+            # Recursively remove directory and all contents (including subdirectories)
+            shutil.rmtree(session_dir)
 
     def cleanup_old_files(self, max_age_hours: int) -> int:
         """

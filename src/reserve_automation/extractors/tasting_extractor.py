@@ -1,5 +1,6 @@
 """Extract tasting notes from filled-out tasting card images."""
 
+import json
 import logging
 from datetime import date
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import Literal, Optional
 from ..core.models import LLMRequest
 from ..core.tasting_note import TastingExtractionResult, TastingNote
 from ..llm.gateway import LLMGateway
+from ..utils.table_ocr import detect_table_structure
+from ..utils.llm_whisperer import extract_layout_text
 
 logger = logging.getLogger(__name__)
 
@@ -15,13 +18,15 @@ logger = logging.getLogger(__name__)
 class TastingExtractor:
     """Extract structured tasting notes from images of filled-out tasting cards."""
 
-    def __init__(self, llm_gateway: LLMGateway):
+    def __init__(self, llm_gateway: LLMGateway, extraction_config: Optional[dict] = None):
         self.llm = llm_gateway
+        self.extraction_config = extraction_config or {}
 
     async def extract_from_image(
         self,
         image_path: Path,
         template_type: Optional[Literal["aws_wine", "bourbon"]] = None,
+        expected_count: Optional[int] = None,
     ) -> TastingExtractionResult:
         """
         Extract tasting notes from an image of a filled-out tasting card.
@@ -29,11 +34,12 @@ class TastingExtractor:
         Args:
             image_path: Path to image file
             template_type: Type of template (auto-detected if None)
+            expected_count: User-specified expected number of tastings (helps guide extraction)
 
         Returns:
             TastingExtractionResult with extracted tastings
         """
-        logger.info(f"Extracting tasting notes from {image_path}")
+        logger.info(f"Extracting tasting notes from {image_path} (expected_count={expected_count})")
 
         # Step 1: Auto-detect template type if not provided
         if template_type is None:
@@ -42,7 +48,7 @@ class TastingExtractor:
 
         # Step 2: Extract based on template type
         if template_type == "aws_wine":
-            result = await self._extract_aws_wine(image_path)
+            result = await self._extract_aws_wine(image_path, expected_count=expected_count)
         elif template_type == "bourbon":
             result = await self._extract_bourbon(image_path)
         else:
@@ -92,17 +98,69 @@ Return ONLY the template type as a single word:
             # Default based on content
             return "bourbon" if "bourbon" in result else "aws_wine"
 
-    async def _extract_aws_wine(self, image_path: Path) -> TastingExtractionResult:
-        """Extract tasting notes from AWS Wine Evaluation Chart."""
+    async def _extract_aws_wine(self, image_path: Path, expected_count: Optional[int] = None) -> TastingExtractionResult:
+        """
+        Extract tasting notes from AWS Wine Evaluation Chart using hybrid approach.
+
+        Uses OCR for:
+        - Auto-rotation detection
+        - Table structure detection (row boundaries)
+
+        Then uses LLM for:
+        - Handwritten content extraction guided by detected structure
+        """
+        # Step 1: Use OCR to detect table structure
+        try:
+            structure = detect_table_structure(image_path)
+            logger.info(
+                f"Detected table structure: {structure['num_rows']} rows, "
+                f"rotation: {structure['rotation_angle']}°"
+            )
+
+            # Save rotation-corrected image for LLM
+            import tempfile
+            import cv2
+            corrected_path = Path(tempfile.mktemp(suffix='.jpg'))
+            cv2.imwrite(str(corrected_path), structure['rotated_image'])
+
+            # Step 2: Extract using LLM with structure guidance
+            result = await self._extract_aws_wine_llm_guided(
+                corrected_path,
+                num_rows=structure['num_rows'],
+                row_boundaries=structure['row_boundaries'],
+                column_boundaries=structure['column_boundaries'],
+                column_text=structure['column_text'],
+                expected_count=expected_count
+            )
+
+            # Clean up temporary file
+            corrected_path.unlink(missing_ok=True)
+
+            return result
+
+        except Exception as e:
+            logger.warning(f"OCR structure detection failed: {e}, falling back to LLM-only")
+            return await self._extract_aws_wine_llm(image_path)
+
+    async def _extract_aws_wine_llm(self, image_path: Path) -> TastingExtractionResult:
+        """Extract tasting notes from AWS Wine Evaluation Chart using LLM (fallback)."""
         prompt = """
 Extract ALL tasting notes from this AWS Wine Evaluation Chart image.
 
 The chart has the following structure:
 - Header: Name (taster), Date, Place, Theme
-- Table columns: Wine | Price | Appearance (3 max) | Aroma/Bouquet (6 max) | Taste/Texture (6 max) | Aftertaste (3 max) | Overall Impression (2 max) | Total Score (20 max)
+- Table with ROWS for each wine. Each ROW has columns: Wine | Price | Appearance (3 max) | Aroma/Bouquet (6 max) | Taste/Texture (6 max) | Aftertaste (3 max) | Overall Impression (2 max) | Total Score (20 max)
 
-For EACH wine row that has been filled out, extract:
-1. Wine name (from "Wine" column)
+CRITICAL - Row Detection Rules:
+1. The table has EXACTLY 4 ROWS for wines (look for horizontal lines separating rows)
+2. Each ROW is a SINGLE wine, even if the wine name spans multiple lines within that row
+3. A row is considered "filled out" ONLY if it has at least one score value (Appearance, Aroma, Taste, Aftertaste, Overall, or Total)
+4. Empty rows (no scores written) should be SKIPPED entirely
+5. Wine names may wrap to multiple lines within a single row - combine them into one name
+6. Do NOT split a single wine name into multiple wines
+
+For EACH filled-out row, extract:
+1. Wine name (combine all text in the Wine column for that row)
 2. Price (if filled in)
 3. Appearance score (0-3)
 4. Aroma/Bouquet score (0-6)
@@ -125,22 +183,28 @@ Return a JSON object with this structure:
   "theme": "...",
   "tastings": [
     {
-      "bottle_name": "Wine name",
+      "bottle_name": "Complete wine name from that row",
       "price": "...",
-      "appearance": 2.5,
-      "aroma": 5.0,
-      "taste": 5.5,
-      "aftertaste": 2.5,
-      "overall": 1.5,
-      "total_score": 17.0
+      "wine_appearance": 2.5,
+      "wine_aroma": 5.0,
+      "wine_taste": 5.5,
+      "wine_aftertaste": 2.5,
+      "wine_overall": 1.5,
+      "nose_notes": ["array", "of", "strings describing nose/aroma notes, if present"],
+      "palate_notes": ["array", "of", "strings describing palate/taste notes, if present"],
+      "finish_notes": ["array", "of", "strings describing finish/aftertaste notes, if present"],
+      "overall_notes": "string with overall tasting notes if present"
     }
   ]
 }
 
 Important:
-- Only include wines that have been filled out (non-empty rows)
+- ONLY include rows that have at least one score filled in
+- Each physical table row = one wine entry (even if name wraps)
+- Count the horizontal lines to identify separate rows
 - If a score is partially filled or unclear, estimate it
 - If date is missing the year, use 2025
+- Extract any handwritten tasting notes if present in the row (nose, palate, finish, overall observations)
 - Return valid JSON only, no other text
 """
 
@@ -167,11 +231,15 @@ Important:
                 taster_name=data.get("taster_name", "Unknown"),
                 tasting_date=date.fromisoformat(data.get("tasting_date", str(date.today()))),
                 beverage_type="wine",
-                wine_appearance=wine_data.get("appearance"),
-                wine_aroma=wine_data.get("aroma"),
-                wine_taste=wine_data.get("taste"),
-                wine_aftertaste=wine_data.get("aftertaste"),
-                wine_overall=wine_data.get("overall"),
+                wine_appearance=wine_data.get("wine_appearance"),
+                wine_aroma=wine_data.get("wine_aroma"),
+                wine_taste=wine_data.get("wine_taste"),
+                wine_aftertaste=wine_data.get("wine_aftertaste"),
+                wine_overall=wine_data.get("wine_overall"),
+                nose_notes=wine_data.get("nose_notes"),
+                palate_notes=wine_data.get("palate_notes"),
+                finish_notes=wine_data.get("finish_notes"),
+                overall_notes=wine_data.get("overall_notes"),
                 place=data.get("place"),
                 theme=data.get("theme"),
                 price=wine_data.get("price"),
@@ -184,6 +252,125 @@ Important:
             template_type="aws_wine",
             raw_text=response.content,
             confidence=0.8,
+        )
+
+    async def _extract_aws_wine_llm_guided(
+        self,
+        image_path: Path,
+        num_rows: int,
+        row_boundaries: list[dict],
+        column_boundaries: list[dict],
+        column_text: dict,
+        expected_count: Optional[int] = None
+    ) -> TastingExtractionResult:
+        """
+        Extract tasting notes from AWS Wine Evaluation Chart using LLMWhisperer + LLM.
+
+        Uses LLMWhisperer API to get layout-preserving ASCII representation of the table,
+        then passes that to the local LLM for structured extraction.
+
+        Args:
+            image_path: Path to rotation-corrected image
+            num_rows: Number of rows detected by OCR (may not be used)
+            row_boundaries: List of row boundary dicts from OCR (may not be used)
+            column_boundaries: List of column boundary dicts from OCR (may not be used)
+            column_text: Dict mapping column labels to OCR-extracted text per row (may not be used)
+            expected_count: User-specified expected number of tastings
+        """
+        logger.info(f"Using LLMWhisperer for layout-preserving text extraction from {image_path}")
+
+        # Step 1: Use LLMWhisperer to extract layout-preserving ASCII text
+        try:
+            layout_text = extract_layout_text(image_path, self.extraction_config)
+            logger.info(f"LLMWhisperer extracted {len(layout_text)} characters")
+            logger.debug(f"Layout text preview: {layout_text[:500]}")
+        except Exception as e:
+            logger.error(f"LLMWhisperer extraction failed: {e}")
+            # Fall back to image-only extraction if LLMWhisperer fails
+            logger.info("Falling back to image-only extraction")
+            return await self._extract_aws_wine_llm(image_path)
+
+        # Step 2: Build prompt that uses the layout-preserving text
+        prompt = f"""Extract ALL wines from this tasting table. Return ONLY valid JSON, no markdown, no explanations.
+
+Table:
+{layout_text}
+
+Extract the shared metadata (taster, date, place) and ALL wine rows. Return this exact JSON structure:
+
+{{{{
+  "taster_name": "string",
+  "tasting_date": "YYYY-MM-DD",
+  "place": "string or null",
+  "theme": "string or null",
+  "tastings": [
+    {{{{
+      "bottle_name": "string",
+      "beverage_type": "wine",
+      "price": "string or null",
+      "wine_appearance": number or null,
+      "wine_aroma": number or null,
+      "wine_taste": number or null,
+      "wine_aftertaste": number or null,
+      "wine_overall": number or null,
+      "nose_notes": ["array", "of", "strings"] or null,
+      "palate_notes": ["array", "of", "strings"] or null,
+      "finish_notes": ["array", "of", "strings"] or null,
+      "overall_notes": "string or null"
+    }}}}
+  ]
+}}}}
+
+CRITICAL: Extract EVERY wine row from the table. Each row is a separate object in the "tastings" array. Do not skip any rows.
+
+Return ONLY the JSON object."""
+
+        # Read image file as bytes
+        with open(image_path, 'rb') as f:
+            image_bytes = f.read()
+
+        response = await self.llm.complete(
+            task_type="structured_extraction",
+            prompt=prompt,
+            images=[image_bytes],
+            response_format="json"
+        )
+
+        # Log raw LLM response for debugging
+        logger.debug(f"Raw LLM response: {response.content[:1000]}")  # Log first 1000 chars
+
+        # Parse response and create TastingNote objects
+        data = json.loads(response.content)
+        logger.debug(f"Parsed JSON data: {json.dumps(data, indent=2)}")
+
+        tastings = []
+        for wine_data in data.get("tastings", []):
+            tasting = TastingNote(
+                bottle_name=wine_data["bottle_name"],
+                taster_name=data.get("taster_name", "Unknown"),
+                tasting_date=date.fromisoformat(data.get("tasting_date", str(date.today()))),
+                beverage_type="wine",
+                wine_appearance=wine_data.get("wine_appearance"),
+                wine_aroma=wine_data.get("wine_aroma"),
+                wine_taste=wine_data.get("wine_taste"),
+                wine_aftertaste=wine_data.get("wine_aftertaste"),
+                wine_overall=wine_data.get("wine_overall"),
+                nose_notes=wine_data.get("nose_notes"),
+                palate_notes=wine_data.get("palate_notes"),
+                finish_notes=wine_data.get("finish_notes"),
+                overall_notes=wine_data.get("overall_notes"),
+                place=data.get("place"),
+                theme=data.get("theme"),
+                price=wine_data.get("price"),
+                confidence=0.9,  # Higher confidence with structure guidance
+            )
+            tastings.append(tasting)
+
+        return TastingExtractionResult(
+            tastings=tastings,
+            template_type="aws_wine",
+            raw_text=response.content,
+            confidence=0.9,
         )
 
     async def _extract_bourbon(self, image_path: Path) -> TastingExtractionResult:
@@ -314,3 +501,48 @@ Return valid JSON only, no other text.
         }
 
         return score_ranges.get(rating, score_ranges[3])  # Default to 3 if unknown
+
+    def _parse_date(self, date_str: Optional[str]) -> date:
+        """Parse date string from various formats."""
+        if not date_str:
+            return date.today()
+
+        # Try common formats
+        import re
+        from datetime import datetime
+
+        # Clean up the date string
+        date_str = date_str.strip()
+
+        # Try ISO format first
+        try:
+            return date.fromisoformat(date_str)
+        except (ValueError, AttributeError):
+            pass
+
+        # Try common formats
+        formats = [
+            "%Y-%m-%d",
+            "%m/%d/%Y",
+            "%d/%m/%Y",
+            "%B %d, %Y",
+            "%b %d, %Y",
+            "%m-%d-%Y",
+            "%d-%m-%Y",
+            "%Y/%m/%d",
+            "%m/%d/%y",
+            "%b %d %Y",
+            "%B %d %Y",
+            "%d %b %Y",
+            "%d %B %Y",
+        ]
+
+        for fmt in formats:
+            try:
+                return datetime.strptime(date_str, fmt).date()
+            except (ValueError, AttributeError):
+                continue
+
+        # If all else fails, return today
+        logger.warning(f"Could not parse date: {date_str}, using today's date")
+        return date.today()

@@ -1,0 +1,1067 @@
+{% extends "base.html" %}
+
+{% block title %}Review Bottles - The Reserve{% endblock %}
+
+{% block content %}
+<div x-data="bottleReviewForm()" x-init="loadExtraction()" class="max-w-6xl mx-auto">
+    <!-- Loading State -->
+    <div x-show="loading" class="text-center py-16">
+        <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
+        <p class="text-gray-600 text-lg">Loading extraction...</p>
+    </div>
+
+    <!-- Error State -->
+    <div x-show="error" class="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
+        <h3 class="text-red-800 font-bold text-lg mb-2">Error Loading Extraction</h3>
+        <p class="text-red-700" x-text="errorMessage"></p>
+        <a href="/upload-bottles" class="mt-4 inline-block text-blue-600 hover:text-blue-800 font-semibold">
+            ← Back to Upload
+        </a>
+    </div>
+
+    <!-- Review Content -->
+    <div x-show="!loading && !error && extraction">
+        <!-- Progress Bar -->
+        <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="font-bold text-gray-800">Progress</h3>
+                <span class="text-sm text-gray-600">
+                    Bottle <span x-text="currentIndex + 1"></span> of <span x-text="extraction?.bottles?.length"></span>
+                </span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2">
+                <div class="bg-blue-600 h-2 rounded-full transition-all"
+                     :style="`width: ${((currentIndex + 1) / (extraction?.bottles?.length || 1)) * 100}%`"></div>
+            </div>
+        </div>
+
+        <!-- Extraction Count Warning -->
+        <div x-show="extraction?.expected_count && extraction?.bottles?.length < extraction?.expected_count"
+             class="bg-yellow-50 border border-yellow-300 rounded-lg p-4 mb-6">
+            <div class="flex items-start">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                    </svg>
+                </div>
+                <div class="ml-3 flex-1">
+                    <h3 class="text-sm font-medium text-yellow-800">
+                        Incomplete Extraction Detected
+                    </h3>
+                    <div class="mt-2 text-sm text-yellow-700">
+                        <p>
+                            Expected <span class="font-semibold" x-text="extraction?.expected_count"></span> bottles,
+                            but only extracted <span class="font-semibold" x-text="extraction?.bottles?.length"></span>.
+                            The LLM may have missed some bottles in the image.
+                        </p>
+                    </div>
+                    <div class="mt-4">
+                        <button @click="reExtract()" :disabled="reExtracting"
+                                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <svg x-show="reExtracting" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span x-text="reExtracting ? 'Re-extracting...' : '🔄 Try Extraction Again'"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Current Bottle Review -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6" x-show="currentBottle">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800">Review Bottle</h2>
+                    <p class="text-gray-600 mt-1">
+                        Stage: <span x-text="currentBottle?.stage" class="font-semibold capitalize"></span>
+                    </p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <!-- Navigation Buttons -->
+                    <div class="flex items-center gap-2">
+                        <button
+                            @click="previousBottle()"
+                            :disabled="currentIndex === 0"
+                            class="px-4 py-2 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors"
+                        >
+                            ← Previous
+                        </button>
+                        <span class="text-gray-700 font-semibold">
+                            <span x-text="currentIndex + 1"></span> / <span x-text="extraction?.bottles?.length || 0"></span>
+                        </span>
+                        <button
+                            @click="nextBottle()"
+                            :disabled="currentIndex >= (extraction?.bottles?.length || 0) - 1"
+                            class="px-4 py-2 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors"
+                        >
+                            Next →
+                        </button>
+                    </div>
+                    <a href="/upload-bottles" class="text-blue-600 hover:text-blue-800 font-semibold">
+                        ← Upload Another
+                    </a>
+                </div>
+            </div>
+
+            <!-- Stage 1: Extracted Data -->
+            <div class="mb-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-3 flex items-center">
+                    <span class="inline-block w-8 h-8 rounded-full bg-blue-600 text-white text-center mr-2">1</span>
+                    Extracted Data
+                </h3>
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Producer/Distiller</label>
+                            <input type="text" x-model="currentBottle.bottle.producer"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Name</label>
+                            <input type="text" x-model="currentBottle.bottle.name"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Year/Vintage</label>
+                            <input type="number" x-model.number="currentBottle.bottle.year"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Type</label>
+                            <input type="text" x-model="currentBottle.bottle.beverage_type"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Region</label>
+                            <input type="text" x-model="currentBottle.bottle.region"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Country</label>
+                            <input type="text" x-model="currentBottle.bottle.country"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Variety/Grape</label>
+                            <input type="text" x-model="currentBottle.bottle.variety"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Price</label>
+                            <input type="number" step="0.01" x-model.number="currentBottle.bottle.price"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+
+                    <!-- Wine-specific fields -->
+                    <div x-show="currentBottle?.bottle?.beverage_type === 'wine'" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-200">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Vineyard</label>
+                            <input type="text" x-model="currentBottle.bottle.vineyard"
+                                   placeholder="Specific vineyard name"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">ABV (%)</label>
+                            <input type="number" step="0.1" x-model.number="currentBottle.bottle.abv"
+                                   placeholder="e.g., 13.5"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+
+                    <!-- Whiskey-specific fields -->
+                    <div x-show="currentBottle?.bottle?.beverage_type !== 'wine'" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-200">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Age Statement</label>
+                            <input type="text" x-model="currentBottle.bottle.age_statement"
+                                   placeholder="e.g., 12 Year, NAS"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Proof</label>
+                            <input type="number" step="0.1" x-model.number="currentBottle.bottle.proof"
+                                   placeholder="e.g., 100"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Mash Bill</label>
+                            <input type="text" x-model="currentBottle.bottle.mash_bill"
+                                   placeholder="e.g., 75% corn, 21% rye, 4% malted barley"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Barrel Type</label>
+                            <input type="text" x-model="currentBottle.bottle.barrel_type"
+                                   placeholder="e.g., New Charred Oak, Sherry Cask"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+
+                    <!-- Notes field (shared) -->
+                    <div class="mt-4 pt-4 border-t border-gray-200">
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">Notes</label>
+                        <textarea x-model="currentBottle.bottle.notes" rows="2"
+                                  placeholder="Additional notes about this bottle"
+                                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 2: Enrichment -->
+            <div class="mb-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-3 flex items-center">
+                    <span class="inline-block w-8 h-8 rounded-full text-white text-center mr-2"
+                          :class="currentBottle?.stage === 'enriched' ? 'bg-green-600' : 'bg-gray-400'">2</span>
+                    Metadata Enrichment
+                </h3>
+
+                <div x-show="currentBottle?.stage === 'extracted'" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p class="text-yellow-800 mb-3">Run web search to gather additional metadata (ABV, variety, detailed region, etc.)</p>
+                    <button
+                        @click="enrichBottle"
+                        :disabled="enriching"
+                        class="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-lg shadow transition-colors"
+                    >
+                        <span x-show="!enriching">🔍 Enrich with Web Search</span>
+                        <span x-show="enriching">Searching...</span>
+                    </button>
+                </div>
+
+                <div x-show="currentBottle?.stage === 'enriched'" class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <p class="text-green-800 font-semibold mb-2">✓ Enrichment Complete</p>
+                    <div x-show="enrichmentChanges && Object.keys(enrichmentChanges).length > 0">
+                        <p class="text-sm text-green-700 mb-2">Fields updated:</p>
+                        <ul class="list-disc list-inside text-sm text-green-700 mb-3">
+                            <template x-for="(change, field) in enrichmentChanges" :key="field">
+                                <li><span class="font-semibold" x-text="field"></span>: <span x-text="change.new"></span></li>
+                            </template>
+                        </ul>
+                    </div>
+                    <div x-show="!enrichmentChanges || Object.keys(enrichmentChanges).length === 0" class="mb-3">
+                        <p class="text-sm text-green-700">All data verified, no changes needed</p>
+                    </div>
+                    <button
+                        @click="enrichBottle"
+                        :disabled="enriching"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white text-sm font-semibold rounded-lg shadow transition-colors"
+                    >
+                        <span x-show="!enriching">🔄 Re-run Enrichment</span>
+                        <span x-show="enriching">Searching...</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stage 2.3: Duplicate Detection -->
+            <div class="mb-6" x-show="currentBottle?.stage === 'extracted' || currentBottle?.stage === 'enriched'">
+                <h3 class="text-lg font-bold text-gray-800 mb-3 flex items-center">
+                    <span class="inline-block w-8 h-8 rounded-full text-white text-center mr-2"
+                          :class="currentBottle?.potential_duplicates !== undefined ? 'bg-green-600' : 'bg-gray-400'">2.3</span>
+                    Duplicate Check
+                </h3>
+
+                <!-- Check Button -->
+                <div x-show="currentBottle?.potential_duplicates === undefined" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p class="text-blue-800 mb-3">Check if this bottle already exists in your vault</p>
+                    <button
+                        @click="checkDuplicates"
+                        :disabled="checkingDuplicates"
+                        class="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-lg shadow transition-colors"
+                    >
+                        <span x-show="!checkingDuplicates">🔍 Check for Duplicates</span>
+                        <span x-show="checkingDuplicates">Checking...</span>
+                    </button>
+                </div>
+
+                <!-- Duplicates Found -->
+                <div x-show="currentBottle?.potential_duplicates && currentBottle.potential_duplicates.length > 0" class="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                    <p class="text-orange-800 font-semibold mb-3">⚠️ Potential duplicates found</p>
+                    <p class="text-sm text-orange-700 mb-4">The following bottles in your vault are similar. Review them before saving:</p>
+
+                    <div class="space-y-2 mb-4">
+                        <template x-for="(dup, idx) in currentBottle.potential_duplicates" :key="idx">
+                            <div class="bg-white border border-orange-300 rounded-lg p-3">
+                                <div class="flex gap-3 items-start">
+                                    <!-- Label image (if available) -->
+                                    <div x-show="dup.label_url" class="flex-shrink-0">
+                                        <img :src="dup.label_url"
+                                             :alt="dup.filename"
+                                             class="w-20 h-20 object-cover rounded border border-gray-300"
+                                             @error="$el.style.display='none'">
+                                    </div>
+                                    <!-- Duplicate info -->
+                                    <div class="flex-1">
+                                        <p class="font-semibold text-gray-800" x-text="dup.filename"></p>
+                                        <p class="text-sm text-gray-600" x-text="dup.reason"></p>
+                                        <p class="text-xs text-gray-500" x-text="dup.file_path"></p>
+                                    </div>
+                                    <!-- Confidence badge -->
+                                    <span class="ml-3 px-2 py-1 rounded text-sm font-semibold flex-shrink-0"
+                                          :class="dup.confidence >= 0.9 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'"
+                                          x-text="Math.round(dup.confidence * 100) + '%'"></span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button
+                            @click="skipBottle()"
+                            class="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg"
+                        >
+                            ⏭️ Skip This Bottle
+                        </button>
+                        <button
+                            @click="checkDuplicates()"
+                            :disabled="checkingDuplicates"
+                            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-lg"
+                        >
+                            <span x-show="!checkingDuplicates">🔄 Check Again</span>
+                            <span x-show="checkingDuplicates">Checking...</span>
+                        </button>
+                    </div>
+                    <p class="text-sm text-orange-700 mt-3">Or continue below to save anyway (will overwrite if exact match)</p>
+                </div>
+
+                <!-- No Duplicates Found -->
+                <div x-show="currentBottle?.potential_duplicates && currentBottle.potential_duplicates.length === 0" class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <p class="text-green-800 font-semibold">✓ No duplicates found</p>
+                    <p class="text-sm text-green-700 mb-3">This bottle doesn't appear to exist in your vault yet.</p>
+                    <button
+                        @click="checkDuplicates()"
+                        :disabled="checkingDuplicates"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white text-sm font-semibold rounded-lg"
+                    >
+                        <span x-show="!checkingDuplicates">🔄 Check Again</span>
+                        <span x-show="checkingDuplicates">Checking...</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stage 2.5: Label Selection -->
+            <div class="mb-6" x-show="currentBottle?.stage === 'extracted' || currentBottle?.stage === 'enriched'">
+                <h3 class="text-lg font-bold text-gray-800 mb-3 flex items-center">
+                    <span class="inline-block w-8 h-8 rounded-full text-white text-center mr-2"
+                          :class="currentBottle?.selected_label || currentBottle?.label_choice === 'none' ? 'bg-green-600' : 'bg-gray-400'">2.5</span>
+                    Label Selection
+                </h3>
+
+                <!-- Find Labels Button -->
+                <div x-show="!currentBottle?.label_candidates && currentBottle?.label_choice !== 'none'" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p class="text-blue-800 mb-3">Search for bottle label images online</p>
+                    <button
+                        @click="findLabels"
+                        :disabled="findingLabels"
+                        class="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-lg shadow transition-colors"
+                    >
+                        <span x-show="!findingLabels">🔍 Find Labels</span>
+                        <span x-show="findingLabels">Searching...</span>
+                    </button>
+                </div>
+
+                <!-- No Labels Found -->
+                <div x-show="currentBottle?.label_candidates && currentBottle.label_candidates.length === 0 && !currentBottle?.selected_label" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p class="text-yellow-800 font-semibold mb-3">⚠️ No label images found</p>
+                    <p class="text-sm text-yellow-700 mb-4">The search didn't find any suitable label images. You can try searching again or upload your own.</p>
+                    <div class="flex gap-2">
+                        <button
+                            @click="searchAgain()"
+                            :disabled="findingLabels"
+                            class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-lg"
+                        >
+                            <span x-show="!findingLabels">🔄 Search Again</span>
+                            <span x-show="findingLabels">Searching...</span>
+                        </button>
+                        <button
+                            @click="showManualUpload = true"
+                            class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg"
+                        >
+                            📁 Upload My Own
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Label Candidates -->
+                <div x-show="currentBottle?.label_candidates && currentBottle?.label_candidates.length > 0 && !currentBottle?.selected_label" class="bg-white border border-gray-200 rounded-lg p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <p class="text-gray-800 font-semibold">Select a label image:</p>
+                        <button
+                            @click="searchAgain()"
+                            :disabled="findingLabels"
+                            class="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-lg"
+                        >
+                            <span x-show="!findingLabels">🔄 Search Again</span>
+                            <span x-show="findingLabels">Searching...</span>
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                        <template x-for="(candidate, idx) in currentBottle.label_candidates" :key="idx">
+                            <div
+                                @click="selectLabelCandidate(candidate.url)"
+                                class="border-2 rounded-lg p-2 cursor-pointer hover:border-blue-500 transition-colors"
+                                :class="selectedCandidateUrl === candidate.url ? 'border-blue-600 bg-blue-50' : 'border-gray-300'"
+                            >
+                                <img :src="candidate.url" :alt="candidate.description" class="w-full h-40 object-contain mb-2">
+                                <p class="text-xs text-gray-600 truncate" x-text="candidate.source"></p>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="flex gap-2">
+                        <button
+                            @click="downloadAndCropLabel()"
+                            :disabled="!selectedCandidateUrl || processingLabel"
+                            class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-lg"
+                        >
+                            <span x-show="!processingLabel">Download & Preview Crop</span>
+                            <span x-show="processingLabel">Processing...</span>
+                        </button>
+                        <button
+                            @click="showManualUpload = true"
+                            class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg"
+                        >
+                            📁 Upload My Own
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Manual Upload -->
+                <div x-show="showManualUpload && !currentBottle?.selected_label" class="bg-white border border-gray-200 rounded-lg p-4">
+                    <p class="text-gray-800 font-semibold mb-3">Upload your own label image:</p>
+                    <div class="mb-4">
+                        <input
+                            type="file"
+                            accept="image/*"
+                            @change="handleManualUpload($event)"
+                            class="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        >
+                    </div>
+                    <div x-show="manualUploadPreview" class="mb-4">
+                        <img :src="manualUploadPreview" alt="Upload preview" class="max-h-64 mx-auto border-2 border-gray-300 rounded-lg">
+                    </div>
+                    <div class="flex gap-2">
+                        <button
+                            @click="uploadManualLabel(true)"
+                            :disabled="!manualUploadFile || processingLabel"
+                            class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-lg"
+                        >
+                            <span x-show="!processingLabel">✓ Use & Try to Crop</span>
+                            <span x-show="processingLabel">Processing...</span>
+                        </button>
+                        <button
+                            @click="uploadManualLabel(false)"
+                            :disabled="!manualUploadFile || processingLabel"
+                            class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-lg"
+                        >
+                            <span x-show="!processingLabel">✓ Use As-Is</span>
+                            <span x-show="processingLabel">Processing...</span>
+                        </button>
+                        <button
+                            @click="cancelManualUpload()"
+                            class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Crop Approval -->
+                <div x-show="labelPreview && !labelChoice" class="bg-white border border-gray-200 rounded-lg p-4">
+                    <p class="text-gray-800 font-semibold mb-3">Review the label image:</p>
+
+                    <!-- Alert if crop failed -->
+                    <div x-show="labelPreview && !labelPreview.has_crop" class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
+                        <p class="text-sm text-yellow-800">
+                            ⚠️ Automatic cropping did not detect distinct label boundaries. The original image will be used as-is.
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <p class="text-sm font-semibold text-gray-700 mb-2">Original Image</p>
+                            <img :src="labelPreview.original_preview" alt="Original" class="w-full border-2 border-gray-300 rounded-lg">
+                        </div>
+                        <div x-show="labelPreview.has_crop">
+                            <p class="text-sm font-semibold text-gray-700 mb-2">Cropped Version (Auto-detected)</p>
+                            <img :src="labelPreview.cropped_preview" alt="Cropped" class="w-full border-2 border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button
+                            x-show="labelPreview.has_crop"
+                            @click="confirmLabelChoice(true)"
+                            class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg"
+                        >
+                            ✓ Use Cropped Version
+                        </button>
+                        <button
+                            @click="confirmLabelChoice(false)"
+                            class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg"
+                            :class="labelPreview.has_crop ? '' : 'flex-1'"
+                        >
+                            ✓ <span x-text="labelPreview.has_crop ? 'Use Original' : 'Use This Image'"></span>
+                        </button>
+                        <button
+                            @click="cancelLabelSelection()"
+                            class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg"
+                        >
+                            ← Back to Selection
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Label Selected -->
+                <div x-show="currentBottle?.selected_label || currentBottle?.label_choice === 'none'" class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between">
+                        <p class="text-green-800 font-semibold">
+                            <template x-if="currentBottle?.label_choice === 'none'">
+                                ✓ No label selected - you can add your own label.jpg later
+                            </template>
+                            <template x-if="currentBottle?.selected_label">
+                                <span>✓ Label selected (<span x-text="currentBottle.selected_label.use_crop ? 'cropped' : 'original'"></span> version)</span>
+                            </template>
+                        </p>
+                        <button
+                            @click="resetLabelSelection()"
+                            class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg"
+                        >
+                            ✕ Reset
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 3: Final Validation -->
+            <div class="mb-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-3 flex items-center">
+                    <span class="inline-block w-8 h-8 rounded-full bg-gray-400 text-white text-center mr-2">3</span>
+                    Final Validation
+                </h3>
+
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <p class="text-gray-700 mb-3">Review all fields above and make any final edits before saving to Obsidian</p>
+
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                        <p class="text-sm text-blue-800 font-semibold">Complete metadata:</p>
+                        <p class="text-sm text-blue-700">
+                            <span x-text="currentBottle?.bottle?.producer"></span> -
+                            <span x-text="currentBottle?.bottle?.name"></span>
+                            <span x-show="currentBottle?.bottle?.year"> (<span x-text="currentBottle?.bottle?.year"></span>)</span>
+                        </p>
+                    </div>
+
+                    <div class="flex gap-4">
+                        <button
+                            @click="approveBottle"
+                            :disabled="approving"
+                            class="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-lg shadow transition-colors"
+                        >
+                            <span x-show="!approving">✓ Approve & Save to Obsidian</span>
+                            <span x-show="approving">Saving...</span>
+                        </button>
+
+                        <button
+                            @click="rejectAll"
+                            :disabled="rejecting"
+                            class="px-6 py-3 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-semibold rounded-lg shadow transition-colors"
+                        >
+                            <span x-show="!rejecting">✕ Reject All</span>
+                            <span x-show="rejecting">Rejecting...</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Success Message -->
+        <div x-show="approved" class="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+            <div class="text-green-600 text-6xl mb-4">✓</div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-2">Bottle Saved!</h3>
+            <p class="text-gray-600 mb-2" x-text="'Created: ' + (approvalResult?.file_created || '')"></p>
+
+            <div x-show="approvalResult?.remaining_bottles > 0" class="mt-6">
+                <p class="text-gray-700 mb-4">
+                    <span x-text="approvalResult?.remaining_bottles"></span> more bottle(s) to review
+                </p>
+                <button
+                    @click="nextBottle"
+                    class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow transition-colors"
+                >
+                    Next Bottle →
+                </button>
+            </div>
+
+            <div x-show="!approvalResult?.remaining_bottles || approvalResult?.remaining_bottles === 0" class="mt-6">
+                <p class="text-green-700 font-semibold mb-4">All bottles processed!</p>
+                <a href="/upload-bottles" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow transition-colors">
+                    Upload More Bottles
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function bottleReviewForm() {
+    const extractionId = window.location.pathname.split('/').pop();
+
+    return {
+        extractionId,
+        loading: true,
+        error: false,
+        errorMessage: '',
+        extraction: null,
+        currentIndex: 0,
+        currentBottle: null,
+        enriching: false,
+        enrichmentChanges: null,
+        approving: false,
+        approved: false,
+        approvalResult: null,
+        rejecting: false,
+        findingLabels: false,
+        selectedCandidateUrl: null,
+        processingLabel: false,
+        labelPreview: null,
+        labelChoice: null,
+        showManualUpload: false,
+        manualUploadFile: null,
+        manualUploadPreview: null,
+        checkingDuplicates: false,
+        reExtracting: false,
+
+        async loadExtraction() {
+            try {
+                const response = await fetch(`/api/v1/bottles/${this.extractionId}`);
+
+                if (!response.ok) {
+                    throw new Error('Failed to load extraction');
+                }
+
+                this.extraction = await response.json();
+                this.currentIndex = this.extraction.current_bottle_index || 0;
+                this.currentBottle = this.extraction.bottles[this.currentIndex];
+                this.loading = false;
+
+                // Automatically check for duplicates after loading
+                await this.checkDuplicates();
+
+            } catch (err) {
+                this.error = true;
+                this.errorMessage = err.message || 'Failed to load extraction data';
+                this.loading = false;
+            }
+        },
+
+        async enrichBottle() {
+            this.enriching = true;
+
+            try {
+                const response = await fetch(`/api/v1/bottles/${this.extractionId}/enrich/${this.currentIndex}`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to enrich bottle');
+                }
+
+                const result = await response.json();
+
+                // Update current bottle with enriched data
+                this.currentBottle.bottle = result.bottle;
+                this.currentBottle.enrichment_meta = result.enrichment_meta;
+                this.currentBottle.stage = 'enriched';
+                this.enrichmentChanges = result.enrichment_meta?.changes || {};
+
+                // Update duplicate check results if returned
+                if (result.potential_duplicates !== undefined) {
+                    this.currentBottle.potential_duplicates = result.potential_duplicates;
+                }
+
+            } catch (err) {
+                alert(`Enrichment failed: ${err.message}`);
+            } finally {
+                this.enriching = false;
+            }
+        },
+
+        async updateBottle() {
+            // Save any user edits to session
+            try {
+                const response = await fetch(`/api/v1/bottles/${this.extractionId}/update/${this.currentIndex}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        bottle: this.currentBottle.bottle
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to update bottle');
+                }
+
+            } catch (err) {
+                console.error('Update failed:', err);
+                throw err;
+            }
+        },
+
+        async approveBottle() {
+            this.approving = true;
+
+            try {
+                // First update any user edits
+                await this.updateBottle();
+
+                // Then approve and save
+                const response = await fetch(`/api/v1/bottles/${this.extractionId}/approve/${this.currentIndex}`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to approve bottle');
+                }
+
+                this.approvalResult = await response.json();
+                this.approved = true;
+
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            } finally {
+                this.approving = false;
+            }
+        },
+
+        async nextBottle() {
+            // Move to next bottle
+            if (this.currentIndex < this.extraction.bottles.length - 1) {
+                this.currentIndex++;
+                await this.loadCurrentBottle();
+            }
+        },
+
+        async previousBottle() {
+            // Move to previous bottle
+            if (this.currentIndex > 0) {
+                this.currentIndex--;
+                await this.loadCurrentBottle();
+            }
+        },
+
+        async loadCurrentBottle() {
+            // Load the bottle at currentIndex
+            this.currentBottle = this.extraction.bottles[this.currentIndex];
+
+            // Reset label-related state
+            this.labelPreview = null;
+            this.labelChoice = null;
+            this.selectedCandidateUrl = null;
+            this.showManualUpload = false;
+            this.manualUploadFile = null;
+            this.manualUploadPreview = null;
+            this.approved = false;
+            this.approvalResult = null;
+        },
+
+        async findLabels() {
+            this.findingLabels = true;
+
+            try {
+                const response = await fetch(`/api/v1/bottles/${this.extractionId}/find-labels/${this.currentIndex}`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to find labels');
+                }
+
+                const result = await response.json();
+
+                // Update current bottle with label candidates
+                this.currentBottle.label_candidates = result.label_candidates;
+
+            } catch (err) {
+                alert(`Label search failed: ${err.message}`);
+            } finally {
+                this.findingLabels = false;
+            }
+        },
+
+        selectLabelCandidate(url) {
+            this.selectedCandidateUrl = url;
+        },
+
+        async downloadAndCropLabel() {
+            if (!this.selectedCandidateUrl) {
+                return;
+            }
+
+            this.processingLabel = true;
+
+            try {
+                const response = await fetch(`/api/v1/bottles/${this.extractionId}/select-label/${this.currentIndex}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        label_url: this.selectedCandidateUrl,
+                        use_crop: true  // Initial request, will let user choose
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to process label');
+                }
+
+                const result = await response.json();
+
+                // Show crop approval UI
+                this.labelPreview = {
+                    has_crop: result.has_crop,
+                    original_preview: `/api/v1/temp-images/${this.extractionId}/${result.original_filename}`,
+                    cropped_preview: result.has_crop ? `/api/v1/temp-images/${this.extractionId}/${result.cropped_filename}` : null
+                };
+
+                // Store result for later confirmation
+                this.labelPreview.result = result;
+
+            } catch (err) {
+                alert(`Label processing failed: ${err.message}`);
+            } finally {
+                this.processingLabel = false;
+            }
+        },
+
+        async confirmLabelChoice(useCrop) {
+            // User confirmed their choice
+            this.currentBottle.selected_label = {
+                url: this.selectedCandidateUrl,
+                use_crop: useCrop,
+                ...this.labelPreview.result
+            };
+            this.currentBottle.label_choice = useCrop ? 'cropped' : 'original';
+
+            // Clear preview UI
+            this.labelPreview = null;
+            this.labelChoice = this.currentBottle.label_choice;
+        },
+
+        cancelLabelSelection() {
+            // User cancelled - go back to candidate selection
+            this.labelPreview = null;
+            this.selectedCandidateUrl = null;
+        },
+
+        async searchAgain() {
+            // Clear previous selection and search again
+            this.selectedCandidateUrl = null;
+            await this.findLabels();
+        },
+
+        async checkDuplicates() {
+            this.checkingDuplicates = true;
+
+            try {
+                const response = await fetch(`/api/v1/bottles/${this.extractionId}/check-duplicates/${this.currentIndex}`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to check duplicates');
+                }
+
+                const result = await response.json();
+
+                // Force Alpine.js reactivity by replacing the whole bottle object
+                const updatedBottle = { ...this.currentBottle };
+                updatedBottle.potential_duplicates = result.duplicates;
+                this.currentBottle = updatedBottle;
+
+                // Also update in the extraction bottles array
+                this.extraction.bottles[this.currentIndex] = updatedBottle;
+
+                console.log('Duplicates found:', result.duplicates.length);
+
+            } catch (err) {
+                alert(`Duplicate check failed: ${err.message}`);
+            } finally {
+                this.checkingDuplicates = false;
+            }
+        },
+
+        async skipBottle() {
+            if (!confirm('Skip this bottle? It will not be saved to your vault.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/v1/bottles/${this.extractionId}/skip/${this.currentIndex}`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to skip bottle');
+                }
+
+                // Mark bottle as skipped in local state
+                this.currentBottle.skipped = true;
+
+                // Move to next bottle
+                await this.nextBottle();
+
+            } catch (err) {
+                alert(`Error skipping bottle: ${err.message}`);
+            }
+        },
+
+        async reExtract() {
+            if (!confirm('Re-run extraction? This will replace all extracted bottles with a new attempt.')) {
+                return;
+            }
+
+            this.reExtracting = true;
+
+            try {
+                const response = await fetch(`/api/v1/bottles/${this.extractionId}/re-extract`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Re-extraction failed');
+                }
+
+                // Reload the page to show new extraction
+                window.location.reload();
+
+            } catch (err) {
+                alert(`Re-extraction failed: ${err.message}`);
+                this.reExtracting = false;
+            }
+        },
+
+        handleManualUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            this.manualUploadFile = file;
+
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                this.manualUploadPreview = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        },
+
+        async uploadManualLabel(tryCrop) {
+            if (!this.manualUploadFile) return;
+
+            this.processingLabel = true;
+
+            try {
+                // Create FormData to upload file
+                const formData = new FormData();
+                formData.append('file', this.manualUploadFile);
+                formData.append('try_crop', tryCrop);
+
+                const response = await fetch(`/api/v1/bottles/${this.extractionId}/upload-label/${this.currentIndex}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to upload label');
+                }
+
+                const result = await response.json();
+
+                if (tryCrop) {
+                    // Show crop approval UI
+                    this.labelPreview = {
+                        has_crop: result.has_crop,
+                        original_preview: `/api/v1/temp-images/${this.extractionId}/${result.original_filename}`,
+                        cropped_preview: result.has_crop ? `/api/v1/temp-images/${this.extractionId}/${result.cropped_filename}` : null,
+                        result: result
+                    };
+                    this.showManualUpload = false;
+                } else {
+                    // Use as-is without crop approval
+                    this.currentBottle.selected_label = {
+                        url: 'manual_upload',
+                        use_crop: false,
+                        ...result
+                    };
+                    this.currentBottle.label_choice = 'original';
+                    this.showManualUpload = false;
+                    this.manualUploadFile = null;
+                    this.manualUploadPreview = null;
+                }
+
+            } catch (err) {
+                alert(`Upload failed: ${err.message}`);
+            } finally {
+                this.processingLabel = false;
+            }
+        },
+
+        cancelManualUpload() {
+            this.showManualUpload = false;
+            this.manualUploadFile = null;
+            this.manualUploadPreview = null;
+        },
+
+        resetLabelSelection() {
+            // Clear all label-related state to start over
+            this.currentBottle.selected_label = null;
+            this.currentBottle.label_choice = null;
+            this.currentBottle.label_candidates = null;
+            this.labelPreview = null;
+            this.labelChoice = null;
+            this.selectedCandidateUrl = null;
+            this.showManualUpload = false;
+            this.manualUploadFile = null;
+            this.manualUploadPreview = null;
+        },
+
+        skipLabel() {
+            // User doesn't want any of the candidates
+            if (!confirm('Skip label selection? You can add your own label.jpg file later.')) {
+                return;
+            }
+
+            this.currentBottle.label_choice = 'none';
+            this.currentBottle.label_candidates = null;
+            this.selectedCandidateUrl = null;
+        },
+
+        async rejectAll() {
+            if (!confirm('Discard all bottles? This cannot be undone.')) {
+                return;
+            }
+
+            this.rejecting = true;
+
+            try {
+                const response = await fetch(`/api/v1/bottles/${this.extractionId}/reject`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to reject bottles');
+                }
+
+                // Redirect to upload page
+                window.location.href = '/upload-bottles';
+
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+                this.rejecting = false;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}
