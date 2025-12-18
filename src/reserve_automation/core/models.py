@@ -12,6 +12,12 @@ class BeverageType(str, Enum):
 
     WINE = "wine"
     WHISKEY = "whiskey"
+    VODKA = "vodka"
+    GIN = "gin"
+    RUM = "rum"
+    TEQUILA = "tequila"
+    BRANDY = "brandy"
+    OTHER = "other"
 
 
 class BottleMetadata(BaseModel):
@@ -23,10 +29,10 @@ class BottleMetadata(BaseModel):
 
     # Core identifiers (required)
     producer: str = Field(
-        ..., description="Winemaker/distillery name", min_length=1, max_length=200
+        ..., description="Producer/Winery/Distillery name", min_length=1, max_length=200
     )
-    name: str = Field(..., description="Wine/whiskey name", min_length=1, max_length=200)
-    type: BeverageType = Field(..., description="Wine or whiskey")
+    name: str = Field(..., description="Product name", min_length=1, max_length=200)
+    type: BeverageType = Field(..., description="Beverage category (wine, whiskey, vodka, gin, rum, tequila, brandy, other)")
 
     # Optional core fields
     year: Optional[int] = Field(None, description="Vintage/release year", ge=1800, le=2030)
@@ -52,6 +58,10 @@ class BottleMetadata(BaseModel):
     abv: Optional[float] = Field(None, ge=0, le=100)
     price: Optional[float] = Field(None, ge=0)
 
+    # Inventory and purchase info
+    purchase_source: Optional[str] = Field(None, description="Where the bottle was purchased", max_length=200)
+    inventory: int = Field(0, description="Number of bottles in inventory", ge=0)
+
     # Metadata
     confidence: float = Field(
         0.0, description="Extraction confidence (0-1)", ge=0.0, le=1.0
@@ -76,16 +86,35 @@ class BottleMetadata(BaseModel):
         """Convert to Obsidian frontmatter format."""
         data = {
             "Name": f"{self.producer} - {self.name}",
-            "Winemaker" if self.type == "wine" else "Distiller": self.producer,
         }
 
+        # Set producer field name based on beverage type
+        if self.type == "wine":
+            data["Winemaker"] = self.producer
+        elif self.type == "whiskey":
+            data["Distiller"] = self.producer
+        else:
+            data["Producer"] = self.producer
+
+        # Set year field name based on beverage type
         if self.year:
-            data["Vintage" if self.type == "wine" else "Year"] = self.year
+            if self.type == "wine":
+                data["Vintage"] = self.year
+            else:
+                data["Year"] = self.year
+
+        # Add purchase source if provided
+        if self.purchase_source:
+            data["PurchaseSource"] = self.purchase_source
+
+        # Always add inventory (defaults to 0)
+        data["Inventory"] = self.inventory
 
         # Add non-null fields
+        excluded_fields = ["producer", "name", "year", "type", "purchase_source", "inventory"]
         for field_name in self.model_fields:
             value = getattr(self, field_name)
-            if value is not None and field_name not in ["producer", "name", "year", "type"]:
+            if value is not None and field_name not in excluded_fields:
                 # Convert field_name to Title Case with hyphens
                 obsidian_key = field_name.replace("_", "-").title()
                 data[obsidian_key] = value

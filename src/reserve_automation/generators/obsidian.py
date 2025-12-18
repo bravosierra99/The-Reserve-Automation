@@ -1,4 +1,12 @@
-"""Obsidian markdown file generator."""
+"""Obsidian markdown file generator.
+
+CRITICAL TEMPLATE REQUIREMENTS (see CLAUDE.md for full details):
+- Templates MUST start with '---' on line 1 (Obsidian frontmatter delimiter)
+- DO NOT add #CLAUDE_REQ comments to templates - they'll appear in generated files
+- Label images MUST use Obsidian embed syntax: ![[labels/label.jpg]]
+- fileClass values MUST match exactly what DataviewJS queries expect
+- Field names MUST match Obsidian fileClass definitions
+"""
 
 import re
 from datetime import datetime
@@ -85,7 +93,17 @@ class ObsidianGenerator:
         """
         try:
             # Determine subdirectory based on type
-            subdir = "1_Wines" if bottle.type == "wine" else "1_Whiskeys"
+            subdir_map = {
+                "wine": "1_Wines",
+                "whiskey": "1_Whiskeys",
+                "vodka": "1_Spirits",
+                "gin": "1_Spirits",
+                "rum": "1_Spirits",
+                "tequila": "1_Spirits",
+                "brandy": "1_Spirits",
+                "other": "1_Spirits",
+            }
+            subdir = subdir_map.get(bottle.type, "1_Spirits")
 
             # Generate filename
             filename = self._generate_filename(bottle)
@@ -167,7 +185,13 @@ class ObsidianGenerator:
         """
         try:
             # Choose template based on bottle type
-            template_name = "wine.md.j2" if bottle.type == "wine" else "whiskey.md.j2"
+            # Wine uses wine template, everything else uses whiskey/spirits template
+            if bottle.type == "wine":
+                template_name = "wine.md.j2"
+            else:
+                # All spirits (whiskey, vodka, gin, rum, etc.) use the whiskey template
+                # TODO: Consider creating spirit-specific templates if needed
+                template_name = "whiskey.md.j2"
 
             # Load template
             try:
@@ -222,6 +246,9 @@ class ObsidianGenerator:
             "region": bottle.region,
             "price": bottle.price,
             "notes": bottle.notes,
+            # Purchase and inventory
+            "purchase_source": bottle.purchase_source,
+            "inventory": bottle.inventory,
             # Wine-specific
             "variety": bottle.variety,
             "vineyard": bottle.vineyard,

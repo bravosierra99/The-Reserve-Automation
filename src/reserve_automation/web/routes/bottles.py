@@ -26,6 +26,8 @@ async def upload_bottle(
     upload_type: str = Form("bottle_image"),  # bottle_image or manifest
     beverage_type: str = Form("auto"),  # wine, whiskey, auto
     expected_count: Optional[int] = Form(None),  # Expected bottle count (optional)
+    purchase_source: Optional[str] = Form(None),  # Where bottle was purchased
+    inventory: int = Form(0),  # Number of bottles in inventory
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """
@@ -37,6 +39,8 @@ async def upload_bottle(
         upload_type: Type of upload (bottle_image or manifest)
         beverage_type: Type of beverage (wine, whiskey, auto)
         expected_count: Expected number of bottles (helps improve extraction accuracy)
+        purchase_source: Where the bottle was purchased
+        inventory: Number of bottles in inventory (default 0)
         session_token: Existing session token (if any)
 
     Returns:
@@ -67,6 +71,11 @@ async def upload_bottle(
                 beverage_type=beverage_type
             )
 
+            # Apply purchase info
+            if purchase_source:
+                bottle.purchase_source = purchase_source
+            bottle.inventory = inventory
+
             bottles_data = [{
                 "bottle": extraction_service.bottle_to_dict(bottle),
                 "extraction_meta": extraction_meta,
@@ -81,6 +90,12 @@ async def upload_bottle(
                 beverage_type=beverage_type,
                 expected_count=expected_count
             )
+
+            # Apply purchase info to all bottles
+            for bottle in bottles:
+                if purchase_source:
+                    bottle.purchase_source = purchase_source
+                bottle.inventory = inventory
 
             bottles_data = [{
                 "bottle": extraction_service.bottle_to_dict(bottle),
@@ -254,6 +269,10 @@ async def enrich_bottle(
         raise HTTPException(status_code=500, detail="Service not initialized")
 
     try:
+        # Get current bottle data from request body (user's edited version)
+        body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+        current_bottle_data = body.get("bottle")
+
         # Get session token from cookie
         session_token = request.cookies.get("session")
         if not session_token:
@@ -275,57 +294,50 @@ async def enrich_bottle(
 
         bottle_data = bottles[bottle_index]
 
-        # Check if already enriched
-        if bottle_data.get("stage") == "enriched":
-            return {
-                "status": "already_enriched",
-                "bottle": bottle_data["bottle"],
-                "enrichment_meta": bottle_data["enrichment_meta"]
-            }
+        # Use current bottle data from frontend if provided, otherwise use session data
+        if current_bottle_data:
+            logger.info(f"Using current (edited) bottle data for enrichment")
+            bottle_dict = current_bottle_data
+        else:
+            logger.info(f"Using session bottle data for enrichment")
+            bottle_dict = bottle_data["bottle"]
+
+        # Always re-run enrichment (even if already enriched)
+        # This allows users to re-run if they think more data is available
+        logger.info(f"Enriching bottle {bottle_index} (stage: {bottle_data.get('stage')})")
 
         # Enrich the bottle
         extraction_service = ExtractionService(core_config)
-        bottle = extraction_service.bottle_from_dict(bottle_data["bottle"])
+        bottle = extraction_service.bottle_from_dict(bottle_dict)
 
         enriched_bottle, enrichment_meta = await extraction_service.enrich_bottle(bottle)
 
-        # Update session with enriched data
-        bottles[bottle_index] = {
-            "bottle": extraction_service.bottle_to_dict(enriched_bottle),
-            "extraction_meta": bottle_data["extraction_meta"],
-            "enrichment_meta": enrichment_meta,
-            "stage": "enriched"  # Stage 2: enrichment complete
-        }
+        logger.info(f"Bottle {bottle_index} enrichment search complete")
 
-        session_data["bottles"] = bottles
+        # DON'T update session yet - just return suggestions
+        # The frontend will show the user what changed and let them apply it
 
-        # Update session cookie
-        new_session_token = session_manager.create_session(session_data)
-        response.set_cookie(
-            key="session",
-            value=new_session_token,
-            max_age=web_config.sessions.max_age_hours * 3600,
-            httponly=True,
-            samesite="lax"
-        )
+        # Calculate what fields changed
+        original_dict = bottle_dict
+        enriched_dict = extraction_service.bottle_to_dict(enriched_bottle)
 
-        logger.info(f"Bottle {bottle_index} enriched successfully")
+        suggestions = {}
+        for field, new_value in enriched_dict.items():
+            original_value = original_dict.get(field)
+            if new_value != original_value and new_value is not None:
+                # Don't suggest changes to metadata fields
+                if field not in ["confidence", "source", "extracted_at", "enriched", "label_image_url"]:
+                    suggestions[field] = {
+                        "current": original_value,
+                        "suggested": new_value
+                    }
 
-        # Automatically check for duplicates after enrichment
-        from ..services.duplicate_service import DuplicateDetectionService
-        duplicate_service = DuplicateDetectionService(core_config.vault_path)
-        duplicates = duplicate_service.find_potential_duplicates(enriched_bottle, threshold=0.5)
-
-        # Store duplicates in bottle data
-        bottles[bottle_index]["potential_duplicates"] = duplicates
-
-        logger.info(f"Auto-duplicate check found {len(duplicates)} potential duplicates")
+        logger.info(f"Found {len(suggestions)} suggested changes")
 
         return {
-            "status": "enriched",
-            "bottle": extraction_service.bottle_to_dict(enriched_bottle),
-            "enrichment_meta": enrichment_meta,
-            "potential_duplicates": duplicates
+            "status": "suggestions_ready",
+            "suggestions": suggestions,
+            "enrichment_meta": enrichment_meta
         }
 
     except HTTPException:
@@ -388,6 +400,28 @@ async def find_labels(
         # Find labels using LLM web search
         label_service = LabelService(extraction_service.llm_gateway)
         label_candidates = await label_service.find_labels(bottle)
+
+        # If user uploaded a bottle image (not manifest), add it as the first candidate
+        upload_type = session_data.get("upload_type")
+        temp_file_path = session_data.get("temp_file_path")
+
+        if upload_type == "bottle_image" and temp_file_path:
+            uploaded_image_path = Path(temp_file_path)
+            if uploaded_image_path.exists():
+                # Generate a URL to serve the temp uploaded image
+                temp_image_url = f"/api/v1/temp-images/{extraction_id}/{uploaded_image_path.name}"
+
+                # Create a candidate for the uploaded image
+                uploaded_candidate = {
+                    "url": temp_image_url,
+                    "source": "uploaded_image",
+                    "description": f"Your uploaded image: {session_data.get('upload_filename', 'bottle image')}",
+                    "confidence": 1.0  # Highest confidence since it's the actual uploaded image
+                }
+
+                # Insert uploaded image as FIRST candidate
+                label_candidates.insert(0, uploaded_candidate)
+                logger.info(f"Added uploaded image as first label candidate for bottle {bottle_index}")
 
         # Store candidates in session
         bottles[bottle_index]["label_candidates"] = label_candidates
@@ -503,15 +537,25 @@ async def select_label(
         original_path = temp_label_dir / f"original_{uuid.uuid4().hex[:8]}.jpg"
         cropped_path = temp_label_dir / f"cropped_{uuid.uuid4().hex[:8]}.jpg"
 
-        # Download to original path (no crop)
-        await label_service.download_and_crop_label(
-            image_url=label_url,
-            output_path=original_path,
-            crop=False  # Don't crop the original
-        )
+        # Check if this is an uploaded image (starts with /api/v1/temp-images/)
+        import shutil
+        if label_url.startswith('/api/v1/temp-images/'):
+            # This is the user's uploaded image - copy directly instead of downloading
+            temp_file_path = session_data.get("temp_file_path")
+            if temp_file_path and Path(temp_file_path).exists():
+                shutil.copy2(temp_file_path, original_path)
+                logger.info(f"Copied uploaded image from {temp_file_path} to {original_path}")
+            else:
+                raise HTTPException(status_code=404, detail="Uploaded image not found")
+        else:
+            # External URL - download it
+            await label_service.download_and_crop_label(
+                image_url=label_url,
+                output_path=original_path,
+                crop=False  # Don't crop the original
+            )
 
         # Copy to cropped path and try to crop it
-        import shutil
         shutil.copy2(original_path, cropped_path)
 
         # Try to crop the cropped version
@@ -610,6 +654,8 @@ async def update_bottle(
 
         body = await request.json()
         updated_bottle_data = body.get("bottle")
+        updated_label = body.get("selected_label")
+        updated_label_choice = body.get("label_choice")
 
         if not updated_bottle_data:
             raise HTTPException(status_code=400, detail="No bottle data provided")
@@ -630,6 +676,16 @@ async def update_bottle(
 
         # Update bottle data
         bottles[bottle_index]["bottle"] = updated_bottle_data
+
+        # Update label selection if provided
+        if updated_label is not None:
+            bottles[bottle_index]["selected_label"] = updated_label
+            logger.info(f"Updated selected_label for bottle {bottle_index}: use_crop={updated_label.get('use_crop')}")
+
+        if updated_label_choice is not None:
+            bottles[bottle_index]["label_choice"] = updated_label_choice
+            logger.info(f"Updated label_choice for bottle {bottle_index}: {updated_label_choice}")
+
         session_data["bottles"] = bottles
 
         # Update session cookie
@@ -734,6 +790,8 @@ async def approve_bottle(
         selected_label = bottle_data.get("selected_label")
         label_choice = bottle_data.get("label_choice")
 
+        logger.info(f"Approval label info: label_choice={label_choice}, use_crop={selected_label.get('use_crop') if selected_label else None}")
+
         if selected_label and label_choice != "none":
             # User went through label selection workflow
             label_path = labels_dir / "label.jpg"
@@ -742,20 +800,30 @@ async def approve_bottle(
             use_crop = selected_label.get("use_crop", False)
             source_path = None
 
+            logger.info(f"Label selection workflow: use_crop={use_crop}, has_cropped={selected_label.get('cropped_path') is not None}, has_original={selected_label.get('original_path') is not None}")
+
             if use_crop and selected_label.get("cropped_path"):
                 source_path = Path(selected_label["cropped_path"])
-                logger.info("Using cropped label version")
+                logger.info(f"Using CROPPED label version from {source_path}")
             elif selected_label.get("original_path"):
                 source_path = Path(selected_label["original_path"])
-                logger.info("Using original label version")
+                logger.info(f"Using ORIGINAL label version from {source_path}")
 
             # Copy the selected label to final location
-            if source_path and source_path.exists():
-                import shutil
-                shutil.copy2(source_path, label_path)
-                logger.info(f"Copied selected label to {label_path}")
+            if source_path:
+                if source_path.exists():
+                    import shutil
+                    shutil.copy2(source_path, label_path)
+                    logger.info(f"✓ Copied selected label to {label_path}")
+                else:
+                    logger.error(f"✗ Selected label file NOT FOUND: {source_path}")
+                    logger.error(f"  - File exists check failed")
+                    logger.error(f"  - Directory exists: {source_path.parent.exists()}")
+                    if source_path.parent.exists():
+                        logger.error(f"  - Files in directory: {list(source_path.parent.iterdir())}")
+                    label_path = None
             else:
-                logger.warning(f"Selected label file not found: {source_path}")
+                logger.error(f"✗ No source_path determined! selected_label={selected_label}")
                 label_path = None
 
         elif label_choice == "none":
@@ -910,8 +978,15 @@ async def check_duplicates(
             # file_path is relative to vault, e.g., "1_Wines/Napa Valley/Producer - Name (Year).md"
             # We need to find the label image in the Labels directory
             file_path = Path(dup["file_path"])
-            # Extract bottle type (wines or whiskeys) from path
-            bottle_type = "wines" if "1_Wines" in str(file_path) else "whiskeys"
+            # Extract bottle type (wines, whiskeys, or spirits) from path
+            if "1_Wines" in str(file_path):
+                bottle_type = "wines"
+            elif "1_Whiskeys" in str(file_path):
+                bottle_type = "whiskeys"
+            elif "1_Spirits" in str(file_path):
+                bottle_type = "spirits"
+            else:
+                bottle_type = "spirits"  # Default to spirits for unknown types
 
             # Construct label image path: Labels/wines/Producer - Name (Year).jpg
             label_filename = file_path.stem + ".jpg"  # .stem removes .md extension
@@ -1170,12 +1245,19 @@ async def serve_temp_image(extraction_id: str, filename: str):
         raise HTTPException(status_code=500, detail="Service not initialized")
 
     try:
-        # Construct path to temp label directory
-        temp_label_dir = Path(web_config.uploads.temp_dir) / extraction_id / "labels"
+        # Try multiple locations for the image
+        session_dir = Path(web_config.uploads.temp_dir) / extraction_id
+
+        # 1. First try the labels subdirectory (for downloaded/processed labels)
+        temp_label_dir = session_dir / "labels"
         image_path = temp_label_dir / filename
 
+        # 2. If not in labels/, try the session root (for uploaded bottle images)
+        if not image_path.exists():
+            image_path = session_dir / filename
+
         # Security: Ensure filename doesn't contain path traversal
-        if not image_path.resolve().is_relative_to(temp_label_dir.resolve()):
+        if not image_path.resolve().is_relative_to(session_dir.resolve()):
             raise HTTPException(status_code=403, detail="Invalid filename")
 
         # Check if file exists
@@ -1202,7 +1284,7 @@ async def serve_vault_image(bottle_type: str, filename: str):
     Serve label images from the vault Labels directory.
 
     Args:
-        bottle_type: Type of bottle ('wines' or 'whiskeys')
+        bottle_type: Type of bottle ('wines', 'whiskeys', or 'spirits')
         filename: Name of the label image file
 
     Returns:
@@ -1216,7 +1298,7 @@ async def serve_vault_image(bottle_type: str, filename: str):
 
     try:
         # Validate bottle_type
-        if bottle_type not in ["wines", "whiskeys"]:
+        if bottle_type not in ["wines", "whiskeys", "spirits"]:
             raise HTTPException(status_code=400, detail="Invalid bottle type")
 
         # Construct path to vault label directory

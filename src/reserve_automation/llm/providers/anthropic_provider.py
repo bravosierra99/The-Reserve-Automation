@@ -131,6 +131,53 @@ class AnthropicProvider(BaseLLMProvider):
             logger.error(f"Anthropic error: {e}")
             raise LLMError(f"Anthropic request failed: {e}")
 
+    async def web_search(self, query: str, max_tokens: int = 500) -> str:
+        """
+        Perform a web search and summarize results.
+
+        Uses Anthropic's extended thinking with web search capabilities.
+
+        Args:
+            query: Search query
+            max_tokens: Maximum tokens for response
+
+        Returns:
+            Summary of search results
+
+        Raises:
+            LLMError: If search fails
+        """
+        try:
+            logger.debug(f"Anthropic web search: {query}")
+
+            # Use extended thinking mode with web search
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                temperature=0.1,  # Low temperature for factual responses
+                thinking={
+                    "type": "enabled",
+                    "budget_tokens": 2000
+                },
+                messages=[{
+                    "role": "user",
+                    "content": f"Search the web and answer this question concisely: {query}"
+                }]
+            )
+
+            # Extract content from response
+            content = ""
+            for block in response.content:
+                if hasattr(block, 'text'):
+                    content += block.text
+
+            logger.debug(f"Web search completed: {len(content)} chars")
+            return content.strip()
+
+        except Exception as e:
+            logger.error(f"Anthropic web search error: {e}")
+            raise LLMError(f"Web search failed: {e}")
+
     async def health_check(self) -> bool:
         """
         Check if Anthropic API is accessible.

@@ -252,3 +252,62 @@ class LLMGateway:
             Dictionary of task types to provider names
         """
         return self.routing.copy()
+
+    async def web_search(self, query: str, max_tokens: int = 500) -> str:
+        """
+        Perform a web search and get results.
+
+        Uses the provider configured for 'web_search' task type, or looks for
+        a provider that supports web search (typically Anthropic).
+
+        Args:
+            query: Search query
+            max_tokens: Maximum tokens for response
+
+        Returns:
+            Search results summary
+
+        Raises:
+            LLMError: If search fails or no suitable provider found
+        """
+        # Try to find web search provider - check routing first
+        provider_name = self.routing.get("web_search")
+
+        # If not explicitly routed, look for a provider that supports web search
+        if not provider_name:
+            logger.debug("No explicit web_search routing, searching for capable provider...")
+            for name, provider in self.providers.items():
+                if hasattr(provider, 'web_search'):
+                    provider_name = name
+                    logger.debug(f"Found web search capable provider: {provider_name}")
+                    break
+
+        if not provider_name or provider_name not in self.providers:
+            logger.warning(
+                "No provider supports web search. "
+                "Web search requires AnthropicProvider. Falling back to keyword matching."
+            )
+            raise LLMError(
+                "Web search not available - no provider supports it. "
+                "Add Anthropic provider to config/llm.yaml to enable web search."
+            )
+
+        provider = self.providers[provider_name]
+
+        # Double-check provider supports web search
+        if not hasattr(provider, 'web_search'):
+            logger.warning(f"Provider {provider_name} does not support web search")
+            raise LLMError(
+                f"Provider {provider_name} does not support web search. "
+                f"Add AnthropicProvider to config/llm.yaml to enable web search."
+            )
+
+        try:
+            logger.info(f"Web search via {provider_name}: {query}")
+            result = await provider.web_search(query, max_tokens)
+            logger.info(f"✓ Web search completed via {provider_name}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Web search failed: {e}")
+            raise LLMError(f"Web search failed: {e}") from e

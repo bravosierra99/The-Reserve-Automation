@@ -96,8 +96,16 @@ This automation system integrates with an Obsidian vault at `the-reserve/Cellar/
 3. **Vault Structure**:
    - Wines: `Cellar/1_Wines/{BottleName}/{BottleName}.md`
    - Whiskeys: `Cellar/1_Whiskeys/{BottleName}/{BottleName}.md`
+   - Spirits: `Cellar/1_Spirits/{BottleName}/{BottleName}.md`
    - Tastings: Same folder as bottle, named `Tasting-YYYY-MM-DD-TasterName.md`
 4. **DataviewJS Queries**: Bottle files contain queries that search for specific fileClass values
+
+### Template Requirements (templates/*.md.j2):
+
+**CRITICAL**:
+- Templates MUST start with `---` on line 1 (Obsidian frontmatter delimiter)
+- DO NOT add #CLAUDE_REQ comments to template files - they'll appear in generated files and break frontmatter parsing
+- The templates are the source of truth - don't modify them unless explicitly requested
 
 ### When Working on Vault Integration:
 

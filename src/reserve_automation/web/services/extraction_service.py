@@ -110,7 +110,7 @@ class ExtractionService:
     async def extract_bottle_from_image(
         self,
         image_path: Path,
-        beverage_type: Literal["wine", "whiskey", "auto"] = "auto"
+        beverage_type: Literal["wine", "whiskey", "vodka", "gin", "rum", "tequila", "brandy", "other", "auto"] = "auto"
     ) -> Tuple[BottleMetadata, Dict]:
         """
         Extract bottle metadata from a label image.
@@ -134,6 +134,12 @@ class ExtractionService:
                 beverage_type=beverage_type
             )
 
+            # Check if extraction returned None (validation or other error)
+            if bottle is None:
+                error_msg = extraction_meta.get("error", "Unknown extraction error")
+                logger.error(f"Image extraction returned None: {error_msg}")
+                raise ValueError(f"Failed to extract bottle metadata from image: {error_msg}")
+
             logger.info(
                 f"Extraction complete: {bottle.producer} - {bottle.name} "
                 f"(confidence: {extraction_meta.get('confidence', 'unknown')})"
@@ -148,7 +154,7 @@ class ExtractionService:
     async def extract_bottles_from_manifest(
         self,
         file_path: Path,
-        beverage_type: Literal["wine", "whiskey", "auto"] = "auto",
+        beverage_type: Literal["wine", "whiskey", "vodka", "gin", "rum", "tequila", "brandy", "other", "auto"] = "auto",
         expected_count: Optional[int] = None
     ) -> List[BottleMetadata]:
         """

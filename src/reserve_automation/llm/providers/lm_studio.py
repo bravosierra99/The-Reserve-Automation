@@ -29,6 +29,7 @@ class LMStudioProvider(BaseLLMProvider):
         self.client = None
         self._client_loop = None
         self.tool_executor = ToolExecutor()
+        self._model_load_attempted = False  # Track if we've tried loading the model
 
     def _ensure_client(self):
         """Ensure httpx client is using the current event loop."""
@@ -48,18 +49,104 @@ class LMStudioProvider(BaseLLMProvider):
             )
             self._client_loop = current_loop
 
+    async def _is_model_loaded(self) -> bool:
+        """
+        Check if the configured model is currently loaded in LM Studio.
+
+        Returns:
+            True if model is loaded, False otherwise
+        """
+        try:
+            response = await self.client.get("/models", timeout=10.0)
+            if response.status_code == 200:
+                data = response.json()
+                loaded_models = data.get("data", [])
+
+                # Check if our model is in the list of loaded models
+                for model_info in loaded_models:
+                    model_id = model_info.get("id", "")
+                    if self.model in model_id or model_id in self.model:
+                        logger.debug(f"Model {self.model} is loaded")
+                        return True
+
+                logger.debug(f"Model {self.model} not in loaded models: {[m.get('id') for m in loaded_models]}")
+                return False
+
+            return False
+        except Exception as e:
+            logger.debug(f"Could not check loaded models: {e}")
+            return False
+
+    async def _load_model(self) -> bool:
+        """
+        Attempt to load the configured model in LM Studio.
+
+        Returns:
+            True if load succeeded, False otherwise
+        """
+        try:
+            logger.info(f"Attempting to load model: {self.model}")
+
+            # LM Studio load endpoint
+            response = await self.client.post(
+                "/models/load",
+                json={"path": self.model},
+                timeout=60.0  # Model loading can take a while
+            )
+
+            if response.status_code == 200:
+                logger.info(f"Successfully loaded model: {self.model}")
+                return True
+            else:
+                logger.warning(f"Failed to load model: {response.status_code} - {response.text}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error loading model: {e}")
+            return False
+
+    async def _ensure_model_loaded(self) -> None:
+        """
+        Ensure the model is loaded, attempting to load it if necessary.
+
+        Raises:
+            LLMError: If model cannot be loaded
+        """
+        # Only try loading once per session to avoid repeated failures
+        if self._model_load_attempted:
+            return
+
+        self._model_load_attempted = True
+
+        # Check if model is already loaded
+        if await self._is_model_loaded():
+            logger.debug(f"Model {self.model} already loaded")
+            return
+
+        # Try to load the model
+        logger.info(f"Model {self.model} not loaded, attempting to load...")
+        if not await self._load_model():
+            raise LLMError(
+                f"Failed to load model {self.model} in LM Studio. "
+                f"Please load the model manually in LM Studio."
+            )
+
+        # Wait a moment for model to initialize
+        await asyncio.sleep(2)
+
     def supports_vision(self) -> bool:
         """LM Studio supports vision if a vision model is loaded."""
         # Check if model name suggests vision capability
         vision_indicators = ["llava", "bakllava", "vision", "vl", "qwen3-vl"]
         return any(ind in self.model.lower() for ind in vision_indicators)
 
-    async def complete(self, request: LLMRequest) -> LLMResponse:
+    async def complete(self, request: LLMRequest, _retry: bool = False) -> LLMResponse:
         """
         Execute completion using LM Studio's OpenAI-compatible API.
 
         Args:
             request: LLM request with prompt and optional images
+            _retry: Internal parameter to track retry attempts
 
         Returns:
             LLM response with content and metadata
@@ -69,6 +156,9 @@ class LMStudioProvider(BaseLLMProvider):
         """
         # Ensure client is using the current event loop
         self._ensure_client()
+
+        # Ensure model is loaded (will auto-load if needed)
+        await self._ensure_model_loaded()
 
         start_time = time.time()
 
@@ -82,11 +172,13 @@ class LMStudioProvider(BaseLLMProvider):
 
             # Handle vision requests (images)
             if request.images:
+                logger.debug(f"Vision request: {len(request.images)} image(s), total {sum(len(img) for img in request.images)} bytes")
                 content = [{"type": "text", "text": request.prompt}]
 
                 # Add images as base64 data URLs
-                for image_bytes in request.images:
+                for idx, image_bytes in enumerate(request.images):
                     b64_image = base64.b64encode(image_bytes).decode("utf-8")
+                    logger.debug(f"Image {idx+1}: {len(image_bytes)} bytes -> {len(b64_image)} base64 chars")
                     content.append({
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{b64_image}"}
@@ -95,6 +187,7 @@ class LMStudioProvider(BaseLLMProvider):
                 messages.append({"role": "user", "content": content})
             else:
                 # Text-only request
+                logger.debug("Text-only request (NO IMAGES)")
                 messages.append({"role": "user", "content": request.prompt})
 
             # Build request payload
@@ -188,10 +281,36 @@ class LMStudioProvider(BaseLLMProvider):
 
         except httpx.HTTPStatusError as e:
             logger.error(f"LM Studio HTTP error: {e.response.status_code} - {e.response.text}")
+
+            # If we haven't retried yet, try loading the model and retry once
+            if not _retry:
+                logger.info("Retrying after attempting to reload model...")
+                self._model_load_attempted = False  # Reset to allow reload attempt
+
+                try:
+                    await self._ensure_model_loaded()
+                    # Retry the request by calling complete recursively with retry flag
+                    return await self.complete(request, _retry=True)
+                except Exception as retry_error:
+                    logger.error(f"Retry failed: {retry_error}")
+
             raise LLMError(f"LM Studio request failed: {e.response.status_code}")
 
         except httpx.RequestError as e:
             logger.error(f"LM Studio connection error: {e}")
+
+            # If we haven't retried yet, try loading the model and retry once
+            if not _retry:
+                logger.info("Connection failed - retrying after attempting to reload model...")
+                self._model_load_attempted = False  # Reset to allow reload attempt
+
+                try:
+                    await self._ensure_model_loaded()
+                    # Retry the request by calling complete recursively with retry flag
+                    return await self.complete(request, _retry=True)
+                except Exception as retry_error:
+                    logger.error(f"Retry failed: {retry_error}")
+
             raise LLMError(f"Cannot connect to LM Studio at {self.base_url}: {e}")
 
         except Exception as e:

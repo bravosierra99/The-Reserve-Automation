@@ -81,6 +81,49 @@
         </div>
     </div>
 
+    <!-- Purchase Info (shown for bottles and manifests) -->
+    <div x-show="(uploadType === 'bottle' || uploadType === 'manifest') && !uploading && !uploadComplete"
+         class="bg-white rounded-lg shadow-md p-4 mb-6">
+        <h3 class="font-bold text-gray-800 mb-4">Purchase Information</h3>
+
+        <div class="mb-4">
+            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                Where did you purchase this? (optional)
+            </label>
+            <input
+                type="text"
+                x-model="purchaseSource"
+                placeholder="e.g., Total Wine, Local liquor store, Online"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+        </div>
+
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                <span x-text="uploadType === 'manifest' ? 'How many bottles per item?' : 'How many bottles?'"></span>
+            </label>
+            <p class="text-gray-500 text-xs mb-3">
+                Default is 0 (already opened/drinking). Only store unopened bottles in inventory.
+            </p>
+            <div class="flex gap-2">
+                <button @click="inventory = 0" :class="inventory === 0 ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg font-semibold transition-colors">0</button>
+                <button @click="inventory = 1" :class="inventory === 1 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg font-semibold transition-colors">1</button>
+                <button @click="inventory = 2" :class="inventory === 2 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg font-semibold transition-colors">2</button>
+                <button @click="inventory = 3" :class="inventory === 3 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg font-semibold transition-colors">3</button>
+                <button @click="inventory = 4" :class="inventory === 4 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg font-semibold transition-colors">4</button>
+                <button @click="inventory = 5" :class="inventory === 5 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg font-semibold transition-colors">5</button>
+                <button @click="inventory = 6" :class="inventory === 6 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-4 py-2 rounded-lg font-semibold transition-colors">6</button>
+            </div>
+        </div>
+    </div>
+
     <div class="bg-white rounded-lg shadow-md p-6" x-show="uploadType">
         <h2 class="text-2xl font-bold mb-6 text-gray-800" x-text="uploadType === 'tasting_card' ? 'Upload Tasting Card' : (uploadType === 'bottle' ? 'Upload Bottle Label' : 'Upload Bottle Manifest')"></h2>
 
@@ -188,6 +231,8 @@ function uploadForm() {
         error: false,
         errorMessage: '',
         expectedCount: null,  // Expected number of tastings (1-4)
+        purchaseSource: '',  // Where bottle was purchased
+        inventory: 0,  // Number of bottles in inventory
 
         handleFileSelect(event) {
             const file = event.target.files[0];
@@ -228,10 +273,18 @@ function uploadForm() {
             } else if (this.uploadType === 'bottle') {
                 formData.append('upload_type', 'bottle_image');
                 formData.append('beverage_type', 'auto');
+                if (this.purchaseSource) {
+                    formData.append('purchase_source', this.purchaseSource);
+                }
+                formData.append('inventory', this.inventory);
                 endpoint = '/api/v1/bottles/upload';
             } else if (this.uploadType === 'manifest') {
                 formData.append('upload_type', 'manifest');
                 formData.append('beverage_type', 'auto');
+                if (this.purchaseSource) {
+                    formData.append('purchase_source', this.purchaseSource);
+                }
+                formData.append('inventory', this.inventory);
                 endpoint = '/api/v1/bottles/upload';
             }
 
