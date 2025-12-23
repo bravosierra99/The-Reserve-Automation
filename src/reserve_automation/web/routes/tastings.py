@@ -159,6 +159,17 @@ async def get_tasting_session(
             "stats": stats
         }
         logger.debug(f"Successfully built response data")
+        logger.debug(f"=== RETURNING TASTING SESSION ===")
+        logger.debug(f"Number of tastings: {len(tastings)}")
+        if tastings and len(tastings) > 0:
+            first_tasting = tastings[0]
+            logger.debug(f"First tasting type: {type(first_tasting)}")
+            if isinstance(first_tasting, dict):
+                logger.debug(f"First tasting keys: {first_tasting.keys()}")
+                logger.debug(f"First tasting match_candidates: {len(first_tasting.get('match_candidates', []))} items")
+                logger.debug(f"First tasting selected_match: {first_tasting.get('selected_match')}")
+            else:
+                logger.debug(f"First tasting: {first_tasting}")
         return response_data
     except Exception as e:
         logger.error(f"Failed to build response: {e}", exc_info=True)
@@ -285,10 +296,14 @@ async def select_match(
     """Select a bottle match for a tasting."""
     from ..app import core_config, web_config
 
+    logger.debug(f"=== SELECT MATCH ENDPOINT ===")
+    logger.debug(f"extraction_id: {extraction_id}, index: {index}, bottle_path: {request.bottle_path}")
+
     if not core_config or not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
 
     if not session_token:
+        logger.error("No session token")
         raise HTTPException(status_code=401, detail="No active session")
 
     session_manager = SessionManager(
@@ -298,22 +313,31 @@ async def select_match(
 
     session_data = session_manager.read_session(session_token)
     if not session_data:
+        logger.error("Invalid session")
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
     if session_data.get("extraction_id") != extraction_id:
+        logger.error(f"Extraction ID mismatch: {session_data.get('extraction_id')} != {extraction_id}")
         raise HTTPException(status_code=404, detail="Extraction not found")
 
     tasting_session = session_data.get("tasting_session")
     if not tasting_session:
+        logger.error("No tasting session in session data")
         raise HTTPException(status_code=404, detail="No tasting session")
 
     tastings = tasting_session.get("tastings", [])
+    logger.debug(f"Session has {len(tastings)} tastings")
     if index < 0 or index >= len(tastings):
+        logger.error(f"Index {index} out of range (0-{len(tastings)-1})")
         raise HTTPException(status_code=404, detail="Tasting index out of range")
+
+    logger.debug(f"Tasting before update: {tastings[index].get('selected_match')}")
 
     # Update selected match
     tastings[index]["selected_match"] = request.bottle_path
     tastings[index]["status"] = TastingStatus.MATCHED.value
+
+    logger.debug(f"Tasting after update: {tastings[index].get('selected_match')}")
 
     # Check for duplicate
     tasting_service = TastingService(core_config)

@@ -65,7 +65,7 @@ class MetadataEnricher:
                 prompt=prompt,
                 tools=tools,
                 temperature=0.2,
-                max_tokens=800,
+                max_tokens=1200,  # Increased to handle more fields (beverage_type, year, age_statement, proof, abv)
             )
 
             # Parse response
@@ -111,17 +111,24 @@ class MetadataEnricher:
         Returns:
             List of field names that are missing
         """
-        # Define enrichable fields
+        # Define enrichable fields (common to all beverages)
+        # Note: year is NOT enrichable - it's user-provided and used as context for finding other metadata
         enrichable = {
+            "producer": bottle.producer,
+            "name": bottle.name,
+            "beverage_type": bottle.beverage_type,
             "country": bottle.country,
             "region": bottle.region,
-            "variety": bottle.variety,
+            "abv": bottle.abv,
         }
 
         # Add type-specific fields
         if bottle.type == "wine":
+            enrichable["variety"] = bottle.variety
             enrichable["vineyard"] = bottle.vineyard
         elif bottle.type == "whiskey":
+            enrichable["age_statement"] = bottle.age_statement
+            enrichable["proof"] = bottle.proof
             enrichable["mash_bill"] = bottle.mash_bill
             enrichable["barrel_type"] = bottle.barrel_type
 
@@ -149,21 +156,39 @@ class MetadataEnricher:
 
         # Build field descriptions
         field_desc = []
+        if "producer" in missing_fields:
+            if bottle.type == "wine":
+                field_desc.append("- Producer/Winery name (actual producer, may differ from bottle name)")
+            else:
+                field_desc.append("- Producer/Distillery name (actual distiller, may differ from bottle name)")
+        if "name" in missing_fields:
+            if bottle.type == "wine":
+                field_desc.append("- Wine name (specific product/cuvée name, NOT just grape variety - e.g., '1858 Cabernet Sauvignon', 'Insignia', 'Reserve')")
+            else:
+                field_desc.append("- Whiskey name (specific product name, NOT just whiskey type - e.g., 'Eagle Rare', 'Blanton's Single Barrel')")
+        if "beverage_type" in missing_fields:
+            if bottle.type == "wine":
+                field_desc.append("- Beverage type: 'Red wine', 'White wine', 'Rosé', 'Champagne', 'Sparkling', etc.")
+            else:
+                field_desc.append("- Beverage type: 'Bourbon', 'Rye', 'Scotch', 'Irish', 'Japanese', etc.")
         if "country" in missing_fields:
             field_desc.append("- Country of origin")
         if "region" in missing_fields:
             field_desc.append(
                 "- Region (wine region, appellation, DOC/IGT for wine; state/country for whiskey)"
             )
+        if "abv" in missing_fields:
+            field_desc.append("- Alcohol by volume (ABV) percentage")
         if "variety" in missing_fields:
-            if bottle.type == "wine":
-                field_desc.append("- Grape variety or blend composition")
-            else:
-                field_desc.append("- Whiskey type (bourbon, rye, scotch, etc.)")
+            field_desc.append("- Grape variety or blend composition")
         if "vineyard" in missing_fields:
             field_desc.append("- Vineyard or estate name (if known)")
+        if "age_statement" in missing_fields:
+            field_desc.append("- Age statement in years (e.g., 12, 18, 25)")
+        if "proof" in missing_fields:
+            field_desc.append("- Proof (US proof, e.g., 90, 100)")
         if "mash_bill" in missing_fields:
-            field_desc.append("- Mash bill composition")
+            field_desc.append("- Mash bill composition (e.g., '75% corn, 21% rye, 4% malted barley')")
         if "barrel_type" in missing_fields:
             field_desc.append("- Barrel type (ex-bourbon, new oak, sherry, etc.)")
 
@@ -186,9 +211,18 @@ Price: ${bottle.price}
 **Instructions:**
 1. Use web_search to find the producer's website, wine databases, or retailer pages
 2. Look for official product information about this specific {beverage_type}
-3. For wine: Search for the specific vintage and vineyard if applicable
-4. For whiskey: Search for mash bill, barrel type, and distillery location
-5. Verify information from multiple sources when possible
+3. **CRITICAL - Producer vs Name**: These are often SWAPPED or confused!
+   - Producer = actual winery/distillery (e.g., "Caymus Vineyards", "Buffalo Trace")
+   - Name = product/brand/label (e.g., "1858 Cabernet Sauvignon", "George T. Stagg")
+   - For wine: "1858 Cabernet Sauvignon" is the NAME from "Caymus Vineyards" (the PRODUCER)
+   - For whiskey: "George T. Stagg" is the NAME from "Buffalo Trace" (the PRODUCER)
+   - Name should include the product line, NOT just grape variety or whiskey type
+4. For wine: Use the provided vintage year to find the correct bottle, then search for producer, name, beverage_type (Red wine/White wine/etc.), grape variety, vineyard, region, ABV
+5. For whiskey: Use the provided release year to find the correct bottle, then search for producer (distillery), name, beverage_type (Bourbon/Rye/etc.), age statement, proof, ABV, mash bill, barrel type, and distillery location
+6. beverage_type should be specific and match extraction schema: "Red wine", "Bourbon", "Rye", "Single Malt Scotch", etc.
+7. For proof and ABV: ABV is universal (percentage), proof is US-specific (2x ABV)
+8. Verify information from multiple sources when possible
+9. Fill out as many fields as possible - don't leave fields empty if you can find the information
 
 **Confidence levels:**
 - "high": Found on official producer website or multiple reliable sources
@@ -197,15 +231,27 @@ Price: ${bottle.price}
 
 Format your response as JSON:
 {{
-  "country": "...",
-  "region": "...",
-  "variety": "...",
+  {"\"producer\": \"...\"," if "producer" in missing_fields else ""}
+  {"\"name\": \"...\"," if "name" in missing_fields else ""}
+  {"\"beverage_type\": \"...\"," if "beverage_type" in missing_fields else ""}
+  {"\"country\": \"...\"," if "country" in missing_fields else ""}
+  {"\"region\": \"...\"," if "region" in missing_fields else ""}
+  {"\"abv\": 14.5," if "abv" in missing_fields else ""}
+  {"\"variety\": \"...\"," if "variety" in missing_fields else ""}
   {"\"vineyard\": \"...\"," if "vineyard" in missing_fields else ""}
+  {"\"age_statement\": 12," if "age_statement" in missing_fields else ""}
+  {"\"proof\": 90," if "proof" in missing_fields else ""}
   {"\"mash_bill\": \"...\"," if "mash_bill" in missing_fields else ""}
   {"\"barrel_type\": \"...\"," if "barrel_type" in missing_fields else ""}
   "confidence": "high/medium/low",
   "reasoning": "Brief explanation citing your sources"
 }}
+
+**CRITICAL - Name vs Producer vs Variety:**
+- Producer: The winery/distillery (e.g., "Caymus Vineyards", "Buffalo Trace")
+- Name: The specific product name (e.g., "1858 Cabernet Sauvignon", "Eagle Rare 10 Year")
+- Variety: The grape type or whiskey style (e.g., "Cabernet Sauvignon", "Bourbon")
+- The name should be the product line/label name, NOT just the grape variety
 
 Only include fields that were requested. Use web search to find real data - don't guess."""
 
@@ -286,11 +332,15 @@ Only include fields that were requested. Use web search to find real data - don'
             Tuple of (corrected bottle, verification metadata dict)
         """
         # Determine which fields to verify based on beverage type
-        verify_fields = ["country", "region", "variety"]
+        # Common fields for all beverages
+        # Note: year is NOT verified - it's user-provided and used as context
+        verify_fields = ["producer", "name", "beverage_type", "country", "region", "abv"]
+
+        # Type-specific fields
         if bottle.type == "wine":
-            verify_fields.append("vineyard")
-        else:
-            verify_fields.extend(["mash_bill", "barrel_type"])
+            verify_fields.extend(["variety", "vineyard"])
+        else:  # whiskey and other spirits
+            verify_fields.extend(["age_statement", "proof", "mash_bill", "barrel_type"])
 
         logger.info(
             f"Verifying {bottle.producer} - {bottle.name}: "
@@ -324,23 +374,48 @@ Type: {bottle.beverage_type or bottle.type}
 
 **Instructions:**
 - Use web_search to find authoritative information
-- For wine: verify country, region (appellation/DOC), grape variety/blend, and vineyard/estate
-- For whiskey: verify distillery country, region/state, whiskey type, mash bill %, and barrel type
+- **CRITICAL FOR PRODUCER AND NAME**: These fields are often SWAPPED or INCORRECT!
+  * Producer = the actual winery/distillery (e.g., "Caymus Vineyards", "Buffalo Trace")
+  * Name = the product/brand/label name (e.g., "1858 Cabernet Sauvignon", "George T. Stagg")
+  * For whiskey: "George T. Stagg" is the NAME made by "Buffalo Trace" (the PRODUCER)
+  * For wine: "1858 Cabernet Sauvignon" is the NAME made by "Caymus Vineyards" (the PRODUCER)
+  * If the current data has these swapped, correct BOTH producer AND name fields
+  * Name should NOT be just the grape variety - it should include the product line
+- For wine: Use the vintage year as context to find the bottle, then verify producer/winery, name, beverage_type (Red wine/White wine/etc.), country, region (appellation/DOC), grape variety/blend, vineyard/estate, and ABV
+- For whiskey: Use the release year as context to find the bottle, then verify actual distillery, name, beverage_type (Bourbon/Rye/Scotch/etc.), country, region/state, age statement, proof, ABV, mash bill, and barrel type
+- beverage_type should be specific: "Red wine", "Bourbon", "Rye", "Single Malt Scotch", etc.
+- For proof and ABV: both are often available, ABV is universal, proof is US-specific
 - Cross-reference multiple sources when possible
 - Be precise: "Napa Valley" is different from "California"
-- Return ALL fields, not just corrections
+- Return ALL fields with accurate values (even if already correct)
+- Fill out as many fields as possible - don't leave fields empty if you can find the information
 
 **Return JSON:**
 {{
+  "producer": "correct producer/distillery/winery name",
+  "name": "correct product name (NOT just grape variety or whiskey type)",
+  "beverage_type": "specific beverage type (Red wine, Bourbon, etc.)",
   "country": "correct country name",
   "region": "correct region/appellation",
-  "variety": "correct variety or blend",
+  "abv": 14.5,
+  {"\"variety\": \"grape variety or blend\"," if bottle.type == "wine" else ""}
   {"\"vineyard\": \"vineyard or estate name\"," if bottle.type == "wine" else ""}
+  {"\"age_statement\": 12," if bottle.type == "whiskey" else ""}
+  {"\"proof\": 90," if bottle.type == "whiskey" else ""}
   {"\"mash_bill\": \"mash bill composition\"," if bottle.type == "whiskey" else ""}
   {"\"barrel_type\": \"barrel type\"," if bottle.type == "whiskey" else ""}
   "confidence": "high/medium/low",
   "reasoning": "Brief explanation citing your sources"
 }}
+
+**CRITICAL - Name vs Producer vs Variety:**
+- Producer: The winery/distillery that makes it (e.g., "Caymus Vineyards", "Buffalo Trace")
+- Name: The specific product/brand name (e.g., "1858 Cabernet Sauvignon", "George T. Stagg")
+- Variety: The grape type or whiskey category (e.g., "Cabernet Sauvignon", "Bourbon")
+- If current data has producer/name swapped, correct BOTH fields
+- Name should be the product line/label name, NOT just the grape variety alone
+
+**IMPORTANT**: Do NOT return or modify the year field - use the provided year as context only.
 
 Use web search to find accurate, current data - don't guess."""
 
@@ -354,7 +429,7 @@ Use web search to find accurate, current data - don't guess."""
                 prompt=prompt,
                 tools=tools,
                 temperature=0.1,  # Very deterministic for verification
-                max_tokens=1000,
+                max_tokens=1500,  # Increased to handle verification of all fields (now includes beverage_type, year, age_statement, proof, abv)
             )
 
             # Parse response

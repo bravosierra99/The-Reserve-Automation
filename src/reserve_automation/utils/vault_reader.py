@@ -79,7 +79,7 @@ class VaultReader:
                 continue
 
             try:
-                bottle = self._parse_bottle_file(bottle_file, bottle_type)
+                bottle = self._parse_bottle_file(bottle_file, bottle_type, bottle_dir)
                 if bottle:
                     bottles.append(bottle)
             except Exception as e:
@@ -87,13 +87,14 @@ class VaultReader:
 
         return bottles
 
-    def _parse_bottle_file(self, file_path: Path, bottle_type: str) -> Optional[BottleMetadata]:
+    def _parse_bottle_file(self, file_path: Path, bottle_type: str, bottle_dir: Path) -> Optional[BottleMetadata]:
         """
         Parse bottle metadata from markdown file.
 
         Args:
             file_path: Path to bottle markdown file
             bottle_type: "wine" or "whiskey"
+            bottle_dir: Path to bottle directory
 
         Returns:
             BottleMetadata or None if parsing fails
@@ -126,14 +127,14 @@ class VaultReader:
                     metadata[key] = value
 
             # Convert to BottleMetadata
-            return self._metadata_to_bottle(metadata, bottle_type, file_path.stem)
+            return self._metadata_to_bottle(metadata, bottle_type, file_path.stem, bottle_dir)
 
         except Exception as e:
             logger.error(f"Error parsing {file_path}: {e}")
             return None
 
     def _metadata_to_bottle(
-        self, metadata: dict, bottle_type: str, filename: str
+        self, metadata: dict, bottle_type: str, filename: str, bottle_dir: Path
     ) -> BottleMetadata:
         """
         Convert vault metadata dict to BottleMetadata.
@@ -142,6 +143,7 @@ class VaultReader:
             metadata: Parsed frontmatter dict
             bottle_type: "wine" or "whiskey"
             filename: Filename (used to extract producer/name/year)
+            bottle_dir: Path to bottle directory
 
         Returns:
             BottleMetadata instance
@@ -168,8 +170,8 @@ class VaultReader:
         producer = metadata.get("Winemaker") or metadata.get("Distiller")
         name = metadata.get("WineName") or metadata.get("WhiskeyName")
 
-        # Parse year
-        vintage_str = metadata.get("Vintage")
+        # Parse year (wines use "Vintage", whiskeys use "Year")
+        vintage_str = metadata.get("Vintage") or metadata.get("Year")
         year = None
         if vintage_str and vintage_str not in ["", "NV"]:
             try:
@@ -186,6 +188,10 @@ class VaultReader:
             except (ValueError, TypeError):
                 pass
 
+        # Calculate vault path (relative to vault root)
+        # e.g., "1_Whiskeys/Rare character - American light whiskey - 2025"
+        vault_path = str(bottle_dir.relative_to(self.vault_path))
+
         # Build BottleMetadata
         bottle_data = {
             "producer": producer or "Unknown",
@@ -197,12 +203,21 @@ class VaultReader:
             "region": region,
             "price": price,
             "source": "vault",
+            "vault_path": vault_path,
         }
 
         # Wine-specific fields
         if bottle_type == "wine":
             bottle_data["variety"] = metadata.get("Variety")
             bottle_data["vineyard"] = metadata.get("Vineyard")
+
+            # Parse ABV for wine
+            abv_str = metadata.get("ABV")
+            if abv_str:
+                try:
+                    bottle_data["abv"] = float(abv_str)
+                except (ValueError, TypeError):
+                    pass
 
         # Whiskey-specific fields
         elif bottle_type == "whiskey":
@@ -214,6 +229,14 @@ class VaultReader:
             if proof_str:
                 try:
                     bottle_data["proof"] = float(proof_str)
+                except (ValueError, TypeError):
+                    pass
+
+            # Parse ABV for whiskey (in addition to proof)
+            abv_str = metadata.get("ABV")
+            if abv_str:
+                try:
+                    bottle_data["abv"] = float(abv_str)
                 except (ValueError, TypeError):
                     pass
 

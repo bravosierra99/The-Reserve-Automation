@@ -611,7 +611,6 @@ function tastingReview() {
 
         async selectMatch(bottlePath) {
             try {
-                console.log(`Selecting match: ${bottlePath} for tasting ${this.currentIndex}`);
                 const response = await fetch(`/api/v1/tastings/${this.extractionId}/${this.currentIndex}/match`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -625,13 +624,24 @@ function tastingReview() {
                 }
 
                 const data = await response.json();
-                console.log('Match selected successfully:', data);
-                this.session.tastings[this.currentIndex].selected_match = bottlePath;
-                this.session.tastings[this.currentIndex].status = 'matched';
-                this.session.tastings[this.currentIndex].duplicate_warning = data.duplicate_warning;
+
+                // Force Alpine reactivity by reassigning the tasting object
+                const updatedTasting = {
+                    ...this.session.tastings[this.currentIndex],
+                    selected_match: bottlePath,
+                    status: 'matched',
+                    duplicate_warning: data.duplicate_warning
+                };
+
+                // Replace the tasting in the array
+                this.session.tastings[this.currentIndex] = updatedTasting;
+
+                // Force reactivity by reassigning the entire tastings array
+                this.session.tastings = [...this.session.tastings];
+
                 this.searchResults = [];
             } catch (err) {
-                console.error('selectMatch error:', err);
+                console.error('Failed to select match:', err.message);
                 alert('Failed to select match: ' + err.message);
             }
         },
@@ -644,8 +654,18 @@ function tastingReview() {
         },
 
         clearMatch() {
-            this.session.tastings[this.currentIndex].selected_match = null;
-            this.session.tastings[this.currentIndex].status = 'extracted';
+            // Force Alpine reactivity by reassigning the tasting object
+            const updatedTasting = {
+                ...this.session.tastings[this.currentIndex],
+                selected_match: null,
+                status: 'extracted'
+            };
+
+            // Replace the tasting in the array
+            this.session.tastings[this.currentIndex] = updatedTasting;
+
+            // Force reactivity by reassigning the entire tastings array
+            this.session.tastings = [...this.session.tastings];
         },
 
         getSelectedMatchThumbnail() {
@@ -696,15 +716,11 @@ function tastingReview() {
                 return;
             }
 
-            console.log(`Searching for: "${this.searchQuery}", beverage_type: ${this.session?.beverage_type}`);
             try {
                 const url = `/api/v1/bottles/search?q=${encodeURIComponent(this.searchQuery)}&beverage_type=${this.session.beverage_type}&limit=20`;
-                console.log('Search URL:', url);
-
                 const response = await fetch(url, {
                     credentials: 'same-origin'
                 });
-                console.log('Search response status:', response.status);
 
                 if (!response.ok) {
                     const errorText = await response.text();
@@ -713,9 +729,7 @@ function tastingReview() {
                 }
 
                 const data = await response.json();
-                console.log('Search results:', data);
                 this.searchResults = data.results || [];
-                console.log(`Found ${this.searchResults.length} results`);
             } catch (err) {
                 console.error('Search error:', err);
                 alert('Search failed: ' + err.message);

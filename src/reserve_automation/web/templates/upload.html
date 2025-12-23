@@ -3,7 +3,35 @@
 {% block title %}Upload - The Reserve{% endblock %}
 
 {% block content %}
-<div x-data="uploadForm()" class="max-w-2xl mx-auto">
+<style>
+    /* Prevent iOS scroll jump on dynamic content load */
+    html {
+        overflow-anchor: none;
+        scroll-behavior: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    body {
+        overflow-anchor: none;
+        position: relative;
+    }
+
+    /* Prevent iOS scroll jump by fixing image container size */
+    .image-container {
+        width: 100%;
+        position: relative;
+        background: #f3f4f6;
+        border-radius: 0.5rem;
+    }
+
+    /* Prevent touch scroll issues on iOS */
+    .upload-section {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+        touch-action: pan-y;
+    }
+</style>
+
+<div x-data="uploadForm()" class="max-w-2xl mx-auto upload-section">
     <!-- Upload Type Selection -->
     <div class="bg-white rounded-lg shadow-md p-6 mb-6" x-show="!selectedFile && !uploading && !uploadComplete">
         <h2 class="text-2xl font-bold mb-6 text-gray-800">What would you like to upload?</h2>
@@ -156,8 +184,14 @@
 
         <!-- Preview and upload -->
         <div x-show="selectedFile && !uploading && !uploadComplete" class="space-y-4">
-            <div class="relative">
-                <img :src="previewUrl" class="w-full rounded-lg shadow-md" alt="Preview">
+            <div class="image-container relative">
+                <!-- Image with min-height to prevent layout shift on mobile -->
+                <img
+                    :src="previewUrl"
+                    class="w-full rounded-lg shadow-md"
+                    style="min-height: 200px; max-height: 80vh; object-fit: contain; display: block;"
+                    alt="Preview"
+                >
                 <button
                     @click="clearFile"
                     class="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-full text-sm font-semibold"
@@ -167,11 +201,15 @@
             </div>
 
             <button
+                x-ref="uploadButton"
                 @click="uploadFile"
                 class="w-full py-4 px-6 bg-green-600 hover:bg-green-700 text-white text-lg font-semibold rounded-lg shadow-md transition-colors"
             >
                 ✓ Upload & Extract
             </button>
+
+            <!-- Padding prevents iOS scroll bounce - annoying but necessary -->
+            <div style="height: 30vh;"></div>
         </div>
 
         <!-- Uploading state -->
@@ -233,6 +271,14 @@ function uploadForm() {
         expectedCount: null,  // Expected number of tastings (1-4)
         purchaseSource: '',  // Where bottle was purchased
         inventory: 0,  // Number of bottles in inventory
+        imageLoadHandled: false,  // Flag to ensure we only auto-scroll once
+
+        init() {
+            // Prevent iOS scroll restoration on page load
+            if ('scrollRestoration' in history) {
+                history.scrollRestoration = 'manual';
+            }
+        },
 
         handleFileSelect(event) {
             const file = event.target.files[0];
@@ -240,12 +286,28 @@ function uploadForm() {
 
             this.selectedFile = file;
             this.previewUrl = URL.createObjectURL(file);
+            this.imageLoadHandled = false;  // Reset flag for new image
+
+            // Auto-scroll to center button in view (one time only)
+            setTimeout(() => {
+                if (this.$refs.uploadButton && !this.imageLoadHandled) {
+                    this.imageLoadHandled = true;
+
+                    // Scroll to button - 'center' alignment for best view of both image and button
+                    this.$refs.uploadButton.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center',
+                        inline: 'nearest'
+                    });
+                }
+            }, 300);
         },
 
         clearFile() {
             this.selectedFile = null;
             this.previewUrl = null;
             this.$refs.fileInput.value = '';
+            this.imageLoadHandled = false;  // Reset flag
         },
 
         clearError() {

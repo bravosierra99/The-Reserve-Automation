@@ -35,6 +35,21 @@ class BottleMatcher:
         self.vault_reader = VaultReader(vault_path)
         self._cache = {}  # Cache bottles by beverage_type
 
+    def invalidate_cache(self, beverage_type: Optional[str] = None):
+        """
+        Invalidate bottle cache for a specific beverage type or all types.
+
+        Args:
+            beverage_type: Optional beverage type to invalidate. If None, clears entire cache.
+        """
+        if beverage_type:
+            if beverage_type in self._cache:
+                logger.info(f"Invalidating bottle cache for {beverage_type}")
+                del self._cache[beverage_type]
+        else:
+            logger.info("Invalidating entire bottle cache")
+            self._cache.clear()
+
     def find_matches(
         self,
         bottle_name: str,
@@ -109,10 +124,11 @@ class BottleMatcher:
             # Score 3: Name only
             scores.append(self._similarity(bottle_name, bottle.name))
 
-            # Score 4: Folder name (most reliable)
-            folder_path = self._get_bottle_folder(bottle)
-            if folder_path:
-                folder_name = folder_path.name
+            # Score 4: Folder name (most reliable) - use vault_path if available
+            folder_path = None
+            if bottle.vault_path:
+                folder_path = self.vault_path / bottle.vault_path
+                folder_name = bottle.vault_path.split('/')[-1]  # Last component
                 scores.append(self._similarity(bottle_name, folder_name))
 
             # Use best score
@@ -133,12 +149,16 @@ class BottleMatcher:
         matches = []
 
         for bottle in vault_bottles:
-            folder_path = self._get_bottle_folder(bottle)
+            # Use vault_path if available, otherwise None
+            folder_path = None
+            folder_name = ""
+            if bottle.vault_path:
+                folder_path = self.vault_path / bottle.vault_path
+                folder_name = bottle.vault_path.split('/')[-1]  # Last component
 
             # Check if query appears in any of these fields
             full_name = self._get_full_name(bottle)
             producer_name = f"{bottle.producer} {bottle.name}"
-            folder_name = folder_path.name if folder_path else ""
 
             # Check all possible name variants
             searchable_texts = [
@@ -210,24 +230,6 @@ class BottleMatcher:
         if bottle.year:
             parts.append(str(bottle.year))
         return " - ".join(parts)
-
-    def _get_bottle_folder(self, bottle: BottleMetadata) -> Optional[Path]:
-        """Get the folder path for this bottle in the vault."""
-        # Construct expected folder name
-        folder_name = self._get_full_name(bottle)
-
-        # Search in appropriate cellar directory
-        if bottle.type == "wine":
-            cellar_dir = self.vault_path / "1_Wines"
-        else:
-            cellar_dir = self.vault_path / "1_Whiskeys"
-
-        # Find matching folder
-        for folder in cellar_dir.glob("*"):
-            if folder.is_dir() and folder.name == folder_name:
-                return folder
-
-        return None
 
     def _similarity(self, a: str, b: str) -> float:
         """

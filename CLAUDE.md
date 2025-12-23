@@ -74,6 +74,12 @@ Bad examples (these should be regular comments):
 - Obsidian: `%% #CLAUDE_REQ: %%` (hidden from display)
 - JavaScript: `// #CLAUDE_REQ:`
 
+**CRITICAL for Obsidian .md files with frontmatter:**
+- FileClass files (8_FileClass/*.md) MUST start with `---` on line 1 (frontmatter)
+- Put #CLAUDE_REQ comments AFTER the closing `---`, not before
+- Putting comments before frontmatter breaks Obsidian plugins
+- Template files (9_Templates/*.md) also start with frontmatter - put REQs after if needed
+
 Always search for just `#CLAUDE_REQ` to find them all!
 
 ## When to Check for #CLAUDE_REQ
@@ -84,6 +90,54 @@ You don't need to track which files have requirements - just check each file as 
 1. About to edit `foo.py`? → `grep -n "#CLAUDE_REQ" foo.py` first
 2. Planning edits to multiple files? → Check each one before writing the plan
 3. Just reading/analyzing? → No need to check
+
+## CRITICAL: Working with Bottle Fields
+
+When adding/modifying ANY field in the bottle data model, you MUST follow this workflow:
+
+### Step 1: Identify the Starting Point
+You're modifying one of:
+- `core/models.py` (BottleMetadata)
+- `the-reserve/Cellar/8_FileClass/*.md` (Obsidian field definitions)
+- Templates (`templates/*.md.j2` or `the-reserve/Cellar/9_Templates/*.md`)
+- Generator context (`generators/obsidian.py`)
+- Vault reader (`utils/vault_reader.py`)
+- Field mapping (`web/routes/management.py`)
+
+### Step 2: Read #CLAUDE_REQ in the Starting File
+```bash
+grep -n "#CLAUDE_REQ" <file_you_are_editing>
+```
+This will list 4-6 files you MUST verify coherence with.
+
+### Step 3: ACTUALLY GO READ THOSE FILES
+For EACH file mentioned in the #CLAUDE_REQ:
+1. Use Grep or Read tool to check the file
+2. Verify the field exists (or add it if needed)
+3. Verify the field name matches (model name vs Obsidian name via field_name_map)
+
+### Step 4: Make Changes to ALL Required Files
+Don't just edit the starting file - edit ALL files in the coherence chain:
+- If adding `foo` field to BottleMetadata → also add to FileClass, templates, generator context, vault reader, field_name_map
+- If renaming field in FileClass → update templates, generator, vault reader, field_name_map
+
+### Example: Adding ABV Field
+User says: "Add ABV to wine bottles"
+
+❌ WRONG: Just add to BottleMetadata and say "done"
+
+✅ RIGHT:
+1. Read #CLAUDE_REQ in core/models.py → see list of 5 files to check
+2. Read 8_FileClass/Wine.md → add ABV field definition
+3. Read templates/wine.md.j2 → add ABV to frontmatter
+4. Read 9_Templates/Tasting Note.md → add ABV to frontmatter
+5. Read generators/obsidian.py _prepare_context → add abv to context dict
+6. Read utils/vault_reader.py → add ABV parsing
+7. Read web/routes/management.py field_name_map → add "abv": "ABV" mapping
+8. THEN say "done"
+
+### The Rule: READ THE #CLAUDE_REQs, THEN DO WHAT THEY SAY
+If a #CLAUDE_REQ lists 5 files, you MUST check all 5 files. Not optional.
 
 ## Obsidian Vault Integration
 

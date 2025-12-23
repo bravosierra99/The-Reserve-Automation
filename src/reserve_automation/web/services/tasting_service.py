@@ -41,6 +41,15 @@ class TastingService:
             templates_path=self.templates_path
         )
 
+    def invalidate_bottle_cache(self, beverage_type: Optional[str] = None):
+        """
+        Invalidate bottle cache after new bottles are added.
+
+        Args:
+            beverage_type: Optional beverage type to invalidate. If None, clears entire cache.
+        """
+        self.bottle_matcher.invalidate_cache(beverage_type)
+
     def create_session_from_extraction(
         self,
         extraction_id: str,
@@ -164,17 +173,22 @@ class TastingService:
 
         candidates = []
         for match in matches:
+            # Use vault_path directly from bottle metadata
+            bottle_path = match.bottle.vault_path or ""
+
+            if not bottle_path:
+                logger.warning(f"Bottle has no vault_path: {self._get_full_name(match)}")
+                continue
+
             # Build thumbnail URL (if label exists)
             thumbnail_url = None
-            if match.folder_path:
-                label_path = match.folder_path / "label.jpg"
-                if label_path.exists():
-                    # Construct URL for serving this image
-                    rel_path = match.folder_path.relative_to(self.vault_path)
-                    thumbnail_url = f"/api/v1/vault-images/{beverage_type}/{rel_path.name}/label.jpg"
+            bottle_folder_name = bottle_path.split('/')[-1]  # Last component
+            label_path = self.vault_path / bottle_path / "labels" / "label.jpg"
+            if label_path.exists():
+                thumbnail_url = f"/api/v1/vault-images/{beverage_type}/{bottle_folder_name}/label.jpg"
 
             candidate = MatchCandidate(
-                bottle_path=str(match.folder_path.relative_to(self.vault_path)) if match.folder_path else "",
+                bottle_path=bottle_path,
                 bottle_name=self._get_full_name(match),
                 producer=match.bottle.producer or "",
                 vintage=match.bottle.year,
@@ -223,16 +237,24 @@ class TastingService:
             )
 
             for match in matches:
-                # Build thumbnail URL
+                # Use vault_path directly from bottle metadata (no reconstruction needed!)
+                bottle_path = match.bottle.vault_path or ""
+
+                if not bottle_path:
+                    logger.warning(f"Bottle has no vault_path: {self._get_full_name(match)}")
+                    continue
+
+                logger.debug(f"Processing match: bottle={self._get_full_name(match)}, vault_path={bottle_path}")
+
+                # Build thumbnail URL from vault_path
                 thumbnail_url = None
-                if match.folder_path:
-                    label_path = match.folder_path / "label.jpg"
-                    if label_path.exists():
-                        rel_path = match.folder_path.relative_to(self.vault_path)
-                        thumbnail_url = f"/api/v1/vault-images/{bev_type}/{rel_path.name}/label.jpg"
+                bottle_folder_name = bottle_path.split('/')[-1]  # Last component of path
+                label_path = self.vault_path / bottle_path / "labels" / "label.jpg"
+                if label_path.exists():
+                    thumbnail_url = f"/api/v1/vault-images/{bev_type}/{bottle_folder_name}/label.jpg"
 
                 candidate = MatchCandidate(
-                    bottle_path=str(match.folder_path.relative_to(self.vault_path)) if match.folder_path else "",
+                    bottle_path=bottle_path,
                     bottle_name=self._get_full_name(match),
                     producer=match.bottle.producer or "",
                     vintage=match.bottle.year,
@@ -240,6 +262,7 @@ class TastingService:
                     thumbnail_url=thumbnail_url,
                     beverage_type=bev_type
                 )
+                logger.debug(f"  -> Created MatchCandidate with bottle_path='{candidate.bottle_path}'")
                 results.append(candidate)
 
         # Sort by confidence and limit

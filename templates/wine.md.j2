@@ -1,3 +1,5 @@
+{# #CLAUDE_REQ: This template MUST stay synchronized with the-reserve/Cellar/9_Templates/Tasting Note.md #}
+{# #CLAUDE_REQ: When modifying this template, check that both templates have identical frontmatter structure #}
 ---
 fileClass: Wine
 Name: {{ name }}
@@ -8,6 +10,7 @@ Type: {% if beverage_type %}{{ beverage_type }}{% endif %}
 Variety: {% if variety %}{{ variety }}{% endif %}
 Country-Region: {% if country %}{% if region %}{{ country }} - {{ region }}{% else %}{{ country }}{% endif %}{% else %}{% if region %}{{ region }}{% endif %}{% endif %}
 Vineyard: {% if vineyard %}{{ vineyard }}{% endif %}
+ABV: {% if abv %}{{ abv }}{% endif %}
 Style:
 Price: {% if price %}"{{ price }}"{% endif %}
 PurchaseSource: {% if purchase_source %}{{ purchase_source }}{% endif %}

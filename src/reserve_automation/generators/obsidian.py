@@ -8,6 +8,12 @@ CRITICAL TEMPLATE REQUIREMENTS (see CLAUDE.md for full details):
 - Field names MUST match Obsidian fileClass definitions
 """
 
+#CLAUDE_REQ: When adding/modifying _prepare_context fields, verify coherence with:
+#CLAUDE_REQ: - BottleMetadata model (core/models.py) - field must exist
+#CLAUDE_REQ: - Templates (templates/*.md.j2) - field must be used
+#CLAUDE_REQ: - Obsidian FileClass (the-reserve/Cellar/8_FileClass/*.md) - field must be defined
+#CLAUDE_REQ: - Vault reader (utils/vault_reader.py) - field must be parsed for round-trip
+
 import re
 from datetime import datetime
 from pathlib import Path
@@ -257,6 +263,8 @@ class ObsidianGenerator:
             "proof": bottle.proof,
             "mash_bill": bottle.mash_bill,
             "barrel_type": bottle.barrel_type,
+            # Common alcohol content field (for both wine and spirits)
+            "abv": bottle.abv,
         }
 
         return context

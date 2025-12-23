@@ -1,5 +1,12 @@
 """Data models for The Reserve Automation."""
 
+#CLAUDE_REQ: When adding/modifying BottleMetadata fields, verify coherence with:
+#CLAUDE_REQ: - Obsidian FileClass definitions (the-reserve/Cellar/8_FileClass/*.md)
+#CLAUDE_REQ: - Templates (templates/*.md.j2 and the-reserve/Cellar/9_Templates/)
+#CLAUDE_REQ: - Generator context (generators/obsidian.py _prepare_context)
+#CLAUDE_REQ: - Vault reader parsing (utils/vault_reader.py)
+#CLAUDE_REQ: - Field name mapping (web/routes/management.py field_name_map)
+
 from datetime import datetime
 from enum import Enum
 from typing import Literal, Optional
@@ -61,6 +68,9 @@ class BottleMetadata(BaseModel):
     # Inventory and purchase info
     purchase_source: Optional[str] = Field(None, description="Where the bottle was purchased", max_length=200)
     inventory: int = Field(0, description="Number of bottles in inventory", ge=0)
+
+    # Vault location (for bottles read from vault)
+    vault_path: Optional[str] = Field(None, description="Relative path in vault (e.g., '1_Whiskeys/Distiller - Name - Year')")
 
     # Metadata
     confidence: float = Field(

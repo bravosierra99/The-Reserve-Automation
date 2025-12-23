@@ -781,6 +781,13 @@ async def approve_bottle(
         obsidian_file.file_path.parent.mkdir(parents=True, exist_ok=True)
         obsidian_file.file_path.write_text(obsidian_file.content, encoding="utf-8")
 
+        # Invalidate bottle cache so new bottle appears in tasting matching immediately
+        from ..services.tasting_service import TastingService
+        tasting_service = TastingService(core_config)
+        beverage_type = bottle.beverage_type  # "wine" or "whiskey"
+        tasting_service.invalidate_bottle_cache(beverage_type)
+        logger.info(f"Invalidated bottle cache for {beverage_type} after saving new bottle")
+
         # Handle label image based on selection workflow
         label_path = None
         labels_dir = obsidian_file.file_path.parent / "labels"
