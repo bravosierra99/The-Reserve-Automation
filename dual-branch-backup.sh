@@ -13,11 +13,6 @@ set -e  # Exit on error
 # CONFIGURATION - Customize these for your repository
 # ============================================================================
 
-# Use current working directory as the repository directory
-# (Works whether called directly or via symlink)
-SCRIPT_DIR="$(pwd)"
-cd "$SCRIPT_DIR"
-
 # Branch names
 FRAMEWORK_BRANCH="main"          # Branch for framework/public files
 PERSONAL_BRANCH="tastings-backup" # Branch for personal/private data
@@ -28,6 +23,66 @@ PERSONAL_DIRS="Cellar/1_Wines/ Cellar/1_Whiskeys/"
 
 # Repository name for display messages
 REPO_NAME="The Reserve"
+
+# Default repository directory (relative to script location)
+DEFAULT_REPO_DIR="the-reserve"
+
+# ============================================================================
+# ARGUMENT PARSING - Find the git repository
+# ============================================================================
+
+# Parse --repo-dir argument
+REPO_DIR=""
+COMMAND_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --repo-dir)
+            REPO_DIR="$2"
+            shift 2
+            ;;
+        *)
+            COMMAND_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Restore command arguments
+set -- "${COMMAND_ARGS[@]}"
+
+# Auto-detect repository directory if not specified
+if [ -z "$REPO_DIR" ]; then
+    # First check if current directory is a git repo
+    if [ -d .git ]; then
+        REPO_DIR="."
+    # Otherwise look for default repo subdirectory
+    elif [ -d "$DEFAULT_REPO_DIR/.git" ]; then
+        REPO_DIR="$DEFAULT_REPO_DIR"
+    else
+        # Try to find any subdirectory with .git
+        for dir in */; do
+            if [ -d "${dir}.git" ]; then
+                REPO_DIR="$dir"
+                break
+            fi
+        done
+    fi
+fi
+
+# Validate we found a repo
+if [ -z "$REPO_DIR" ]; then
+    echo -e "${RED}Error: Could not find git repository${NC}"
+    echo "Tried:"
+    echo "  - Current directory ($(pwd))"
+    echo "  - Subdirectory: $DEFAULT_REPO_DIR"
+    echo ""
+    echo "Usage: $0 [--repo-dir <path>] {personal|framework|both|status} [--dry-run|-n]"
+    exit 1
+fi
+
+# Change to repository directory
+cd "$REPO_DIR"
+REPO_DIR="$(pwd)"  # Get absolute path
 
 # ============================================================================
 # SCRIPT BEGINS - No need to edit below this line
@@ -40,7 +95,8 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}=== $REPO_NAME Backup ===${NC}\n"
+echo -e "${BLUE}=== $REPO_NAME Backup ===${NC}"
+echo -e "${BLUE}Repository: $REPO_DIR${NC}\n"
 
 # Check if we're in a git repo
 if [ ! -d .git ]; then
@@ -257,7 +313,7 @@ case "${1:-both}" in
         show_status
         ;;
     *)
-        echo "Usage: $0 {personal|framework|both|status} [--dry-run|-n]"
+        echo "Usage: $0 [--repo-dir <path>] {personal|framework|both|status} [--dry-run|-n]"
         echo ""
         echo "Commands:"
         echo "  personal   - Backup personal data to $PERSONAL_BRANCH branch (alias: bottles)"
@@ -266,12 +322,13 @@ case "${1:-both}" in
         echo "  status     - Show current git status by category"
         echo ""
         echo "Options:"
-        echo "  --dry-run, -n  - Show what would be done without making changes"
+        echo "  --repo-dir <path>  - Path to git repository (auto-detects if omitted)"
+        echo "  --dry-run, -n      - Show what would be done without making changes"
         echo ""
         echo "Examples:"
-        echo "  $0 personal --dry-run"
-        echo "  $0 both"
-        echo "  $0 status"
+        echo "  $0 personal --dry-run           # From repo directory"
+        echo "  $0 --repo-dir the-reserve both  # From parent directory"
+        echo "  $0 status                        # Auto-detect repo"
         exit 1
         ;;
 esac
