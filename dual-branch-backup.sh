@@ -13,16 +13,9 @@ set -e  # Exit on error
 # CONFIGURATION - Customize these for your repository
 # ============================================================================
 
-# Determine working directory (use current directory or follow symlink)
-if [ -L "$0" ]; then
-    # If script is a symlink, use the directory where the symlink is located
-    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-else
-    # Otherwise use current working directory
-    SCRIPT_DIR="$(pwd)"
-fi
-
-# Change to the repository directory
+# Use current working directory as the repository directory
+# (Works whether called directly or via symlink)
+SCRIPT_DIR="$(pwd)"
 cd "$SCRIPT_DIR"
 
 # Branch names
