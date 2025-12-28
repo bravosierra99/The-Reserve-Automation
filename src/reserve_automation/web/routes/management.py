@@ -1066,6 +1066,52 @@ async def manual_crop_label(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/api/v1/management/labels/upload-manual")
+async def upload_manual_label(file: "UploadFile", bottle: str = Form(...)):
+    """
+    Upload a manual label image file for a bottle.
+    Saves as label_download.jpg so it can use the existing download workflow.
+    """
+    from ..app import core_config
+    from ...core.models import BottleMetadata
+    from pathlib import Path
+    from fastapi import UploadFile, Form
+    import json
+
+    try:
+        # Parse bottle data from form
+        bottle_data = json.loads(bottle)
+        bottle_obj = BottleMetadata(**bottle_data)
+
+        if not bottle_obj.vault_path:
+            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+
+        label_dir = core_config.vault_path / bottle_obj.vault_path / "labels"
+        label_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save uploaded file as label_download.jpg
+        download_path = label_dir / "label_download.jpg"
+
+        # Read and save file
+        content = await file.read()
+        with open(download_path, "wb") as f:
+            f.write(content)
+
+        logger.info(f"Manual label uploaded: {download_path}")
+
+        return {
+            "status": "success",
+            "message": "Label uploaded successfully",
+            "download_path": str(download_path)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Manual upload failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/api/v1/management/labels/manual-crop-downloaded")
 async def manual_crop_downloaded_label(data: dict):
     """

@@ -838,6 +838,37 @@
                     </button>
                 </div>
 
+                <!-- Manual Upload Option -->
+                <div x-show="labelSearchResults.length > 0 && !labelDownloadedOriginal" class="mb-6">
+                    <div class="border-t-2 border-gray-200 pt-6">
+                        <h4 class="font-bold text-gray-800 mb-3">Or Upload Your Own Image</h4>
+                        <p class="text-sm text-gray-600 mb-4">If search didn't find what you need, upload an image from your device.</p>
+
+                        <input
+                            type="file"
+                            accept="image/*"
+                            @change="handleManualLabelUpload($event)"
+                            class="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+                        >
+
+                        <div x-show="manualUploadPreview" class="mt-4">
+                            <img :src="manualUploadPreview" alt="Upload preview" class="max-h-64 mx-auto border-2 border-gray-300 rounded-lg mb-3">
+                            <div class="flex gap-3">
+                                <button @click="uploadManualLabelImage()"
+                                        :disabled="!manualUploadFile || labelActionInProgress"
+                                        class="flex-1 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                                    <span x-show="!labelActionInProgress">✓ Use This Image</span>
+                                    <span x-show="labelActionInProgress">Uploading...</span>
+                                </button>
+                                <button @click="cancelManualUpload()"
+                                        class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Crop Preview (for "Crop Current Label") -->
                 <div x-show="labelCropPreview && !labelDownloadedOriginal" class="mb-6">
                     <h4 class="font-bold text-gray-800 mb-3">Cropped Preview</h4>
@@ -1043,6 +1074,8 @@ function managementApp() {
         manualCropDownloadedActive: false,
         manualCropDownloadedSrc: null,
         cropperDownloadedInstance: null,
+        manualUploadFile: null,
+        manualUploadPreview: null,
 
         selectMode(m) {
             this.mode = m;
@@ -2071,6 +2104,65 @@ function managementApp() {
         recropDownloaded() {
             // Clear the cropped version so user can try again
             this.labelDownloadedCropped = null;
+        },
+
+        handleManualLabelUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            this.manualUploadFile = file;
+
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                this.manualUploadPreview = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        },
+
+        async uploadManualLabelImage() {
+            if (!this.manualUploadFile || !this.selectedLabelBottle) return;
+
+            this.labelActionInProgress = true;
+            try {
+                // Create FormData to upload file
+                const formData = new FormData();
+                formData.append('file', this.manualUploadFile);
+                formData.append('bottle', JSON.stringify(this.selectedLabelBottle));
+
+                const response = await fetch('/api/v1/management/labels/upload-manual', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error('Failed to upload image');
+
+                const result = await response.json();
+
+                // Clear manual upload state
+                this.cancelManualUpload();
+
+                // Now show as downloaded image (reuse download workflow)
+                const downloadPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
+                                      this.selectedLabelBottle.vault_path + '/labels/label_download.jpg';
+                this.labelDownloadedOriginal = `/api/v1/labels/view?path=${encodeURIComponent(downloadPath)}&t=${Date.now()}`;
+                this.labelDownloadedCropped = null;
+
+                alert('✅ Image uploaded! You can now crop it or use as-is.');
+            } catch (error) {
+                console.error('Manual upload failed:', error);
+                alert('Upload failed: ' + error.message);
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
+        cancelManualUpload() {
+            this.manualUploadFile = null;
+            this.manualUploadPreview = null;
+            // Reset file input
+            const fileInputs = document.querySelectorAll('input[type="file"]');
+            fileInputs.forEach(input => input.value = '');
         },
 
         async acceptLabelCrop() {
