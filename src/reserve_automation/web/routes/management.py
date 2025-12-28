@@ -822,7 +822,7 @@ async def accept_label_crop(data: dict):
 @router.post("/api/v1/management/labels/replace-from-url")
 async def replace_label_from_url(data: dict):
     """
-    Download image from URL, crop it, and replace label.
+    Download image from URL, crop it, and CREATE A PREVIEW (not replace yet).
     """
     from ..app import core_config
     from ...llm.gateway import LLMGateway
@@ -852,25 +852,18 @@ async def replace_label_from_url(data: dict):
             response.raise_for_status()
             image_bytes = response.content
 
-        # Save as new label
-        new_label_path = label_dir / "label.jpg"
+        # Save as PREVIEW (not final label yet)
+        preview_path = label_dir / "label_preview.jpg"
+        preview_path.write_bytes(image_bytes)
 
-        # Backup existing if present
-        if new_label_path.exists():
-            backup_path = label_dir / "label_replaced_backup.jpg"
-            copyfile(new_label_path, backup_path)
-
-        # Write downloaded image
-        new_label_path.write_bytes(image_bytes)
-
-        # Crop it using improved detection
+        # Crop the preview using improved detection
         llm = LLMGateway(core_config.llm)
         processor = LabelImageProcessor(llm)
-        processor.crop_to_label(new_label_path)
+        processor.crop_to_label(preview_path)
 
         return {
             "status": "success",
-            "message": "Label replaced successfully"
+            "preview_path": str(preview_path)
         }
 
     except HTTPException:

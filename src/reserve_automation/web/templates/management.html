@@ -1652,7 +1652,7 @@ function managementApp() {
 
             this.labelActionInProgress = true;
             try {
-                // Download selected image, crop it, and replace label
+                // Download selected image, crop it, and PREVIEW (don't replace yet)
                 const response = await fetch('/api/v1/management/labels/replace-from-url', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1662,16 +1662,17 @@ function managementApp() {
                     })
                 });
 
-                if (!response.ok) throw new Error('Failed to replace label');
+                if (!response.ok) throw new Error('Failed to download and crop');
 
-                alert('✅ Label replaced successfully!');
-                // Go back to grid
-                this.selectedLabelBottle = null;
-                // Reload bottles to show new label
-                await this.loadLabelsForReview();
+                const data = await response.json();
+                // Show preview of downloaded & cropped image
+                this.labelCropPreview = `/api/v1/labels/view?path=${encodeURIComponent(data.preview_path)}&t=${Date.now()}`;
+                // Clear search results since we now have a preview
+                this.labelSearchResults = [];
+                this.selectedSearchImage = null;
             } catch (error) {
-                console.error('Failed to replace label:', error);
-                alert('Failed to replace label: ' + error.message);
+                console.error('Failed to download and crop:', error);
+                alert('Failed to download and crop: ' + error.message);
             } finally {
                 this.labelActionInProgress = false;
             }
