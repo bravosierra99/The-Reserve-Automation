@@ -1,0 +1,23 @@
+{
+  "test_name": "Handwritten Bourbon Tasting - Rare Character",
+  "image_file": "bourbon_test_002.jpg",
+  "template_type": "bourbon",
+  "expected_output": {
+    "taster_name": "Ben",
+    "tasting_date": null,
+    "tastings": [
+      {
+        "bottle_name": "Rare Character American Light Whiskey",
+        "whiskey_nose": 2.2,
+        "whiskey_palate": 2.3,
+        "whiskey_finish": 2.2,
+        "whiskey_overall": 0.6,
+        "nose_notes": ["honeysuckle", "corn", "toast"],
+        "palate_notes": ["pepper", "toffee", "orange"],
+        "finish_notes": ["leather", "oak"],
+        "overall_notes": ""
+      }
+    ]
+  },
+  "notes": "Handwritten format without printed template. '100%' appears to indicate proof or completion. Location noted as 'at Home'."
+}

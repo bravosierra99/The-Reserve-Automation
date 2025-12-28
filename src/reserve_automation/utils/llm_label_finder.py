@@ -32,6 +32,7 @@ class LLMLabelFinder:
         prompt = self._create_search_prompt(bottle)
 
         logger.info(f"Searching for labels: {bottle.producer} {bottle.name}")
+        logger.debug(f"Search prompt:\n{prompt}")
 
         # Send request to LLM (which has web search tools)
         try:

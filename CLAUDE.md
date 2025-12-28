@@ -188,6 +188,90 @@ graph TD
     J --> K
 ```
 
+## Web Server Management
+
+When testing event system changes, I need to restart the web server. The following commands should be whitelisted:
+
+```bash
+# Startup script
+./start-web.sh
+timeout * ./start-web.sh
+
+# Direct uvicorn commands
+uv run --env-file .env uvicorn*
+WEB_SECRET_KEY=* uv run uvicorn*
+timeout * uv run uvicorn*
+
+# Stopping server
+pkill -f uvicorn
+pkill -f "uvicorn.*reserve_automation"
+```
+
+**When to restart:**
+- After modifying `routes/events.py` or `routes/tastings.py`
+- Before running event tests (to ensure latest code is loaded)
+
+**Startup command:** `./start-web.sh` (runs with reload enabled)
+
+## Testing Protocol
+
+**MANDATORY: Always check for and run tests when modifying code.**
+
+### Before Making Changes
+
+1. **Identify which system you're modifying** (events, extraction, vault, web UI, etc.)
+2. **Check for existing tests** in `tests/[system]/`
+3. **Read test documentation** to understand coverage
+
+### After Making Changes
+
+1. **Run relevant tests** for the system you modified
+2. **Verify tests pass** (or document new failures)
+3. **Report test results** to the user in your response
+
+### Quick Test Discovery
+
+```bash
+# Check for tests related to file you're editing
+ls tests/events/        # Event system
+ls tests/               # All test directories
+
+# Find tests for a component
+grep -r "class Test" tests/ | grep -i "events"
+```
+
+### System → Test Mapping
+
+| Modified Files | Run These Tests |
+|----------------|-----------------|
+| `routes/events.py`, `routes/tastings.py`, `templates/event_*.html` | `./tests/events/run_all_tests.sh` |
+| `extractors/bottle.py`, `parsers/pdf.py` | `uv run pytest tests/test_bottle_extraction_cli.py -v` |
+| `web/` routes or templates | `uv run pytest tests/test_bottle_extraction_web.py -v` |
+| Multiple systems | `uv run pytest tests/ -v` |
+
+### If Tests Don't Exist
+
+Alert the user:
+> "I'm modifying the [system] but don't see tests in `tests/[system]/`. Should I create a test suite before making changes?"
+
+### Test Result Reporting
+
+Always include in your completion message (adapt to the system you modified):
+
+```
+## Tests Run
+**System:** [The system you modified - events, extraction, web, etc.]
+**Command:** [The actual test command you ran]
+**Result:** [Pass/fail status with details]
+```
+
+Examples:
+- Modified events → "System: Event System, Command: ./tests/events/run_all_tests.sh, Result: 3/4 passing"
+- Modified extraction → "System: Bottle Extraction, Command: pytest tests/test_bottle_extraction_cli.py, Result: All passing ✅"
+- Modified multiple → "System: Multiple, Command: pytest tests/ -v, Result: 45/46 passing"
+
+**See [DEVELOPMENT.md](DEVELOPMENT.md) for complete testing protocol.**
+
 ## Remember
 
 - `#CLAUDE_REQ` comments are for YOU (Claude Code), not for human documentation
@@ -195,3 +279,4 @@ graph TD
 - Always grep for them before editing
 - Always think about adding them after substantial edits
 - When in doubt, ask the user
+- **Testing is mandatory** - check for tests before editing, run them after

@@ -11,7 +11,7 @@ from loguru import logger
 
 from .config import load_web_config
 from .logging_config import setup_web_logging
-from .routes import upload, review, health, bottles, tastings, management
+from .routes import upload, review, health, bottles, tastings, management, events
 from .services.upload_service import UploadService
 
 
@@ -19,12 +19,13 @@ from .services.upload_service import UploadService
 upload_service: UploadService = None
 core_config = None
 web_config = None
+event_store: dict[str, dict] = {}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    global upload_service, core_config, web_config
+    global upload_service, core_config, web_config, event_store
 
     # Startup - Initialize logging first
     # Read log level from environment variable, default to INFO for production
@@ -42,6 +43,10 @@ async def lifespan(app: FastAPI):
         max_file_size_mb=web_config.uploads.max_file_size_mb,
         allowed_extensions=web_config.uploads.allowed_extensions
     )
+
+    # Initialize event store (in-memory)
+    event_store = {}
+    logger.info("Event store initialized")
 
     # Clean up old temp files on startup
     deleted = upload_service.cleanup_old_files(
@@ -86,6 +91,7 @@ app.include_router(review.router, tags=["review"])  # Tasting card review page (
 app.include_router(bottles.router, tags=["bottles"])  # Bottle API endpoints (/api/v1/bottles/*)
 app.include_router(tastings.router, tags=["tastings"])  # New tasting review workflow
 app.include_router(management.router, tags=["management"])  # Management page for metadata updates
+app.include_router(events.router, tags=["events"])  # Event system for multi-user tastings
 
 
 @app.get("/")

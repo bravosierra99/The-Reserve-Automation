@@ -35,6 +35,16 @@
                 </a>
             </div>
 
+            <!-- Event context (if in event mode) -->
+            <div x-show="session?.event_id" class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                <p class="text-blue-800 font-semibold">
+                    🎭 Event Tasting
+                </p>
+                <p class="text-blue-700 text-sm">
+                    You are submitting tastings for an event. Bottles are restricted to those selected for the event.
+                </p>
+            </div>
+
             <!-- Count mismatch warning -->
             <div x-show="session?.count_mismatch" class="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-3">
                 <p class="text-yellow-800 font-semibold">
@@ -112,8 +122,13 @@
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1">Taster Name</label>
                     <input type="text" x-model="currentTasting.tasting_data.taster_name"
+                           :readonly="participantSession !== null"
                            @change="saveTastingData()"
+                           :class="participantSession ? 'bg-blue-50 border-blue-300' : ''"
                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <p x-show="participantSession" class="text-xs text-blue-600 mt-1">
+                        ✓ Name from event session
+                    </p>
                 </div>
 
                 <div>
@@ -498,6 +513,7 @@ function tastingReview() {
         searchTimeout: null,
         approving: false,
         skipping: false,
+        participantSession: null,  // Store event session info
         // Flavor notes as comma-separated strings for editing
         noseNotesText: '',
         palateNotesText: '',
@@ -561,6 +577,18 @@ function tastingReview() {
                 this.session = data;
                 this.currentIndex = data.current_index || 0;
                 this.stats = data.stats || { approved: 0, skipped: 0, remaining: 0, all_done: false };
+
+                // Auto-fill taster name from participant session if available
+                this.participantSession = this.getParticipantSession();
+                if (this.participantSession && this.participantSession.participant_name) {
+                    // Fill all tastings with the participant name
+                    this.session.tastings.forEach(tasting => {
+                        if (tasting.tasting_data && !tasting.tasting_data.taster_name) {
+                            tasting.tasting_data.taster_name = this.participantSession.participant_name;
+                        }
+                    });
+                }
+
                 this.syncFlavorNotesText();
                 this.loading = false;
             } catch (err) {
@@ -568,6 +596,37 @@ function tastingReview() {
                 this.errorMessage = err.message || 'Failed to load tasting session';
                 this.loading = false;
             }
+        },
+
+        getParticipantSession() {
+            const cookies = document.cookie.split(';').reduce((acc, cookie) => {
+                const [key, value] = cookie.trim().split('=');
+                acc[key] = value;
+                return acc;
+            }, {});
+
+            if (cookies.participant_sessions) {
+                try {
+                    const allSessions = JSON.parse(decodeURIComponent(cookies.participant_sessions));
+                    // Review page doesn't have event context
+                    // Only auto-fill if user is in exactly one event
+                    const eventIds = Object.keys(allSessions);
+                    if (eventIds.length === 1) {
+                        const eventId = eventIds[0];
+                        return {
+                            event_id: eventId,
+                            participant_id: allSessions[eventId].participant_id,
+                            participant_name: allSessions[eventId].participant_name
+                        };
+                    }
+                    // Multiple events - can't determine which to use
+                    return null;
+                } catch (e) {
+                    console.error('Failed to parse participant_sessions cookie:', e);
+                    return null;
+                }
+            }
+            return null;
         },
 
         prevTasting() {

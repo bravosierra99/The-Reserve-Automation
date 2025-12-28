@@ -35,6 +35,7 @@ async def review_bottles_page(extraction_id: str, request: Request):
 @router.post("/api/v1/upload")
 async def upload_file(
     response: Response,
+    request: Request,
     file: UploadFile = File(...),
     upload_type: str = Form("tasting_card"),
     expected_count: Optional[int] = Form(None),
@@ -45,6 +46,7 @@ async def upload_file(
 
     Args:
         response: FastAPI response for setting cookies
+        request: FastAPI request for reading cookies
         file: Uploaded file
         upload_type: Type of upload (tasting_card, bottle_label, auto)
         session_token: Existing session token (if any)
@@ -98,6 +100,22 @@ async def upload_file(
             "extraction_data": extraction_data,
             "expected_count": expected_count  # Store for new review page
         }
+
+        # Check for participant sessions (event context)
+        # Note: For upload, we need to know which event context to use
+        # This is a limitation - upload doesn't know which event if user is in multiple
+        # For now, we'll just skip event context for uploads (they can use manual entry from event page)
+        participant_cookie = request.cookies.get("participant_sessions")
+        if participant_cookie:
+            try:
+                import json
+                from urllib.parse import unquote
+                all_sessions = json.loads(unquote(participant_cookie))
+                # TODO: Upload can't determine which event without URL parameter
+                # For now, skip event context - user should use manual entry from event page
+                logger.info(f"Upload detected {len(all_sessions)} active event sessions, but upload doesn't support event context yet")
+            except Exception as e:
+                logger.warning(f"Failed to parse participant_sessions cookie: {e}")
 
         session_token = session_manager.create_session(session_data)
 

@@ -497,6 +497,15 @@ async def search_labels_for_bottle(request: Request):
         # Get bottle data from request body
         bottle_data = await request.json()
 
+        logger.info(f"=== LABEL SEARCH REQUEST ===")
+        logger.info(f"Producer: {bottle_data.get('producer')}")
+        logger.info(f"Name: {bottle_data.get('name')}")
+        logger.info(f"Year: {bottle_data.get('year')}")
+        logger.info(f"Variety: {bottle_data.get('variety')}")
+        logger.info(f"Region: {bottle_data.get('region')}")
+        logger.info(f"Vineyard: {bottle_data.get('vineyard')}")
+        logger.info(f"Type: {bottle_data.get('type')}")
+
         # Convert to BottleMetadata
         bottle = BottleMetadata(**bottle_data)
 
@@ -504,6 +513,10 @@ async def search_labels_for_bottle(request: Request):
         extraction_service = ExtractionService(core_config)
         label_service = LabelService(extraction_service.llm_gateway)
         label_candidates = await label_service.find_labels(bottle)
+
+        logger.info(f"Found {len(label_candidates)} label candidates")
+        for i, candidate in enumerate(label_candidates[:3]):
+            logger.info(f"  [{i+1}] {candidate.get('url')} from {candidate.get('source')}")
 
         return {"images": label_candidates}
 

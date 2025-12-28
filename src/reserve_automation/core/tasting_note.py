@@ -2,7 +2,7 @@
 #CLAUDE_REQ: Wine fields map to "Wine Tasting" fileClass: Appearance, Aroma, Taste, Aftertaste, Overall, AWS Score, 100pt Scale
 #CLAUDE_REQ: Whiskey fields map to "Tasting" fileClass: Nose, Palate, Finish, Overall, TotalScore, DaysFromCrack, FillLevel
 #CLAUDE_REQ: Wine uses AWS 20-point scale (3+6+6+3+2); Whiskey uses 10-point scale (3+3+3+1)
-#CLAUDE_REQ: Notes fields (nose_notes, palate_notes, finish_notes, overall_notes) populate template sections
+#CLAUDE_REQ: Notes fields (appearance_notes [wine only], nose_notes, palate_notes, finish_notes, overall_notes) populate template sections
 """Data models for tasting notes."""
 
 from datetime import date
@@ -36,6 +36,7 @@ class TastingNote(BaseModel):
     whiskey_overall: Optional[float] = Field(default=None, ge=0, le=1, description="Overall score (0-1)")
 
     # Tasting notes (free text)
+    appearance_notes: Optional[list[str]] = Field(default=None, description="Appearance descriptors (wine-specific)")
     nose_notes: Optional[list[str]] = Field(default=None, description="Nose/aroma descriptors")
     palate_notes: Optional[list[str]] = Field(default=None, description="Palate/taste descriptors")
     finish_notes: Optional[list[str]] = Field(default=None, description="Finish descriptors")

@@ -55,7 +55,8 @@ class TastingService:
         extraction_id: str,
         extraction_result: TastingExtractionResult,
         expected_count: Optional[int] = None,
-        upload_filename: Optional[str] = None
+        upload_filename: Optional[str] = None,
+        event_id: Optional[str] = None
     ) -> TastingSession:
         """
         Create a TastingSession from an extraction result.
@@ -65,6 +66,7 @@ class TastingService:
             extraction_result: Raw extraction result from LLM
             expected_count: User-specified expected tasting count
             upload_filename: Original uploaded filename
+            event_id: Optional event ID to restrict matches to event bottles
 
         Returns:
             TastingSession with match candidates populated
@@ -87,7 +89,8 @@ class TastingService:
             match_candidates = self.get_match_candidates(
                 bottle_name=tasting.bottle_name,
                 beverage_type=tasting.beverage_type,
-                limit=5
+                limit=5,
+                event_id=event_id
             )
 
             # Auto-select best match if confidence is high
@@ -140,7 +143,8 @@ class TastingService:
             actual_count=actual_count,
             count_mismatch=count_mismatch,
             tastings=tastings,
-            upload_filename=upload_filename
+            upload_filename=upload_filename,
+            event_id=event_id
         )
 
         return session
@@ -149,7 +153,8 @@ class TastingService:
         self,
         bottle_name: str,
         beverage_type: str,
-        limit: int = 5
+        limit: int = 5,
+        event_id: Optional[str] = None
     ) -> list[MatchCandidate]:
         """
         Get potential bottle matches for a tasting.
@@ -158,11 +163,50 @@ class TastingService:
             bottle_name: Bottle name from tasting card
             beverage_type: "wine" or "whiskey"
             limit: Maximum candidates to return
+            event_id: Optional event ID to restrict matches to event bottles
 
         Returns:
             List of MatchCandidate objects sorted by confidence
         """
-        logger.debug(f"Finding matches for: {bottle_name} ({beverage_type})")
+        logger.debug(f"Finding matches for: {bottle_name} ({beverage_type}, event_id={event_id})")
+
+        # If event_id provided, filter to event bottles only
+        if event_id:
+            from ..app import event_store
+            if event_store and event_id in event_store:
+                event = event_store[event_id]
+                event_bottles = event["bottles"]
+
+                candidates = []
+                for bottle in event_bottles:
+                    # Simple string matching for event bottles
+                    if bottle_name.lower() in bottle["bottle_name"].lower():
+                        # Build thumbnail URL
+                        thumbnail_url = None
+                        label_path = self.vault_path / bottle["bottle_path"] / "labels" / "label.jpg"
+                        if label_path.exists():
+                            thumbnail_url = f"/api/v1/bottle-label/{bottle['bottle_path']}"
+
+                        # Display name depends on event status
+                        display_name = bottle["bottle_name"]
+                        if event["is_blind"] and event["status"] == "open" and bottle.get("blind_number"):
+                            display_name = f"Bottle #{bottle['blind_number']}"
+
+                        candidate = MatchCandidate(
+                            bottle_path=bottle["bottle_path"],
+                            bottle_name=display_name,
+                            producer="",
+                            confidence=1.0 if bottle_name.lower() == bottle["bottle_name"].lower() else 0.8,
+                            thumbnail_url=thumbnail_url,
+                            beverage_type=beverage_type
+                        )
+                        candidates.append(candidate)
+
+                candidates.sort(key=lambda x: x.confidence, reverse=True)
+                return candidates[:limit]
+
+            # Event not found, return empty
+            return []
 
         matches = self.bottle_matcher.find_matches(
             bottle_name=bottle_name,
@@ -206,7 +250,8 @@ class TastingService:
         query: str,
         beverage_type: Optional[str] = None,
         limit: int = 10,
-        strict: bool = True
+        strict: bool = True,
+        event_id: Optional[str] = None
     ) -> list[MatchCandidate]:
         """
         Search for bottles in the vault by name.
@@ -216,11 +261,53 @@ class TastingService:
             beverage_type: Optional filter (wine/whiskey)
             limit: Maximum results
             strict: Use strict substring matching (default True)
+            event_id: Optional event ID to restrict search to event bottles
 
         Returns:
             List of matching bottles as MatchCandidate objects
         """
-        logger.info(f"Searching bottles: '{query}' (type={beverage_type}, strict={strict})")
+        logger.info(f"Searching bottles: '{query}' (type={beverage_type}, strict={strict}, event_id={event_id})")
+
+        # If event_id provided, search only event bottles
+        if event_id:
+            from ..app import event_store
+            if event_store and event_id in event_store:
+                event = event_store[event_id]
+                event_bottles = event["bottles"]
+
+                results = []
+                for bottle in event_bottles:
+                    # Match query against bottle name or blind number
+                    matches_name = query.lower() in bottle["bottle_name"].lower()
+                    matches_number = bottle.get("blind_number") and query in str(bottle["blind_number"])
+
+                    if matches_name or matches_number:
+                        # Build thumbnail URL
+                        thumbnail_url = None
+                        label_path = self.vault_path / bottle["bottle_path"] / "labels" / "label.jpg"
+                        if label_path.exists():
+                            thumbnail_url = f"/api/v1/bottle-label/{bottle['bottle_path']}"
+
+                        # Display name depends on event status
+                        display_name = bottle["bottle_name"]
+                        if event["is_blind"] and event["status"] == "open" and bottle.get("blind_number"):
+                            display_name = f"Bottle #{bottle['blind_number']}"
+
+                        candidate = MatchCandidate(
+                            bottle_path=bottle["bottle_path"],
+                            bottle_name=display_name,
+                            producer="",
+                            confidence=1.0 if matches_name else 0.9,
+                            thumbnail_url=thumbnail_url,
+                            beverage_type=event["beverage_type"]
+                        )
+                        results.append(candidate)
+
+                results.sort(key=lambda x: x.confidence, reverse=True)
+                return results[:limit]
+
+            # Event not found, return empty
+            return []
 
         results = []
 
@@ -248,10 +335,10 @@ class TastingService:
 
                 # Build thumbnail URL from vault_path
                 thumbnail_url = None
-                bottle_folder_name = bottle_path.split('/')[-1]  # Last component of path
+                # Check for label in bottle's labels folder
                 label_path = self.vault_path / bottle_path / "labels" / "label.jpg"
                 if label_path.exists():
-                    thumbnail_url = f"/api/v1/vault-images/{bev_type}/{bottle_folder_name}/label.jpg"
+                    thumbnail_url = f"/api/v1/bottle-label/{bottle_path}"
 
                 candidate = MatchCandidate(
                     bottle_path=bottle_path,
@@ -307,19 +394,58 @@ class TastingService:
     async def save_tasting(
         self,
         tasting_item: TastingSessionItem,
-        bottle_path: str
+        bottle_path: str,
+        event_id: Optional[str] = None,
+        participant_id: Optional[str] = None
     ) -> tuple[bool, Optional[str], Optional[str]]:
         """
-        Save a single tasting to the vault.
+        Save a single tasting to the vault or event store.
 
         Args:
             tasting_item: The tasting session item to save
             bottle_path: Path to bottle folder in vault
+            event_id: Optional event ID for event-based tastings
+            participant_id: Optional participant ID for event-based tastings
 
         Returns:
             Tuple of (success, file_path, error_message)
         """
-        logger.info(f"Saving tasting to {bottle_path}")
+        logger.info(f"Saving tasting to {bottle_path} (event_id={event_id})")
+
+        # If event_id provided, save to event_store instead of vault
+        if event_id:
+            try:
+                from ..app import event_store
+                if event_store is None or event_id not in event_store:
+                    return False, None, "Event not found"
+
+                if not participant_id:
+                    return False, None, "Participant ID required for event tastings"
+
+                event = event_store[event_id]
+
+                # Check if participant exists
+                if participant_id not in event["participants"]:
+                    return False, None, "Participant not found in event"
+
+                participant = event["participants"][participant_id]
+
+                # Check for duplicate (one tasting per bottle per participant)
+                if any(t["bottle_path"] == bottle_path for t in participant["tastings"]):
+                    return False, None, "You have already tasted this bottle"
+
+                # Add tasting to participant
+                participant["tastings"].append({
+                    "bottle_path": bottle_path,
+                    "tasting_data": tasting_item.tasting_data.dict()
+                })
+
+                logger.info(f"Saved tasting to event {event_id} for participant {participant_id}")
+                return True, f"event:{event_id}", None
+
+            except Exception as e:
+                logger.error(f"Failed to save event tasting: {e}", exc_info=True)
+                return False, None, str(e)
 
         try:
             # Convert TastingData back to TastingNote
@@ -389,6 +515,7 @@ class TastingService:
             color=tasting.color,
             place=tasting.place,
             theme=tasting.theme,
+            appearance_notes=tasting.appearance_notes or [],  # Wine-specific
             nose_notes=tasting.nose_notes or [],
             palate_notes=tasting.palate_notes or [],
             finish_notes=tasting.finish_notes or [],
@@ -422,6 +549,7 @@ class TastingService:
             color=data.color,
             place=data.place,
             theme=data.theme,
+            appearance_notes=data.appearance_notes,
             nose_notes=data.nose_notes,
             palate_notes=data.palate_notes,
             finish_notes=data.finish_notes,
@@ -448,3 +576,153 @@ class TastingService:
             "remaining": remaining,
             "all_done": remaining == 0
         }
+
+    # ========================================================================
+    # Manual Tasting Methods
+    # ========================================================================
+
+    async def save_manual_tasting_to_obsidian(
+        self,
+        manual_session
+    ) -> tuple[bool, Optional[str], Optional[str]]:
+        """
+        Save a manual tasting session to Obsidian vault.
+
+        Args:
+            manual_session: ManualTastingSession object
+
+        Returns:
+            Tuple of (success, file_path, error_message)
+        """
+        # Import here to avoid circular imports
+        from ..schemas.tasting import ManualTastingSession
+
+        # Convert to proper type if dict
+        if isinstance(manual_session, dict):
+            manual_session = ManualTastingSession(**manual_session)
+
+        # Validate all required fields are present
+        if not manual_session.taster_name or not manual_session.tasting_date:
+            return False, None, "Missing required taster info"
+
+        if not manual_session.selected_bottle_path:
+            return False, None, "No bottle selected"
+
+        if not manual_session.tasting_data:
+            return False, None, "No tasting data provided"
+
+        # Convert to TastingNote
+        tasting_note = self._manual_session_to_tasting_note(manual_session)
+
+        # Find bottle folder
+        full_bottle_path = self.vault_path / manual_session.selected_bottle_path
+        if not full_bottle_path.exists():
+            return False, None, f"Bottle folder not found: {manual_session.selected_bottle_path}"
+
+        # Create bottle match from path
+        from reserve_automation.core.models import BottleMetadata
+        from reserve_automation.utils.bottle_matcher import BottleMatch
+
+        # Get bottle name from folder
+        bottle_name = full_bottle_path.name
+
+        # Try to find existing match for metadata
+        matches = self.bottle_matcher.find_matches(
+            bottle_name=bottle_name,
+            beverage_type=manual_session.beverage_type,
+            top_n=1,
+            min_score=0.0
+        )
+
+        if matches and len(matches) > 0:
+            match = matches[0]
+            match.folder_path = full_bottle_path
+        else:
+            # Create synthetic match if bottle not found in cache
+            bottle_meta = BottleMetadata(
+                producer="",
+                name=bottle_name,
+                type=manual_session.beverage_type,
+                source="manual_tasting"
+            )
+            match = BottleMatch(bottle_meta, 1.0, full_bottle_path)
+
+        # Generate and save tasting file
+        try:
+            file_path = self.tasting_generator.generate_tasting_file(
+                tasting=tasting_note,
+                bottle_match=match,
+                dry_run=False
+            )
+
+            rel_path = str(file_path.relative_to(self.vault_path))
+            logger.info(f"Saved manual tasting to: {rel_path}")
+
+            # Invalidate bottle cache after saving
+            self.invalidate_bottle_cache(manual_session.beverage_type)
+
+            return True, rel_path, None
+        except Exception as e:
+            logger.error(f"Failed to generate tasting file: {e}", exc_info=True)
+            return False, None, str(e)
+
+    def _manual_session_to_tasting_note(self, manual_session) -> TastingNote:
+        """
+        Convert ManualTastingSession to TastingNote.
+
+        Args:
+            manual_session: ManualTastingSession object
+
+        Returns:
+            TastingNote object
+        """
+        from ..schemas.tasting import TastingData
+
+        # Get tasting data
+        tasting_data = manual_session.tasting_data
+        if isinstance(tasting_data, dict):
+            # Merge session-level fields with form data
+            bottle_name = manual_session.selected_bottle_path.split('/')[-1] if manual_session.selected_bottle_path else ""
+            tasting_data_dict = {
+                'bottle_name': bottle_name,
+                'taster_name': manual_session.taster_name,
+                'tasting_date': manual_session.tasting_date,
+                'beverage_type': manual_session.beverage_type,
+                **tasting_data  # Add the form fields (scores, notes, etc.)
+            }
+            tasting_data = TastingData(**tasting_data_dict)
+
+        # Parse date
+        if isinstance(manual_session.tasting_date, str):
+            tasting_date = datetime.fromisoformat(manual_session.tasting_date)
+        else:
+            tasting_date = manual_session.tasting_date
+
+        # Get bottle name from path
+        bottle_name = manual_session.selected_bottle_path.split('/')[-1]
+
+        return TastingNote(
+            bottle_name=bottle_name,
+            taster_name=manual_session.taster_name,
+            tasting_date=tasting_date,
+            beverage_type=manual_session.beverage_type,
+            wine_appearance=tasting_data.wine_appearance,
+            wine_aroma=tasting_data.wine_aroma,
+            wine_taste=tasting_data.wine_taste,
+            wine_aftertaste=tasting_data.wine_aftertaste,
+            wine_overall=tasting_data.wine_overall,
+            whiskey_nose=tasting_data.whiskey_nose,
+            whiskey_palate=tasting_data.whiskey_palate,
+            whiskey_finish=tasting_data.whiskey_finish,
+            whiskey_overall=tasting_data.whiskey_overall,
+            days_from_crack=tasting_data.days_from_crack,
+            fill_level=tasting_data.fill_level,
+            color=tasting_data.color,
+            place=tasting_data.place,
+            theme=tasting_data.theme,
+            appearance_notes=tasting_data.appearance_notes or [],
+            nose_notes=tasting_data.nose_notes or [],
+            palate_notes=tasting_data.palate_notes or [],
+            finish_notes=tasting_data.finish_notes or [],
+            overall_notes=tasting_data.overall_notes
+        )

@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    [x-cloak] { display: none !important; }
+</style>
+<div class="max-w-6xl mx-auto p-4" x-data="eventDetailApp('{{ event_id }}')">
+    <!-- Loading state -->
+    <div x-show="loading" class="text-center py-12">
+        <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <p class="mt-4 text-gray-600">Loading event...</p>
+    </div>
+
+    <!-- Error state -->
+    <div x-show="error" class="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
+        <p class="text-red-800" x-text="error"></p>
+        <a href="/events" class="inline-block mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg">
+            Back to Events
+        </a>
+    </div>
+
+    <!-- Join form (not yet joined) -->
+    <div x-show="!loading && !error && !joined" class="bg-white rounded-lg shadow-md p-8 max-w-md mx-auto">
+        <h1 class="text-2xl font-bold text-gray-800 mb-2" x-text="event?.name"></h1>
+        <p class="text-gray-600 mb-6" x-text="`${event?.beverage_type} tasting • ${event?.bottles?.length || 0} bottles`"></p>
+
+        <div class="mb-4">
+            <label class="block text-sm font-semibold text-gray-700 mb-2">Your Name</label>
+            <input type="text"
+                   x-model="participantName"
+                   placeholder="Enter your name"
+                   @keydown.enter="joinEvent()"
+                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+
+        <button @click="joinEvent()"
+                :disabled="!participantName.trim() || joining"
+                class="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold rounded-lg transition-colors">
+            <span x-show="!joining">Join Event</span>
+            <span x-show="joining">Joining...</span>
+        </button>
+    </div>
+
+    <!-- Event interface (after joining) -->
+    <div x-show="!loading && !error && joined">
+        <!-- Event header -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-800 mb-1" x-text="event?.name"></h1>
+                    <p class="text-gray-600">
+                        <span x-text="event?.beverage_type === 'wine' ? '🍷 Wine' : '🥃 Whiskey'"></span> •
+                        <span x-text="event?.bottles?.length || 0"></span> bottles •
+                        <span x-text="Object.keys(event?.participants || {}).length"></span> participants
+                    </p>
+                </div>
+                <div class="flex gap-2">
+                    <span x-show="event?.is_blind && event?.status === 'open'"
+                          class="px-3 py-1 bg-purple-100 text-purple-800 text-sm font-semibold rounded">
+                        🎭 Blind Mode
+                    </span>
+                    <span x-show="event?.status === 'revealed'"
+                          class="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded">
+                        👁️ Revealed
+                    </span>
+                </div>
+            </div>
+
+            <p class="mt-4 text-sm text-gray-600">
+                Welcome, <strong x-text="participantInfo?.participant_name"></strong>!
+            </p>
+        </div>
+
+        <!-- QR Code for Sharing -->
+        <div class="bg-purple-50 border border-purple-200 rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-bold text-purple-800 mb-3">📱 Share Event</h2>
+            <p class="text-purple-700 mb-4">
+                Have participants scan this QR code to join the event
+            </p>
+            <button @click="showQRModal = true"
+                    class="block w-full px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-center rounded-lg transition-colors">
+                Show QR Code
+            </button>
+        </div>
+
+        <!-- Add a Tasting -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-3">Add a Tasting</h2>
+            <p class="text-gray-600 mb-4">
+                You've tasted <strong x-text="participantInfo ? event?.participants[participantInfo.participant_id]?.tastings?.length || 0 : 0"></strong>
+                of <strong x-text="event?.bottles?.length || 0"></strong> bottles
+            </p>
+            <a :href="`/manual-tasting?event_mode=true&event_id=${event?.event_id}`"
+               :class="event?.status === 'closed' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'"
+               class="block w-full px-6 py-3 bg-blue-600 text-white font-bold text-center rounded-lg transition-colors">
+                Select Bottle to Taste →
+            </a>
+        </div>
+
+        <!-- View Results (after reveal or closed) -->
+        <div x-show="event?.status === 'revealed' || event?.status === 'closed'" class="bg-green-50 border border-green-200 rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-bold text-green-800 mb-3">👁️ Results Available!</h2>
+            <p class="text-green-700 mb-4">
+                The bottles have been revealed. View everyone's rankings and see which bottles came out on top!
+            </p>
+            <a :href="`/events/${event?.event_id}/results`"
+               class="block w-full px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold text-center rounded-lg transition-colors">
+                View Results & Rankings →
+            </a>
+        </div>
+
+        <!-- Link to management (for hosts) -->
+        <div x-show="isHost()" class="bg-blue-50 border border-blue-200 rounded-lg p-6">
+            <p class="text-blue-800 mb-2">
+                <strong>You are the host of this event.</strong>
+            </p>
+            <p class="text-blue-700 text-sm mb-4">
+                To reveal bottles, close the event, or manage participants, go to the Management page.
+            </p>
+            <a href="/management"
+               class="inline-block px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
+                Go to Management →
+            </a>
+        </div>
+    </div>
+
+    <!-- QR Code Modal -->
+    <div x-show="showQRModal"
+         x-cloak
+         @click.self="showQRModal = false"
+         class="fixed inset-0 bg-white md:bg-black md:bg-opacity-90 flex items-center justify-center z-50">
+        <div class="bg-white w-full h-full md:h-auto md:max-w-md md:rounded-lg md:shadow-xl p-6 md:p-8 text-center flex flex-col justify-center">
+            <!-- Close button -->
+            <div class="flex justify-end mb-4">
+                <button @click="showQRModal = false"
+                        class="text-gray-400 hover:text-gray-600 text-4xl md:text-3xl font-bold">
+                    &times;
+                </button>
+            </div>
+
+            <!-- Event Info -->
+            <h2 class="text-3xl md:text-2xl font-bold text-gray-800 mb-2" x-text="event?.name"></h2>
+            <p class="text-lg md:text-base text-gray-600 mb-8 md:mb-6">Scan to join this event</p>
+
+            <!-- QR Code - Larger on mobile -->
+            <div class="flex justify-center mb-8 md:mb-6">
+                <div x-ref="qrcode" class="inline-block p-6 md:p-4 bg-white"></div>
+            </div>
+
+            <!-- Event URL -->
+            <div class="text-xs md:text-sm text-gray-600 break-all px-4 mb-6 md:mb-4">
+                <code x-text="eventUrl"></code>
+            </div>
+
+            <button @click="showQRModal = false"
+                    class="w-full px-6 py-4 md:py-3 bg-purple-600 hover:bg-purple-700 text-white text-lg md:text-base font-bold rounded-lg transition-colors">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- QR Code Library -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
+<script>
+function eventDetailApp(eventId) {
+    return {
+        eventId: eventId,
+        event: null,
+        participantInfo: null,
+        participantName: '',
+        loading: true,
+        error: null,
+        joining: false,
+        joined: false,
+        showQRModal: false,
+        eventUrl: '',
+        qrCodeInstance: null,
+
+        async init() {
+            this.eventUrl = window.location.origin + '/events/' + this.eventId;
+            await this.loadEvent();
+            await this.checkParticipantSession();
+            // Refresh every 5 seconds
+            setInterval(() => this.loadEvent(), 5000);
+
+            // Watch for QR modal and generate QR code
+            this.$watch('showQRModal', (value) => {
+                if (value) {
+                    // Clear previous QR code
+                    this.$refs.qrcode.innerHTML = '';
+                    // Generate new QR code
+                    setTimeout(() => {
+                        // Larger QR code on mobile for easier scanning
+                        const isMobile = window.innerWidth < 768;
+                        const qrSize = isMobile ? 280 : 256;
+
+                        new QRCode(this.$refs.qrcode, {
+                            text: this.eventUrl,
+                            width: qrSize,
+                            height: qrSize,
+                            colorDark: "#000000",
+                            colorLight: "#ffffff",
+                            correctLevel: QRCode.CorrectLevel.H
+                        });
+                    }, 100);
+                }
+            });
+        },
+
+        async loadEvent() {
+            try {
+                const response = await fetch(`/api/v1/events/${this.eventId}`);
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        this.error = 'Event not found';
+                    } else {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    this.loading = false;
+                    return;
+                }
+                this.event = await response.json();
+                this.loading = false;
+            } catch (error) {
+                console.error('Failed to load event:', error);
+                this.error = 'Failed to load event';
+                this.loading = false;
+            }
+        },
+
+        async checkParticipantSession() {
+            // Check if we have a participant sessions cookie (multi-event)
+            const cookies = document.cookie.split(';').reduce((acc, cookie) => {
+                const [key, value] = cookie.trim().split('=');
+                acc[key] = value;
+                return acc;
+            }, {});
+
+            if (cookies.participant_sessions) {
+                try {
+                    const allSessions = JSON.parse(decodeURIComponent(cookies.participant_sessions));
+
+                    // Check if we have a session for this specific event
+                    if (allSessions[this.eventId]) {
+                        this.participantInfo = {
+                            event_id: this.eventId,
+                            participant_id: allSessions[this.eventId].participant_id,
+                            participant_name: allSessions[this.eventId].participant_name
+                        };
+                        this.joined = true;
+                    }
+                } catch (e) {
+                    console.error('Failed to parse participant sessions:', e);
+                }
+            }
+        },
+
+        async joinEvent() {
+            if (!this.participantName.trim()) return;
+
+            this.joining = true;
+            try {
+                const response = await fetch(`/api/v1/events/${this.eventId}/join`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ participant_name: this.participantName })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to join event');
+                }
+
+                this.participantInfo = await response.json();
+                this.joined = true;
+                await this.loadEvent();
+            } catch (error) {
+                console.error('Failed to join event:', error);
+                alert('Failed to join event: ' + error.message);
+            } finally {
+                this.joining = false;
+            }
+        },
+
+        displayBottleName(bottle) {
+            if (this.event?.is_blind && this.event?.status === 'open' && bottle.blind_number) {
+                return `Bottle #${bottle.blind_number}`;
+            }
+            return bottle.bottle_name;
+        },
+
+        hasTasted(bottle) {
+            if (!this.participantInfo || !this.event) return false;
+            const participant = this.event.participants[this.participantInfo.participant_id];
+            if (!participant) return false;
+            return participant.tastings.some(t => t.bottle_path === bottle.bottle_path);
+        },
+
+        isHost() {
+            return this.participantInfo?.participant_name === this.event?.host_name;
+        }
+    };
+}
+</script>
+{% endblock %}

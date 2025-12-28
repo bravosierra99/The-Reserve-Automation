@@ -1,0 +1,23 @@
+{
+  "test_name": "Handwritten Bourbon Tasting - Bottle #3",
+  "image_file": "bourbon_test_004.jpg",
+  "template_type": "bourbon",
+  "expected_output": {
+    "taster_name": "Ben",
+    "tasting_date": null,
+    "tastings": [
+      {
+        "bottle_name": "WLW #3",
+        "whiskey_nose": 3.0,
+        "whiskey_palate": 2.9,
+        "whiskey_finish": 2.7,
+        "whiskey_overall": 0.9,
+        "nose_notes": ["orange", "vanilla", "all-spice", "honey"],
+        "palate_notes": ["oak", "vanilla", "honey"],
+        "finish_notes": ["orange comes back"],
+        "overall_notes": "Delicious one of the best bourbon"
+      }
+    ]
+  },
+  "notes": "Handwritten format, labeled as '#3'. Very high scores across all categories (3.0, 2.9, 2.7, 0.9). Overall comment is extremely positive."
+}

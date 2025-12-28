@@ -365,6 +365,29 @@ export ANTHROPIC_API_KEY="sk-ant-..."  # For cloud fallback
 
 ## Development
 
+### Testing & Development Workflow
+
+**See [DEVELOPMENT.md](DEVELOPMENT.md) for complete development guidelines.**
+
+**CRITICAL**: Always run tests when modifying code:
+
+```bash
+# Event system tests (ALWAYS run after modifying event routes/templates)
+./tests/events/run_all_tests.sh
+
+# Extraction tests
+uv run pytest tests/test_bottle_extraction_cli.py -v
+uv run pytest tests/test_bottle_extraction_web.py -v
+
+# All tests
+uv run pytest tests/ -v
+```
+
+**Quick Testing Guide:**
+- Modified `routes/events.py` or `templates/event_*.html`? → Run `./tests/events/run_all_tests.sh`
+- Modified extraction logic? → Run extraction tests
+- See [TESTING.md](TESTING.md) for quick reference
+
 ### Project Structure
 
 ```
@@ -378,9 +401,14 @@ The-Reserve-Automation/
 │   ├── generators/         # Obsidian file generation
 │   └── utils/              # Logging and utilities
 ├── tests/                  # Unit and integration tests
+│   ├── events/             # Event system test suite
+│   ├── test_bottle_extraction_cli.py
+│   └── test_bottle_extraction_web.py
 ├── config/                 # Configuration files
 ├── templates/              # Jinja2 templates
-└── DESIGN.md              # Technical design document
+├── DESIGN.md              # Technical design document
+├── DEVELOPMENT.md         # Development guidelines & testing protocol
+└── TESTING.md             # Quick testing reference
 ```
 
 ### Running Tests
@@ -389,11 +417,14 @@ The-Reserve-Automation/
 # Install dev dependencies
 uv sync --all-extras
 
-# Run all tests
-pytest
+# Event system tests (4/4 passing - ALL TESTS PASS!)
+./tests/events/run_all_tests.sh
+
+# Run all pytest tests
+uv run pytest tests/ -v
 
 # Run with coverage
-pytest --cov=reserve_automation
+uv run pytest tests/ --cov=reserve_automation
 
 # Run specific test file
 pytest tests/unit/test_config.py

@@ -802,10 +802,16 @@ function bottleReviewForm() {
                 // Apply the suggested value to the bottle
                 this.currentBottle.bottle[field] = this.enrichmentSuggestions[field].suggested;
 
+                // Force Alpine.js reactivity by reassigning the object
+                this.currentBottle.bottle = {...this.currentBottle.bottle};
+
                 // Remove from suggestions list
                 delete this.enrichmentSuggestions[field];
 
                 console.log(`Applied suggestion for ${field}`);
+
+                // Persist to session
+                this.updateBottle();
             }
         },
 
@@ -825,10 +831,16 @@ function bottleReviewForm() {
                     this.currentBottle.bottle[field] = suggestion.suggested;
                 }
 
+                // Force Alpine.js reactivity by reassigning the object
+                this.currentBottle.bottle = {...this.currentBottle.bottle};
+
                 // Clear all suggestions
                 this.enrichmentSuggestions = {};
 
                 console.log('Applied all suggestions');
+
+                // Persist to session
+                this.updateBottle();
             }
         },
 

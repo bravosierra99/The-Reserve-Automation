@@ -34,7 +34,12 @@
 <div x-data="uploadForm()" class="max-w-2xl mx-auto upload-section">
     <!-- Upload Type Selection -->
     <div class="bg-white rounded-lg shadow-md p-6 mb-6" x-show="!selectedFile && !uploading && !uploadComplete">
-        <h2 class="text-2xl font-bold mb-6 text-gray-800">What would you like to upload?</h2>
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-800">What would you like to upload?</h2>
+            <a href="/events" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors">
+                📅 View Events
+            </a>
+        </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <button @click="uploadType = 'tasting_card'"

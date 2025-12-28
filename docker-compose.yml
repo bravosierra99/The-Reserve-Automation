@@ -1,23 +1,83 @@
-version: '3.8'
-
 services:
+  # Reserve Automation FastAPI Application
   web:
     build: .
+    container_name: reserve-app
     ports:
       - "8000:8000"
     volumes:
-      # Mount Obsidian vault (read-write for tasting notes)
+      # REQUIRED: Obsidian vault (read-write)
       - /mnt/d/Users/ben/Documents/spirits/the-reserve:/vault
-      # Mount config (optional - can also use env vars)
+
+      # OPTIONAL: Config files (read-only)
       - ./config:/app/config:ro
-      # Persist temp uploads across container restarts (optional)
+
+      # OPTIONAL: Temp uploads (persist across restarts)
       - reserve_temp:/tmp/reserve_uploads
+
+      # OPTIONAL: Application logs
+      - reserve_logs:/app/logs
+
     environment:
-      - RESERVE_VAULT_PATH=/vault
+      # Web app secret (from .env)
       - WEB_SECRET_KEY=${WEB_SECRET_KEY}
-      # LM Studio connection (host.docker.internal for Docker Desktop)
-      - RESERVE_LM_STUDIO_URL=http://host.docker.internal:1234/v1
+
+      # Docker-specific overrides (different from local .env)
+      - RESERVE_VAULT_PATH=/vault/Cellar
+      - RESERVE_LM_STUDIO_URL=http://host.local:1234/v1
+
+      # Optional: Anthropic API key (from .env)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+      # Optional: LLMWhisperer API key (from .env)
+      - LLMWHISPERER_API_KEY=${LLMWHISPERER_API_KEY:-}
+
+    extra_hosts:
+      # Map host.local to Docker host IP for LM Studio access
+      - "host.local:host-gateway"
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Obsidian Remote (Full Obsidian Desktop in Browser)
+  obsidian:
+    image: sytone/obsidian-remote:latest
+    container_name: obsidian-web
+    ports:
+      - "8080:8080"
+    volumes:
+      # REQUIRED: Same vault as Reserve app (read-write)
+      - /mnt/d/Users/ben/Documents/spirits/the-reserve:/vault
+
+      # REQUIRED: Obsidian config (plugins, settings persist)
+      - obsidian_config:/config
+
+    environment:
+      # Display settings for web viewer
+      - DISPLAY_WIDTH=1920
+      - DISPLAY_HEIGHT=1080
+      - LAUNCH_URL=http://localhost:8080
+
+      # Point Obsidian to vault location
+      - VAULT_PATH=/vault/Cellar
+
     restart: unless-stopped
 
 volumes:
-  reserve_temp:  # Named volume for temp files
+  # Temp uploads (optional but recommended)
+  reserve_temp:
+    driver: local
+
+  # Application logs (optional)
+  reserve_logs:
+    driver: local
+
+  # Obsidian config (REQUIRED - preserves plugins)
+  obsidian_config:
+    driver: local

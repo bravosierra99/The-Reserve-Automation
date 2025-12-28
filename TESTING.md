@@ -1,0 +1,90 @@
+# Testing Guide
+
+## Event System Tests
+
+**Location:** `tests/events/`
+
+### Quick Commands
+
+```bash
+# Run all event tests (4/4 passing - ALL TESTS PASS!)
+./tests/events/run_all_tests.sh
+
+# Clean up test events
+python3 tests/events/cleanup_test_events.py
+
+# View test events in browser
+http://localhost:8000/events
+```
+
+## Tasting Upload Tests ⭐ NEW
+
+**Location:** `tests/tastings/`
+
+### Quick Commands
+
+```bash
+# Run all tasting tests
+./tests/tastings/run_all_tests.sh
+
+# Run individual suites
+python3 tests/tastings/test_event_tastings.py        # Suite 1: Event-based (safe)
+python3 tests/tastings/test_cli_extraction.py         # Suite 2: CLI --dry-run (safe)
+python3 tests/tastings/test_vault_integration.py      # Suite 3: Vault integration (temp vault)
+```
+
+### Three Test Suites
+
+1. **Event-Based Tastings** (SAFE - no vault writes)
+   - Manual tasting wizard in event mode
+   - Edit existing event tastings
+   - All data stored in-memory
+
+2. **CLI Extraction** (SAFE - uses --dry-run)
+   - AWS wine card extraction
+   - Bourbon card extraction
+   - Template auto-detection
+   - LLM robustness testing
+
+3. **Vault Integration** (writes to /tmp/test-vault)
+   - Manual Obsidian mode tastings
+   - CLI extraction to vault
+   - Duplicate detection
+   - **Requires:** `RESERVE_VAULT_PATH=/tmp/test-vault ./start-web.sh`
+
+**⚠️ ALWAYS run tasting tests after modifying:**
+- `src/reserve_automation/web/routes/tastings.py`
+- `src/reserve_automation/web/routes/upload.py`
+- `src/reserve_automation/web/services/tasting_service.py`
+- `src/reserve_automation/generators/tasting_generator.py`
+- `src/reserve_automation/cli.py` (extract-tasting command)
+- `templates/tasting_*.md.jinja`
+
+### When to Test
+
+**⚠️ ALWAYS run event tests after modifying:**
+- `src/reserve_automation/web/routes/events.py`
+- `src/reserve_automation/web/routes/tastings.py`
+- `src/reserve_automation/web/templates/event_*.html`
+- `src/reserve_automation/web/templates/manual_tasting.html`
+- Event schemas or cookie/session handling
+
+### Current Status: 4/4 Tests Passing ✅
+
+1. ✅ **Blind Whiskey Event** - Full 3-participant tasting with scores & notes
+2. ✅ **Blind Wine Event** - Skipped (no wines in vault - add some to test)
+3. ✅ **Multi-Event Participation** - Users can join multiple events simultaneously
+4. ✅ **Edit Existing Tasting** - Verifies edits replace (don't duplicate)
+
+## Other Tests
+
+See `tests/README.md` for:
+- Bottle extraction tests
+- Manual testing scripts
+- Unit tests
+- Integration tests
+
+## Full Documentation
+
+- **Event tests:** `tests/events/README.md`
+- **All tests:** `tests/README.md`

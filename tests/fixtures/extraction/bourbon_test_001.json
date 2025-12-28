@@ -1,0 +1,23 @@
+{
+  "test_name": "Bourbon Tasting Sheet - Stagg 24D",
+  "image_file": "bourbon_test_001.jpg",
+  "template_type": "bourbon",
+  "expected_output": {
+    "taster_name": "Ben",
+    "tasting_date": null,
+    "tastings": [
+      {
+        "bottle_name": "Stagg 24 D",
+        "whiskey_nose": 2.6,
+        "whiskey_palate": 2.4,
+        "whiskey_finish": 2.0,
+        "whiskey_overall": 0.5,
+        "nose_notes": ["pepper", "rye", "anise", "butterscotch", "leather"],
+        "palate_notes": ["cedar", "orange", "rye"],
+        "finish_notes": ["pepper", "ginger", "oak"],
+        "overall_notes": ""
+      }
+    ]
+  },
+  "notes": "Standard bourbon tasting sheet format with printed template. Rating of 5 corresponds to 'All-time favorite!'. Uniqueness score of .5 maps to overall score. Reveal shows 'Stagg 24 D'."
+}

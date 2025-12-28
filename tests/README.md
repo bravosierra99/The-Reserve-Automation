@@ -6,14 +6,109 @@ This directory contains tests for The Reserve Automation project, covering both 
 
 ```
 tests/
+├── events/                                    # ⭐ EVENT SYSTEM TESTS (AUTOMATED)
+│   ├── cleanup_test_events.py                # Clean up test events
+│   ├── create_test_event.py                  # Create whiskey blind tasting
+│   ├── populate_event_tastings.py            # Populate with participants
+│   ├── create_wine_event.py                  # Create wine blind tasting
+│   ├── populate_wine_event.py                # Populate wine event
+│   ├── test_multi_event.py                   # Multi-event participation
+│   ├── test_edit_tasting.py                  # Edit existing tastings
+│   ├── run_all_tests.sh                      # ⭐ RUN THIS AFTER EVENT CHANGES
+│   └── README.md                             # Event testing guide
 ├── fixtures/
 │   └── manifests/
 │       ├── wine_manifest_sample.pdf          # Real wine manifest for testing
 │       └── wine_manifest_expected.json       # Baseline extraction results
+├── manual/                                    # Manual testing scripts
+│   ├── create_test_event.py                  # DEPRECATED - Use tests/events/
+│   ├── populate_event_tastings.py            # DEPRECATED - Use tests/events/
+│   ├── create-and-populate-event.sh          # DEPRECATED - Use tests/events/
+│   └── README.md                             # Manual testing guide
+├── integration/                               # Integration tests
+├── unit/                                      # Unit tests
 ├── test_bottle_extraction_cli.py             # CLI extraction tests
 ├── test_bottle_extraction_web.py             # Web server tests
 └── README.md                                 # This file
 ```
+
+## Event System Tests ⭐
+
+**Location:** `tests/events/`
+
+Comprehensive automated test suite for the multi-user tasting event system.
+
+### Quick Start
+```bash
+# Run all event tests (DO THIS AFTER EVENT CHANGES!)
+./tests/events/run_all_tests.sh
+
+# Clean up test events
+python3 tests/events/cleanup_test_events.py
+```
+
+### When to Run
+**ALWAYS run event tests after modifying:**
+- `src/reserve_automation/web/routes/events.py`
+- `src/reserve_automation/web/routes/tastings.py`
+- `src/reserve_automation/web/templates/event_*.html`
+- `src/reserve_automation/web/templates/manual_tasting.html`
+- Event-related schemas or cookie handling
+
+### Test Coverage
+- ✅ Blind whiskey events with 3 participants
+- ✅ Blind wine events (AWS scoring)
+- ✅ Multi-event participation
+- ✅ Edit existing tastings
+
+All 4/4 tests passing! See `tests/events/README.md` for detailed documentation.
+
+## Tasting Upload Tests ⭐ NEW
+
+**Location:** `tests/tastings/`
+
+Comprehensive test suite for all tasting upload workflows: event-based, image extraction, manual entry, and vault integration.
+
+### Quick Start
+```bash
+# Run all tasting tests
+./tests/tastings/run_all_tests.sh
+
+# Run individual suites
+python3 tests/tastings/test_event_tastings.py        # Suite 1: Event-based (safe)
+python3 tests/tastings/test_cli_extraction.py         # Suite 2: CLI --dry-run (safe)
+python3 tests/tastings/test_vault_integration.py      # Suite 3: Vault integration (temp vault)
+```
+
+### When to Run
+**ALWAYS run tasting tests after modifying:**
+- `src/reserve_automation/web/routes/tastings.py`
+- `src/reserve_automation/web/routes/upload.py`
+- `src/reserve_automation/web/services/tasting_service.py`
+- `src/reserve_automation/generators/tasting_generator.py`
+- `src/reserve_automation/cli.py` (extract-tasting command)
+- `templates/tasting_*.md.jinja`
+
+### Test Coverage - Three Suites
+
+**Suite 1: Event-Based Tastings** (SAFE - no vault writes)
+- ✅ Manual tasting wizard in event mode
+- ✅ Edit existing event tastings
+- ✅ In-memory event store (no disk writes)
+
+**Suite 2: CLI Extraction** (SAFE - uses --dry-run)
+- ✅ AWS wine card extraction
+- ⏳ Bourbon card extraction (needs images)
+- ✅ Template auto-detection
+- ✅ LLM robustness testing
+
+**Suite 3: Vault Integration** (writes to /tmp/test-vault)
+- ✅ Manual Obsidian mode tastings
+- ✅ CLI extraction to vault
+- ✅ Duplicate detection
+- ⚠️ Requires: `RESERVE_VAULT_PATH=/tmp/test-vault ./start-web.sh`
+
+See `tests/tastings/README.md` for detailed documentation.
 
 ## Test Fixtures
 

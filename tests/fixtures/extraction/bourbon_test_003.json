@@ -1,0 +1,23 @@
+{
+  "test_name": "Handwritten Bourbon Tasting - WLW 2020",
+  "image_file": "bourbon_test_003.jpg",
+  "template_type": "bourbon",
+  "expected_output": {
+    "taster_name": "Ben",
+    "tasting_date": "2020-01-01",
+    "tastings": [
+      {
+        "bottle_name": "WLW 2020",
+        "whiskey_nose": 2.2,
+        "whiskey_palate": 2.2,
+        "whiskey_finish": 2.8,
+        "whiskey_overall": 0.7,
+        "nose_notes": ["smoke", "ash", "brown sugar"],
+        "palate_notes": ["nutty", "brown sugar", "orange", "toasted cedar", "rye"],
+        "finish_notes": ["warm", "lingering orange"],
+        "overall_notes": "love the aftertaste the rest leaves much to be desired"
+      }
+    ]
+  },
+  "notes": "Handwritten format, labeled as '#2'. 'WLW 2020' likely refers to William Larue Weller 2020. Note indicates aftertaste was the highlight."
+}

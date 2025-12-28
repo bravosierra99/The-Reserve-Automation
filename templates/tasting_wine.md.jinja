@@ -1,6 +1,7 @@
-#CLAUDE_REQ: This template MUST match the-reserve/Cellar/9_Templates/Wine Tasting.md - always compare before modifying
-#CLAUDE_REQ: fileClass must be "Wine Tasting" (matches DataviewJS queries in bottle templates that search for p.fileClass === "Wine Tasting")
-#CLAUDE_REQ: Section headers (Appearance, Aroma, Taste, Aftertaste, Overall Impression) must match Obsidian template exactly
+{# CLAUDE_REQ: This template MUST match the-reserve/Cellar/9_Templates/Tasting Note AWS.md - always compare before modifying #}
+{# CLAUDE_REQ: fileClass must be "Wine Tasting" (matches DataviewJS queries in bottle templates) #}
+{# CLAUDE_REQ: Date, TasterName, and LinkedBottle must be quoted strings #}
+{# CLAUDE_REQ: All score fields (Appearance, Aroma, Taste, Aftertaste, Overall, AWS Score, 100pt Scale) are required #}
 ---
 fileClass: Wine Tasting
 Date: "{{ tasting_date }}"
@@ -26,20 +27,20 @@ LinkedBottle: "[[{{ bottle_name }}]]"
 
 ### Aroma
 {% if nose_notes %}
-{% for note in nose_notes %}
-#{{ note }} {% endfor %}
+{%- for note in nose_notes %}
+#{{ note | replace(' ', '_') }} {% endfor %}
 {% endif %}
 
 ### Taste
 {% if palate_notes %}
-{% for note in palate_notes %}
-#{{ note }} {% endfor %}
+{%- for note in palate_notes %}
+#{{ note | replace(' ', '_') }} {% endfor %}
 {% endif %}
 
 ### Aftertaste
 {% if finish_notes %}
-{% for note in finish_notes %}
-#{{ note }} {% endfor %}
+{%- for note in finish_notes %}
+#{{ note | replace(' ', '_') }} {% endfor %}
 {% endif %}
 
 ### Overall Impression

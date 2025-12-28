@@ -1,11 +1,35 @@
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies for all Python packages
 RUN apt-get update && apt-get install -y \
+    # Build tools (needed for scikit-image compilation)
+    gcc \
+    g++ \
+    \
+    # Tesseract OCR + language data
     tesseract-ocr \
+    tesseract-ocr-eng \
+    \
+    # Poppler for PDF processing
     poppler-utils \
+    \
+    # OpenCV system dependencies (CRITICAL - required for cv2)
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libglib2.0-0 \
+    libgl1 \
+    \
+    # Pillow image format support (CRITICAL - required for JPEG/WebP/TIFF)
+    libjpeg-turbo-progs \
+    libwebp7 \
+    libopenjp2-7 \
+    libtiff6 \
+    libfreetype6 \
+    \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv

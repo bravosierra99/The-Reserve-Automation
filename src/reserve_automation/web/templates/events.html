@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto p-4" x-data="eventsApp()">
+    <div class="mb-6">
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">Tasting Events</h1>
+        <p class="text-gray-600">Browse and join tasting events</p>
+    </div>
+
+    <!-- Loading state -->
+    <div x-show="loading" class="text-center py-12">
+        <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <p class="mt-4 text-gray-600">Loading events...</p>
+    </div>
+
+    <!-- Empty state -->
+    <div x-show="!loading && events.length === 0" class="bg-white rounded-lg shadow-md p-12 text-center">
+        <div class="text-6xl mb-4">📅</div>
+        <h2 class="text-2xl font-bold text-gray-800 mb-2">No Events Yet</h2>
+        <p class="text-gray-600 mb-6">Create a tasting event from the Management page</p>
+        <a href="/management" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
+            Go to Management
+        </a>
+    </div>
+
+    <!-- Events grid -->
+    <div x-show="!loading && events.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <template x-for="event in events" :key="event.event_id">
+            <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6">
+                <!-- Event header -->
+                <div class="mb-4">
+                    <h2 class="text-xl font-bold text-gray-800 mb-1" x-text="event.name"></h2>
+                    <div class="flex items-center gap-2 text-sm text-gray-600">
+                        <span x-text="event.beverage_type === 'wine' ? '🍷 Wine' : '🥃 Whiskey'"></span>
+                        <span>•</span>
+                        <span x-text="event.bottles.length + ' bottles'"></span>
+                    </div>
+                </div>
+
+                <!-- Event badges -->
+                <div class="flex flex-wrap gap-2 mb-4">
+                    <span x-show="event.is_blind" class="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded">
+                        🎭 Blind
+                    </span>
+                    <span x-show="event.status === 'open'" class="px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded">
+                        ✓ Open
+                    </span>
+                    <span x-show="event.status === 'revealed'" class="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded">
+                        👁️ Revealed
+                    </span>
+                    <span x-show="event.status === 'closed'" class="px-2 py-1 bg-gray-100 text-gray-800 text-xs font-semibold rounded">
+                        🔒 Closed
+                    </span>
+                </div>
+
+                <!-- Event info -->
+                <div class="mb-4 text-sm text-gray-600">
+                    <p>Host: <span class="font-semibold" x-text="event.host_name"></span></p>
+                    <p>Participants: <span class="font-semibold" x-text="Object.keys(event.participants || {}).length"></span></p>
+                </div>
+
+                <!-- Join button -->
+                <a :href="`/events/${event.event_id}`"
+                   class="block w-full text-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors">
+                    <span x-show="event.status !== 'closed'">Join Event</span>
+                    <span x-show="event.status === 'closed'">View Results</span>
+                </a>
+            </div>
+        </template>
+    </div>
+</div>
+
+<script>
+function eventsApp() {
+    return {
+        events: [],
+        loading: true,
+
+        async init() {
+            await this.loadEvents();
+            // Refresh events every 10 seconds
+            setInterval(() => this.loadEvents(), 10000);
+        },
+
+        async loadEvents() {
+            try {
+                const response = await fetch('/api/v1/events');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                this.events = await response.json();
+                this.loading = false;
+            } catch (error) {
+                console.error('Failed to load events:', error);
+                this.loading = false;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

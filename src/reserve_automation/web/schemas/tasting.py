@@ -56,6 +56,7 @@ class TastingData(BaseModel):
     theme: Optional[str] = None  # Tasting theme/event
 
     # Notes
+    appearance_notes: Optional[list[str]] = Field(default_factory=list)  # Wine-specific
     nose_notes: Optional[list[str]] = Field(default_factory=list)
     palate_notes: Optional[list[str]] = Field(default_factory=list)
     finish_notes: Optional[list[str]] = Field(default_factory=list)
@@ -95,6 +96,7 @@ class TastingSession(BaseModel):
     tastings: list[TastingSessionItem] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.now)
     upload_filename: Optional[str] = Field(None, description="Original uploaded filename")
+    event_id: Optional[str] = Field(None, description="Event ID if event-based tasting")
 
 
 # Request/Response models for API endpoints
@@ -158,3 +160,62 @@ class BatchApprovalResult(BaseModel):
     failed: int
     files_created: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+
+
+# ============================================================================
+# Manual Tasting Wizard Schemas
+# ============================================================================
+
+
+class ManualTastingMode(str, Enum):
+    """Mode for manual tasting entry."""
+    OBSIDIAN = "obsidian"  # Save to Obsidian vault
+    EVENT = "event"        # Transient event-based tasting
+
+
+class ManualTastingWizardStep(str, Enum):
+    """Steps in the manual tasting wizard."""
+    TASTER_INFO = "taster_info"           # Step 1 (Obsidian only)
+    BOTTLE_SELECTION = "bottle_selection"  # Step 2 (Obsidian) or Step 1 (Event)
+    TASTING_FORM = "tasting_form"         # Step 3 (Obsidian) or Step 2 (Event)
+
+
+class ManualTastingSession(BaseModel):
+    """Session for manual tasting entry wizard."""
+    session_id: str
+    mode: ManualTastingMode
+    beverage_type: str = Field(..., description="wine or whiskey")
+    current_step: ManualTastingWizardStep
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    # Obsidian-specific fields (populated in Step 1)
+    taster_name: Optional[str] = None
+    tasting_date: Optional[str] = None  # YYYY-MM-DD
+
+    # Event-specific fields
+    event_id: Optional[str] = None
+    event_name: Optional[str] = None
+    participant_id: Optional[str] = None  # Participant ID for event mode
+
+    # Wizard progress
+    selected_bottle_path: Optional[str] = None  # Set in Step 2
+    tasting_data: Optional[dict] = None  # Set in Step 3 (dict, not TastingData - missing required fields)
+
+
+class CreateManualTastingRequest(BaseModel):
+    """Request to start a manual tasting session."""
+    mode: ManualTastingMode = Field(default=ManualTastingMode.OBSIDIAN)
+    beverage_type: str = Field(..., description="wine or whiskey")
+    # Event-specific (future):
+    event_id: Optional[str] = None
+
+
+class UpdateWizardStepRequest(BaseModel):
+    """Request to update wizard step data."""
+    step: ManualTastingWizardStep
+    data: dict  # Step-specific data
+
+
+class SaveManualTastingRequest(BaseModel):
+    """Request to save completed manual tasting."""
+    pass  # No body needed - all data is in session

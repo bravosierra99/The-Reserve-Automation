@@ -194,15 +194,50 @@ class MetadataEnricher:
 
         fields_str = "\n".join(field_desc)
 
+        # Build JSON template fields (can't use backslashes in f-string expressions)
+        json_fields = []
+        if "producer" in missing_fields:
+            json_fields.append('"producer": "..."')
+        if "name" in missing_fields:
+            json_fields.append('"name": "..."')
+        if "beverage_type" in missing_fields:
+            json_fields.append('"beverage_type": "..."')
+        if "country" in missing_fields:
+            json_fields.append('"country": "..."')
+        if "region" in missing_fields:
+            json_fields.append('"region": "..."')
+        if "abv" in missing_fields:
+            json_fields.append('"abv": 14.5')
+        if "variety" in missing_fields:
+            json_fields.append('"variety": "..."')
+        if "vineyard" in missing_fields:
+            json_fields.append('"vineyard": "..."')
+        if "age_statement" in missing_fields:
+            json_fields.append('"age_statement": 12')
+        if "proof" in missing_fields:
+            json_fields.append('"proof": 90')
+        if "mash_bill" in missing_fields:
+            json_fields.append('"mash_bill": "..."')
+        if "barrel_type" in missing_fields:
+            json_fields.append('"barrel_type": "..."')
+
+        json_fields_str = ",\n  ".join(json_fields)
+        if json_fields_str:
+            json_fields_str += ","
+
+        vintage_line = f"Vintage: {bottle.year}" if bottle.year else "Vintage: NV"
+        country_line = f"Country: {bottle.country}" if bottle.country else ""
+        region_line = f"Region: {bottle.region}" if bottle.region else ""
+
         prompt = f"""You are a {beverage_type} expert. Use web search to find accurate, current metadata for this bottle.
 
 Bottle Information:
 Producer: {bottle.producer}
 Name: {bottle.name}
-{"Vintage: " + str(bottle.year) if bottle.year else "Vintage: NV"}
+{vintage_line}
 Type: {bottle.beverage_type or bottle.type}
-{"Country: " + bottle.country if bottle.country else ""}
-{"Region: " + bottle.region if bottle.region else ""}
+{country_line}
+{region_line}
 Price: ${bottle.price}
 
 **Task:** Search the web to find the following missing information:
@@ -231,18 +266,7 @@ Price: ${bottle.price}
 
 Format your response as JSON:
 {{
-  {"\"producer\": \"...\"," if "producer" in missing_fields else ""}
-  {"\"name\": \"...\"," if "name" in missing_fields else ""}
-  {"\"beverage_type\": \"...\"," if "beverage_type" in missing_fields else ""}
-  {"\"country\": \"...\"," if "country" in missing_fields else ""}
-  {"\"region\": \"...\"," if "region" in missing_fields else ""}
-  {"\"abv\": 14.5," if "abv" in missing_fields else ""}
-  {"\"variety\": \"...\"," if "variety" in missing_fields else ""}
-  {"\"vineyard\": \"...\"," if "vineyard" in missing_fields else ""}
-  {"\"age_statement\": 12," if "age_statement" in missing_fields else ""}
-  {"\"proof\": 90," if "proof" in missing_fields else ""}
-  {"\"mash_bill\": \"...\"," if "mash_bill" in missing_fields else ""}
-  {"\"barrel_type\": \"...\"," if "barrel_type" in missing_fields else ""}
+  {json_fields_str}
   "confidence": "high/medium/low",
   "reasoning": "Brief explanation citing your sources"
 }}

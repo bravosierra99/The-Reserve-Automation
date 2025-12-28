@@ -109,7 +109,7 @@ class TastingGenerator:
                 "wine_overall": tasting.wine_overall,
                 "aws_score": aws_score,
                 "scale_100pt": scale_100pt,
-                "appearance_notes": [],  # User adds freeform notes in Obsidian
+                "appearance_notes": tasting.appearance_notes or [],
             })
         else:  # whiskey
             context.update({
