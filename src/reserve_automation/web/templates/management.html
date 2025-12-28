@@ -1883,15 +1883,16 @@ function managementApp() {
                 if (image && typeof Cropper !== 'undefined') {
                     this.cropperInstance = new Cropper(image, {
                         viewMode: 1,
-                        dragMode: 'move',
-                        aspectRatio: NaN, // Free aspect ratio
+                        dragMode: 'crop',           // 'crop' mode = drag to adjust box, not move image
+                        aspectRatio: NaN,           // Free aspect ratio
                         autoCropArea: 0.8,
                         restore: false,
                         guides: true,
                         center: true,
                         highlight: true,
-                        cropBoxMovable: true,
-                        cropBoxResizable: true,
+                        movable: false,             // Prevent moving the underlying image
+                        cropBoxMovable: true,       // Allow moving the crop box
+                        cropBoxResizable: true,     // Allow resizing the crop box
                         toggleDragModeOnDblclick: false,
                     });
                 }
