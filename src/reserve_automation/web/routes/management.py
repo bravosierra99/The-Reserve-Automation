@@ -1066,6 +1066,71 @@ async def manual_crop_label(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/api/v1/management/labels/manual-crop-downloaded")
+async def manual_crop_downloaded_label(data: dict):
+    """
+    Crop downloaded label image using exact pixel coordinates from manual selection.
+    Crops label_download.jpg and saves as label_download_cropped.jpg.
+    """
+    from ..app import core_config
+    from ...core.models import BottleMetadata
+    from pathlib import Path
+    from PIL import Image
+
+    try:
+        bottle_data = data.get("bottle")
+        x = data.get("x")
+        y = data.get("y")
+        width = data.get("width")
+        height = data.get("height")
+
+        if not bottle_data or x is None or y is None or width is None or height is None:
+            raise HTTPException(status_code=400, detail="Missing data or coordinates")
+
+        bottle = BottleMetadata(**bottle_data)
+
+        if not bottle.vault_path:
+            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+
+        label_dir = core_config.vault_path / bottle.vault_path / "labels"
+        downloaded_label = label_dir / "label_download.jpg"
+
+        if not downloaded_label.exists():
+            raise HTTPException(status_code=404, detail="No downloaded label found")
+
+        logger.info(f"Manual crop downloaded: x={x}, y={y}, w={width}, h={height}")
+
+        # Crop using PIL
+        img = Image.open(downloaded_label)
+
+        # Ensure coordinates are within image bounds
+        img_width, img_height = img.size
+        x = max(0, min(x, img_width))
+        y = max(0, min(y, img_height))
+        width = min(width, img_width - x)
+        height = min(height, img_height - y)
+
+        # Crop (left, top, right, bottom)
+        cropped = img.crop((x, y, x + width, y + height))
+
+        # Save as cropped version
+        cropped_label = label_dir / "label_download_cropped.jpg"
+        cropped.save(cropped_label, "JPEG", quality=95)
+
+        logger.info(f"Manual crop downloaded complete: {cropped_label}")
+
+        return {
+            "status": "success",
+            "message": "Downloaded label cropped successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Manual crop downloaded failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Legacy routes (keep for compatibility but may remove later)
 @router.post("/api/v1/management/labels/scan")
 async def scan_label_quality(
