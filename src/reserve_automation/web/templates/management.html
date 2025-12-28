@@ -797,11 +797,16 @@
                 </div>
 
                 <!-- Action Buttons -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                     <button @click="searchForLabelReplacement()"
                             :disabled="labelActionInProgress"
                             class="px-6 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
                         🔍 Search for Better Label
+                    </button>
+                    <button @click="document.getElementById('manualUploadInput').click()"
+                            :disabled="labelActionInProgress"
+                            class="px-6 py-4 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                        📁 Upload Your Own
                     </button>
                     <button @click="cropExistingLabel()"
                             :disabled="labelActionInProgress"
@@ -813,6 +818,35 @@
                             class="px-6 py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
                         ✋ Manual Crop
                     </button>
+                </div>
+
+                <!-- Hidden File Input -->
+                <input
+                    id="manualUploadInput"
+                    type="file"
+                    accept="image/*"
+                    @change="handleManualLabelUpload($event)"
+                    style="display: none;"
+                >
+
+                <!-- Manual Upload Preview -->
+                <div x-show="manualUploadPreview && !labelDownloadedOriginal" class="mb-6">
+                    <div class="bg-orange-50 border-2 border-orange-200 rounded-lg p-6">
+                        <h4 class="font-bold text-gray-800 mb-3">Uploaded Image Preview</h4>
+                        <img :src="manualUploadPreview" alt="Upload preview" class="max-h-64 mx-auto border-2 border-gray-300 rounded-lg mb-4">
+                        <div class="flex gap-3 justify-center">
+                            <button @click="uploadManualLabelImage()"
+                                    :disabled="!manualUploadFile || labelActionInProgress"
+                                    class="px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                                <span x-show="!labelActionInProgress">✓ Use This Image</span>
+                                <span x-show="labelActionInProgress">Uploading...</span>
+                            </button>
+                            <button @click="cancelManualUpload()"
+                                    class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Search Results -->
@@ -836,37 +870,6 @@
                         <span x-show="!labelActionInProgress">Download & Use Selected</span>
                         <span x-show="labelActionInProgress">Processing...</span>
                     </button>
-                </div>
-
-                <!-- Manual Upload Option -->
-                <div x-show="labelSearchResults.length > 0 && !labelDownloadedOriginal" class="mb-6">
-                    <div class="border-t-2 border-gray-200 pt-6">
-                        <h4 class="font-bold text-gray-800 mb-3">Or Upload Your Own Image</h4>
-                        <p class="text-sm text-gray-600 mb-4">If search didn't find what you need, upload an image from your device.</p>
-
-                        <input
-                            type="file"
-                            accept="image/*"
-                            @change="handleManualLabelUpload($event)"
-                            class="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-                        >
-
-                        <div x-show="manualUploadPreview" class="mt-4">
-                            <img :src="manualUploadPreview" alt="Upload preview" class="max-h-64 mx-auto border-2 border-gray-300 rounded-lg mb-3">
-                            <div class="flex gap-3">
-                                <button @click="uploadManualLabelImage()"
-                                        :disabled="!manualUploadFile || labelActionInProgress"
-                                        class="flex-1 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                                    <span x-show="!labelActionInProgress">✓ Use This Image</span>
-                                    <span x-show="labelActionInProgress">Uploading...</span>
-                                </button>
-                                <button @click="cancelManualUpload()"
-                                        class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
-                                    Cancel
-                                </button>
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Crop Preview (for "Crop Current Label") -->
