@@ -2,6 +2,12 @@
 
 {% block title %}Management - The Reserve{% endblock %}
 
+{% block head %}
+<!-- Cropper.js for manual label cropping -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+{% endblock %}
+
 {% block content %}
 <div x-data="managementApp()" class="max-w-6xl mx-auto">
     <!-- Mode Selection -->
@@ -760,9 +766,27 @@
                 <h3 class="text-2xl font-bold text-gray-800 mb-2">
                     <span x-text="selectedLabelBottle?.producer"></span> - <span x-text="selectedLabelBottle?.name"></span>
                 </h3>
-                <p class="text-gray-600 mb-6">
-                    <span x-text="selectedLabelBottle?.type"></span> • <span x-text="selectedLabelBottle?.year || 'N/A'"></span>
-                </p>
+                <div class="mb-6 text-gray-700">
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div><span class="font-semibold">Type:</span> <span x-text="selectedLabelBottle?.beverage_type || selectedLabelBottle?.type"></span></div>
+                        <div><span class="font-semibold">Year:</span> <span x-text="selectedLabelBottle?.year || 'N/A'"></span></div>
+                        <div x-show="selectedLabelBottle?.variety && selectedLabelBottle?.variety !== 'MISSING'">
+                            <span class="font-semibold">Variety:</span> <span x-text="selectedLabelBottle?.variety"></span>
+                        </div>
+                        <div x-show="selectedLabelBottle?.mash_bill && selectedLabelBottle?.mash_bill !== 'MISSING'">
+                            <span class="font-semibold">Mash Bill:</span> <span x-text="selectedLabelBottle?.mash_bill"></span>
+                        </div>
+                        <div x-show="selectedLabelBottle?.region && selectedLabelBottle?.region !== 'MISSING'" class="col-span-2">
+                            <span class="font-semibold">Region:</span> <span x-text="selectedLabelBottle?.region"></span>
+                        </div>
+                        <div x-show="selectedLabelBottle?.vineyard && selectedLabelBottle?.vineyard !== 'MISSING'">
+                            <span class="font-semibold">Vineyard:</span> <span x-text="selectedLabelBottle?.vineyard"></span>
+                        </div>
+                        <div x-show="selectedLabelBottle?.age_statement && selectedLabelBottle?.age_statement !== 'MISSING'">
+                            <span class="font-semibold">Age:</span> <span x-text="selectedLabelBottle?.age_statement"></span>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- Current Label -->
                 <div class="mb-6">
@@ -778,7 +802,7 @@
                 </div>
 
                 <!-- Action Buttons -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <button @click="searchForLabelReplacement()"
                             :disabled="labelActionInProgress"
                             class="px-6 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
@@ -787,7 +811,12 @@
                     <button @click="cropExistingLabel()"
                             :disabled="labelActionInProgress"
                             class="px-6 py-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                        ✂️ Crop Current Label
+                        ✂️ Auto Crop (OCR)
+                    </button>
+                    <button @click="startManualCrop()"
+                            :disabled="labelActionInProgress"
+                            class="px-6 py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                        ✋ Manual Crop
                     </button>
                 </div>
 
@@ -888,6 +917,32 @@
                         </button>
                     </div>
                 </div>
+
+                <!-- Manual Crop Interface -->
+                <div x-show="manualCropActive" class="mb-6">
+                    <h4 class="font-bold text-gray-800 mb-4">Manual Crop - Drag to Select Area</h4>
+
+                    <div class="bg-gray-100 rounded-lg p-4 mb-4">
+                        <div class="max-w-4xl mx-auto">
+                            <img id="manualCropImage"
+                                 :src="manualCropImageSrc"
+                                 alt="Image to crop"
+                                 style="max-width: 100%; display: block;">
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3 justify-center">
+                        <button @click="acceptManualCrop()"
+                                :disabled="labelActionInProgress"
+                                class="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                            ✓ Crop to Selected Area
+                        </button>
+                        <button @click="cancelManualCrop()"
+                                class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -949,6 +1004,9 @@ function managementApp() {
         labelDownloadedOriginal: null,
         labelDownloadedCropped: null,
         labelGridTimestamp: Date.now(),
+        manualCropActive: false,
+        manualCropImageSrc: null,
+        cropperInstance: null,
 
         selectMode(m) {
             this.mode = m;
@@ -1808,6 +1866,86 @@ function managementApp() {
         cancelDownload() {
             this.labelDownloadedOriginal = null;
             this.labelDownloadedCropped = null;
+        },
+
+        startManualCrop() {
+            if (!this.selectedLabelBottle) return;
+
+            // Set the image source from current label
+            const labelPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
+                              this.selectedLabelBottle.vault_path + '/labels/label.jpg';
+            this.manualCropImageSrc = `/api/v1/labels/view?path=${encodeURIComponent(labelPath)}&t=${Date.now()}`;
+            this.manualCropActive = true;
+
+            // Initialize Cropper.js after DOM update
+            this.$nextTick(() => {
+                const image = document.getElementById('manualCropImage');
+                if (image && typeof Cropper !== 'undefined') {
+                    this.cropperInstance = new Cropper(image, {
+                        viewMode: 1,
+                        dragMode: 'move',
+                        aspectRatio: NaN, // Free aspect ratio
+                        autoCropArea: 0.8,
+                        restore: false,
+                        guides: true,
+                        center: true,
+                        highlight: true,
+                        cropBoxMovable: true,
+                        cropBoxResizable: true,
+                        toggleDragModeOnDblclick: false,
+                    });
+                }
+            });
+        },
+
+        async acceptManualCrop() {
+            if (!this.cropperInstance || !this.selectedLabelBottle) return;
+
+            this.labelActionInProgress = true;
+            try {
+                // Get crop box data
+                const cropData = this.cropperInstance.getData(true); // true = rounded pixels
+
+                // Send to backend for cropping
+                const response = await fetch('/api/v1/management/labels/manual-crop', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bottle: this.selectedLabelBottle,
+                        x: Math.round(cropData.x),
+                        y: Math.round(cropData.y),
+                        width: Math.round(cropData.width),
+                        height: Math.round(cropData.height)
+                    })
+                });
+
+                if (!response.ok) throw new Error('Failed to crop');
+
+                alert('✅ Label cropped successfully!');
+
+                // Cleanup
+                this.cancelManualCrop();
+
+                // Go back to grid
+                this.selectedLabelBottle = null;
+
+                // Reload bottles to show new label
+                await this.loadLabelsForReview();
+            } catch (error) {
+                console.error('Manual crop failed:', error);
+                alert('Manual crop failed: ' + error.message);
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
+        cancelManualCrop() {
+            if (this.cropperInstance) {
+                this.cropperInstance.destroy();
+                this.cropperInstance = null;
+            }
+            this.manualCropActive = false;
+            this.manualCropImageSrc = null;
         },
 
         async acceptLabelCrop() {
