@@ -1906,8 +1906,9 @@ function managementApp() {
                 }
 
                 const data = await response.json();
-                // Show downloaded original
-                this.labelDownloadedOriginal = `/api/v1/labels/view?path=${encodeURIComponent(data.download_path)}&t=${Date.now()}`;
+                // Show downloaded original with aggressive cache busting
+                const cacheBuster = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                this.labelDownloadedOriginal = `/api/v1/labels/view?path=${encodeURIComponent(data.download_path)}&t=${cacheBuster}`;
                 this.labelDownloadedCropped = null;
                 // Clear search results since we now have downloaded image
                 this.labelSearchResults = [];
@@ -1942,7 +1943,9 @@ function managementApp() {
 
                 // Use nextTick to ensure DOM clears before loading new image
                 this.$nextTick(() => {
-                    this.labelDownloadedCropped = `/api/v1/labels/view?path=${encodeURIComponent(data.cropped_path)}&t=${Date.now()}`;
+                    // Add random component to guarantee uniqueness and bust cache
+                    const cacheBuster = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    this.labelDownloadedCropped = `/api/v1/labels/view?path=${encodeURIComponent(data.cropped_path)}&t=${cacheBuster}`;
                 });
             } catch (error) {
                 console.error('Failed to crop:', error);
@@ -2182,7 +2185,9 @@ function managementApp() {
                 this.$nextTick(() => {
                     const croppedPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
                                         this.selectedLabelBottle.vault_path + '/labels/label_download_cropped.jpg';
-                    this.labelDownloadedCropped = `/api/v1/labels/view?path=${encodeURIComponent(croppedPath)}&t=${Date.now()}`;
+                    // Add random component to guarantee uniqueness and bust cache
+                    const cacheBuster = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    this.labelDownloadedCropped = `/api/v1/labels/view?path=${encodeURIComponent(croppedPath)}&t=${cacheBuster}`;
                 });
 
                 alert('✅ Downloaded image cropped successfully!');
@@ -2256,7 +2261,8 @@ function managementApp() {
                 // Now show as downloaded image (reuse download workflow)
                 const downloadPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
                                       this.selectedLabelBottle.vault_path + '/labels/label_download.jpg';
-                this.labelDownloadedOriginal = `/api/v1/labels/view?path=${encodeURIComponent(downloadPath)}&t=${Date.now()}`;
+                const cacheBuster = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                this.labelDownloadedOriginal = `/api/v1/labels/view?path=${encodeURIComponent(downloadPath)}&t=${cacheBuster}`;
                 this.labelDownloadedCropped = null;
 
                 alert('✅ Image uploaded! You can now crop it or use as-is.');
