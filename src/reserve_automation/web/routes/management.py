@@ -1038,6 +1038,11 @@ async def manual_crop_label(data: dict):
         # Crop using PIL
         img = Image.open(current_label)
 
+        # CRITICAL: Normalize EXIF orientation BEFORE cropping
+        from PIL import ImageOps
+        img = ImageOps.exif_transpose(img)
+        logger.info(f"Image size after EXIF normalization: {img.size}")
+
         # Ensure coordinates are within image bounds
         img_width, img_height = img.size
         x = max(0, min(x, img_width))
@@ -1146,6 +1151,13 @@ async def manual_crop_downloaded_label(data: dict):
 
         # Crop using PIL
         img = Image.open(downloaded_label)
+
+        # CRITICAL: Normalize EXIF orientation BEFORE cropping
+        # This fixes the bug where iPhone images have rotation metadata
+        # and Cropper.js shows rotated view but PIL crops unrotated pixels
+        from PIL import ImageOps
+        img = ImageOps.exif_transpose(img)
+        logger.info(f"Image size after EXIF normalization: {img.size}")
 
         # Ensure coordinates are within image bounds
         img_width, img_height = img.size
