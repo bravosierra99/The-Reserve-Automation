@@ -1945,30 +1945,52 @@ function managementApp() {
         startManualCrop() {
             if (!this.selectedLabelBottle) return;
 
+            // Clean up any existing cropper first
+            if (this.cropperInstance) {
+                this.cropperInstance.destroy();
+                this.cropperInstance = null;
+            }
+
             // Set the image source from current label
             const labelPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
                               this.selectedLabelBottle.vault_path + '/labels/label.jpg';
             this.manualCropImageSrc = `/api/v1/labels/view?path=${encodeURIComponent(labelPath)}&t=${Date.now()}`;
             this.manualCropActive = true;
 
-            // Initialize Cropper.js after DOM update
+            // Initialize Cropper.js after image loads
             this.$nextTick(() => {
                 const image = document.getElementById('manualCropImage');
                 if (image && typeof Cropper !== 'undefined') {
-                    this.cropperInstance = new Cropper(image, {
-                        viewMode: 1,
-                        dragMode: 'crop',           // 'crop' mode = drag to adjust box, not move image
-                        aspectRatio: NaN,           // Free aspect ratio
-                        autoCropArea: 0.8,
-                        restore: false,
-                        guides: true,
-                        center: true,
-                        highlight: true,
-                        movable: false,             // Prevent moving the underlying image
-                        cropBoxMovable: true,       // Allow moving the crop box
-                        cropBoxResizable: true,     // Allow resizing the crop box
-                        toggleDragModeOnDblclick: false,
-                    });
+                    // Wait for image to load before initializing Cropper
+                    const initCropper = () => {
+                        this.cropperInstance = new Cropper(image, {
+                            viewMode: 1,
+                            dragMode: 'crop',           // 'crop' mode = drag to adjust box, not move image
+                            aspectRatio: NaN,           // Free aspect ratio
+                            autoCropArea: 0.8,
+                            restore: false,
+                            guides: true,
+                            center: true,
+                            highlight: true,
+                            movable: false,             // Prevent moving the underlying image
+                            cropBoxMovable: true,       // Allow moving the crop box
+                            cropBoxResizable: true,     // Allow resizing the crop box
+                            toggleDragModeOnDblclick: false,
+                        });
+                    };
+
+                    // If image is already loaded, init immediately
+                    if (image.complete && image.naturalHeight !== 0) {
+                        initCropper();
+                    } else {
+                        // Otherwise wait for load event
+                        image.onload = initCropper;
+                        image.onerror = () => {
+                            console.error('Failed to load image for manual crop');
+                            alert('Failed to load image. Please try again.');
+                            this.cancelManualCrop();
+                        };
+                    }
                 }
             });
         },
@@ -2027,30 +2049,52 @@ function managementApp() {
         startManualCropDownloaded() {
             if (!this.selectedLabelBottle || !this.labelDownloadedOriginal) return;
 
+            // Clean up any existing cropper first
+            if (this.cropperDownloadedInstance) {
+                this.cropperDownloadedInstance.destroy();
+                this.cropperDownloadedInstance = null;
+            }
+
             // Set the image source from downloaded file
             const labelPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
                               this.selectedLabelBottle.vault_path + '/labels/label_download.jpg';
             this.manualCropDownloadedSrc = `/api/v1/labels/view?path=${encodeURIComponent(labelPath)}&t=${Date.now()}`;
             this.manualCropDownloadedActive = true;
 
-            // Initialize Cropper.js after DOM update
+            // Initialize Cropper.js after image loads
             this.$nextTick(() => {
                 const image = document.getElementById('manualCropDownloadedImage');
                 if (image && typeof Cropper !== 'undefined') {
-                    this.cropperDownloadedInstance = new Cropper(image, {
-                        viewMode: 1,
-                        dragMode: 'crop',           // 'crop' mode = drag to adjust box, not move image
-                        aspectRatio: NaN,           // Free aspect ratio
-                        autoCropArea: 0.8,
-                        restore: false,
-                        guides: true,
-                        center: true,
-                        highlight: true,
-                        movable: false,             // Prevent moving the underlying image
-                        cropBoxMovable: true,       // Allow moving the crop box
-                        cropBoxResizable: true,     // Allow resizing the crop box
-                        toggleDragModeOnDblclick: false,
-                    });
+                    // Wait for image to load before initializing Cropper
+                    const initCropper = () => {
+                        this.cropperDownloadedInstance = new Cropper(image, {
+                            viewMode: 1,
+                            dragMode: 'crop',           // 'crop' mode = drag to adjust box, not move image
+                            aspectRatio: NaN,           // Free aspect ratio
+                            autoCropArea: 0.8,
+                            restore: false,
+                            guides: true,
+                            center: true,
+                            highlight: true,
+                            movable: false,             // Prevent moving the underlying image
+                            cropBoxMovable: true,       // Allow moving the crop box
+                            cropBoxResizable: true,     // Allow resizing the crop box
+                            toggleDragModeOnDblclick: false,
+                        });
+                    };
+
+                    // If image is already loaded, init immediately
+                    if (image.complete && image.naturalHeight !== 0) {
+                        initCropper();
+                    } else {
+                        // Otherwise wait for load event
+                        image.onload = initCropper;
+                        image.onerror = () => {
+                            console.error('Failed to load downloaded image for manual crop');
+                            alert('Failed to load image. Please try again.');
+                            this.cancelManualCropDownloaded();
+                        };
+                    }
                 }
             });
         },
