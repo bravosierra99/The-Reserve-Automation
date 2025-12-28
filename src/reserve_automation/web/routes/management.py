@@ -9,9 +9,11 @@
 
 import asyncio
 import re
+from pathlib import Path
+from shutil import copyfile
 from typing import Dict, Optional
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from loguru import logger
 
 from ...utils.vault_reader import VaultReader
@@ -696,4 +698,364 @@ async def update_bottle_fields(request: Request):
 
     except Exception as e:
         logger.error(f"Failed to update bottle fields: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Label Quality Review Routes - Simple grid-based workflow
+# ============================================================================
+
+@router.post("/api/v1/management/labels/crop-current")
+async def crop_current_label(data: dict):
+    """
+    Crop the current label using improved detection.
+
+    Creates a preview file that can be accepted or discarded.
+    """
+    from ..app import core_config
+    from ...llm.gateway import LLMGateway
+    from ...utils.label_processor import LabelImageProcessor
+    from pathlib import Path
+    from shutil import copyfile
+
+    try:
+        bottle_data = data.get("bottle")
+        if not bottle_data:
+            raise HTTPException(status_code=400, detail="Missing bottle data")
+
+        bottle = BottleMetadata(**bottle_data)
+
+        # Get current label path
+        if not bottle.vault_path:
+            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+
+        label_dir = core_config.vault_path / bottle.vault_path / "labels"
+        current_label = label_dir / "label.jpg"
+        if not current_label.exists():
+            current_label = label_dir / "label.png"
+
+        if not current_label.exists():
+            raise HTTPException(status_code=404, detail="No label found")
+
+        # Create preview path
+        preview_path = label_dir / "label_preview.jpg"
+
+        # Copy current to preview
+        copyfile(current_label, preview_path)
+
+        # Crop the preview using improved detection
+        llm = LLMGateway(core_config.llm)
+        processor = LabelImageProcessor(llm)
+
+        result = processor.crop_to_label(preview_path)
+
+        if not result:
+            raise HTTPException(status_code=500, detail="Cropping failed")
+
+        return {
+            "status": "success",
+            "preview_path": str(preview_path)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Crop current label failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/management/labels/accept-crop")
+async def accept_label_crop(data: dict):
+    """
+    Accept the cropped preview and replace the original label.
+    """
+    from ..app import core_config
+    from pathlib import Path
+    from shutil import copyfile
+
+    try:
+        bottle_data = data.get("bottle")
+        if not bottle_data:
+            raise HTTPException(status_code=400, detail="Missing bottle data")
+
+        bottle = BottleMetadata(**bottle_data)
+
+        if not bottle.vault_path:
+            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+
+        label_dir = core_config.vault_path / bottle.vault_path / "labels"
+        preview_path = label_dir / "label_preview.jpg"
+
+        if not preview_path.exists():
+            raise HTTPException(status_code=404, detail="No preview found")
+
+        # Determine current label extension
+        current_label = label_dir / "label.jpg"
+        if not current_label.exists():
+            current_label = label_dir / "label.png"
+
+        # Backup original
+        backup_path = label_dir / f"label_original_{current_label.suffix}"
+        if current_label.exists():
+            copyfile(current_label, backup_path)
+
+        # Replace with preview
+        copyfile(preview_path, current_label)
+
+        # Clean up preview
+        preview_path.unlink()
+
+        return {
+            "status": "success",
+            "message": "Cropped label accepted"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Accept crop failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/management/labels/replace-from-url")
+async def replace_label_from_url(data: dict):
+    """
+    Download image from URL, crop it, and replace label.
+    """
+    from ..app import core_config
+    from ...llm.gateway import LLMGateway
+    from ...utils.label_processor import LabelImageProcessor
+    from pathlib import Path
+    import httpx
+
+    try:
+        bottle_data = data.get("bottle")
+        image_url = data.get("image_url")
+
+        if not bottle_data or not image_url:
+            raise HTTPException(status_code=400, detail="Missing data")
+
+        bottle = BottleMetadata(**bottle_data)
+
+        if not bottle.vault_path:
+            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+
+        label_dir = core_config.vault_path / bottle.vault_path / "labels"
+        label_dir.mkdir(parents=True, exist_ok=True)
+
+        # Download image
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(image_url)
+            response.raise_for_status()
+            image_bytes = response.content
+
+        # Save as new label
+        new_label_path = label_dir / "label.jpg"
+
+        # Backup existing if present
+        if new_label_path.exists():
+            backup_path = label_dir / "label_replaced_backup.jpg"
+            copyfile(new_label_path, backup_path)
+
+        # Write downloaded image
+        new_label_path.write_bytes(image_bytes)
+
+        # Crop it using improved detection
+        llm = LLMGateway(core_config.llm)
+        processor = LabelImageProcessor(llm)
+        processor.crop_to_label(new_label_path)
+
+        return {
+            "status": "success",
+            "message": "Label replaced successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Replace label failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Legacy routes (keep for compatibility but may remove later)
+@router.post("/api/v1/management/labels/scan")
+async def scan_label_quality(
+    background_tasks: BackgroundTasks,
+    show_all: bool = False,
+    limit: Optional[int] = None
+):
+    """
+    Scan all bottle labels and categorize them.
+
+    Args:
+        show_all: If True, return all labels including good ones
+        limit: Optional limit on number of bottles to check
+
+    Returns:
+        dict: Prioritized list of label review candidates
+    """
+    from ..app import core_config
+    from ..services.label_review_service import LabelReviewService
+    from ...llm.gateway import LLMGateway
+
+    try:
+        # Create LLM gateway from config
+        llm_gateway = LLMGateway(core_config.llm)
+        service = LabelReviewService(llm_gateway, core_config.vault_path)
+
+        # Scan labels and categorize
+        candidates = await service.scan_all_labels(
+            show_all=show_all,
+            limit=limit
+        )
+
+        logger.info(f"Found {len(candidates)} labels in review queue")
+
+        # For labels needing replacement, search for new images
+        for candidate in candidates:
+            if candidate.status == "needs_replacement":
+                try:
+                    search_results = await service.search_replacement_images(candidate)
+                    candidate.search_results = search_results
+                except Exception as e:
+                    logger.error(f"Failed to search replacement images: {e}")
+                    continue
+
+        # Return candidates as JSON
+        return {
+            "candidates": [c.to_dict() for c in candidates],
+            "count": len(candidates),
+            "stats": {
+                "needs_replacement": sum(1 for c in candidates if c.status == "needs_replacement"),
+                "needs_cropping": sum(1 for c in candidates if c.status == "needs_cropping"),
+                "good": sum(1 for c in candidates if c.status == "good")
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Label scan failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/management/labels/accept")
+async def accept_improved_label(data: dict):
+    """
+    Accept improved label crop and replace original.
+
+    Args:
+        data: dict with 'bottle' field containing bottle metadata
+
+    Returns:
+        dict: Success status
+    """
+    from ..app import core_config
+    from ..services.label_review_service import LabelReviewService
+    from ...llm.gateway import LLMGateway
+
+    try:
+        # Parse bottle from request
+        bottle_data = data.get("bottle")
+        if not bottle_data:
+            raise HTTPException(status_code=400, detail="Missing bottle data")
+
+        bottle = BottleMetadata(**bottle_data)
+
+        # Create LLM gateway from config
+        llm_gateway = LLMGateway(core_config.llm)
+        service = LabelReviewService(llm_gateway, core_config.vault_path)
+
+        success = await service.accept_improved_label(bottle)
+
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to accept improved label")
+
+        return {
+            "status": "success",
+            "message": "Improved label accepted"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to accept improved label: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/management/labels/keep")
+async def keep_original_label(data: dict):
+    """
+    Keep original label and discard improved version.
+
+    Args:
+        data: dict with 'bottle' field containing bottle metadata
+
+    Returns:
+        dict: Success status
+    """
+    from ..app import core_config
+    from ..services.label_review_service import LabelReviewService
+    from ...llm.gateway import LLMGateway
+
+    try:
+        # Parse bottle from request
+        bottle_data = data.get("bottle")
+        if not bottle_data:
+            raise HTTPException(status_code=400, detail="Missing bottle data")
+
+        bottle = BottleMetadata(**bottle_data)
+
+        # Create LLM gateway from config
+        llm_gateway = LLMGateway(core_config.llm)
+        service = LabelReviewService(llm_gateway, core_config.vault_path)
+
+        success = await service.keep_original_label(bottle)
+
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to keep original")
+
+        return {
+            "status": "success",
+            "message": "Original label kept"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to keep original label: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/v1/labels/view")
+async def view_label_image(path: str):
+    """
+    Serve a label image for viewing.
+
+    Args:
+        path: Path to label image
+
+    Returns:
+        FileResponse: The image file
+    """
+    from pathlib import Path
+
+    try:
+        image_path = Path(path)
+
+        if not image_path.exists():
+            raise HTTPException(status_code=404, detail="Image not found")
+
+        # Security check - ensure path is within vault
+        # (prevents directory traversal attacks)
+        try:
+            from ..app import core_config
+            vault_path = core_config.vault_path
+            image_path.resolve().relative_to(vault_path.resolve())
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        return FileResponse(
+            image_path,
+            media_type="image/jpeg" if image_path.suffix.lower() == ".jpg" else "image/png"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to serve label image: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

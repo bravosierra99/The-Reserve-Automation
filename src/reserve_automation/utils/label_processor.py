@@ -9,7 +9,8 @@ from typing import Optional, Tuple
 
 import cv2
 import numpy as np
-from PIL import Image
+import pytesseract
+from PIL import Image, ImageOps
 
 from ..core.models import BottleMetadata
 from ..llm.gateway import LLMGateway
@@ -29,6 +30,39 @@ class LabelImageProcessor:
         """
         self.llm = llm_gateway
         self.quality_threshold = 7.0
+
+    def normalize_image_orientation(self, image_bytes: bytes) -> bytes:
+        """
+        CRITICAL: Apply EXIF orientation to fix rotated images.
+
+        Many phone cameras don't rotate pixels - they just set an EXIF tag.
+        This causes coordinate mismatch between vision APIs and PIL.
+
+        This MUST be called before any other processing.
+
+        Args:
+            image_bytes: Original image bytes
+
+        Returns:
+            Normalized image bytes with correct orientation
+        """
+        try:
+            img = Image.open(BytesIO(image_bytes))
+
+            # Apply EXIF orientation if present
+            img = ImageOps.exif_transpose(img)
+
+            # Convert back to bytes
+            buffer = BytesIO()
+            img.save(buffer, format='JPEG', quality=95)
+            normalized_bytes = buffer.getvalue()
+
+            logger.info(f"Image normalized from {img.size} (EXIF applied)")
+            return normalized_bytes
+
+        except Exception as e:
+            logger.warning(f"EXIF normalization failed (using original): {e}")
+            return image_bytes
 
     async def score_label_quality(
         self, image_bytes: bytes, bottle: BottleMetadata
@@ -246,6 +280,93 @@ class LabelImageProcessor:
             logger.error(f"CV bounding box detection failed: {e}")
             return None
 
+    def detect_label_bounds_text(
+        self, image_bytes: bytes
+    ) -> Optional[Tuple[int, int, int, int]]:
+        """
+        Detect label by finding text regions using OCR (Most Reliable).
+
+        Labels = dense text regions. This works better than edge detection
+        because it directly finds what matters (the text on the label).
+
+        Args:
+            image_bytes: Image file bytes
+
+        Returns:
+            Bounding box as (x, y, width, height), or None if detection fails
+        """
+        try:
+            # Convert bytes to numpy array
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            if img is None:
+                logger.error("Failed to decode image")
+                return None
+
+            h, w = img.shape[:2]
+            logger.info(f"Text-based detection on image: {w}x{h}")
+
+            # Get all text bounding boxes from OCR
+            ocr_data = pytesseract.image_to_data(
+                img,
+                output_type=pytesseract.Output.DICT,
+                config='--psm 11'  # Sparse text mode
+            )
+
+            # Filter to high-confidence text boxes
+            text_boxes = []
+            for i in range(len(ocr_data['text'])):
+                conf = int(ocr_data['conf'][i])
+                text = ocr_data['text'][i].strip()
+
+                # Only consider high-confidence text
+                if conf > 30 and len(text) > 0:
+                    x = ocr_data['left'][i]
+                    y = ocr_data['top'][i]
+                    box_w = ocr_data['width'][i]
+                    box_h = ocr_data['height'][i]
+                    text_boxes.append((x, y, box_w, box_h))
+
+            if not text_boxes:
+                logger.warning("No text detected in image")
+                return None
+
+            logger.info(f"Found {len(text_boxes)} text regions")
+
+            # Find bounding box that contains all text
+            min_x = min(box[0] for box in text_boxes)
+            min_y = min(box[1] for box in text_boxes)
+            max_x = max(box[0] + box[2] for box in text_boxes)
+            max_y = max(box[1] + box[3] for box in text_boxes)
+
+            # Add padding around text region (labels have whitespace/graphics)
+            text_width = max_x - min_x
+            text_height = max_y - min_y
+
+            # Use 20% padding to capture label borders and graphics
+            padding_x = int(text_width * 0.20)
+            padding_y = int(text_height * 0.20)
+
+            x = max(0, min_x - padding_x)
+            y = max(0, min_y - padding_y)
+            width = min(w - x, text_width + 2 * padding_x)
+            height = min(h - y, text_height + 2 * padding_y)
+
+            logger.info(f"Text-based bounds: x={x}, y={y}, w={width}, h={height}")
+            logger.info(f"Label covers {(width*height)/(w*h)*100:.1f}% of image")
+
+            # Validate bounds are reasonable
+            if width < 50 or height < 50:
+                logger.warning(f"Detected text region too small: {width}x{height}")
+                return None
+
+            return (x, y, width, height)
+
+        except Exception as e:
+            logger.error(f"Text-based detection failed: {e}")
+            return None
+
     async def validate_crop_quality(
         self, cropped_image_bytes: bytes, bottle: BottleMetadata
     ) -> bool:
@@ -298,29 +419,65 @@ Return ONLY a number 0-10. No explanation."""
             return True  # Assume OK if validation fails
 
     def crop_to_label(
-        self, image_path: Path, bounds: Tuple[int, int, int, int]
+        self, image_path: Path, bounds: Optional[Tuple[int, int, int, int]] = None
     ) -> Optional[Path]:
         """
-        Crop image to label bounds using PIL.
+        Crop image to label using automatic detection or provided bounds.
+
+        Workflow:
+        1. Apply EXIF normalization (fixes rotation)
+        2. Auto-detect label bounds if not provided
+           - Try text-based detection first (most reliable)
+           - Fall back to CV contour detection
+        3. Apply crop
 
         Args:
             image_path: Path to original image
-            bounds: Bounding box as (x, y, width, height)
+            bounds: Optional bounding box (x, y, width, height).
+                   If None, will auto-detect.
 
         Returns:
             Path to cropped image, or None if cropping fails
         """
         try:
-            x, y, width, height = bounds
-            logger.info(f"Cropping with bounds: x={x}, y={y}, width={width}, height={height}")
+            # Step 1: CRITICAL - Normalize EXIF orientation
+            logger.info(f"Processing image: {image_path}")
+            with open(image_path, 'rb') as f:
+                original_bytes = f.read()
 
-            # Open image with PIL
-            img = Image.open(image_path)
-            logger.info(f"Original image dimensions: {img.width}x{img.height}")
+            normalized_bytes = self.normalize_image_orientation(original_bytes)
+
+            # Open normalized image
+            img = Image.open(BytesIO(normalized_bytes))
+            logger.info(f"Image dimensions after EXIF: {img.width}x{img.height}")
+
+            # Step 2: Auto-detect bounds if not provided
+            if bounds is None:
+                logger.info("Auto-detecting label bounds...")
+
+                # Try text-based detection first (most reliable)
+                bounds = self.detect_label_bounds_text(normalized_bytes)
+
+                if bounds:
+                    logger.info("✅ Text-based detection succeeded")
+                else:
+                    logger.info("Text detection failed, trying CV contour detection...")
+                    bounds = self.detect_label_bounds_cv(normalized_bytes)
+
+                    if bounds:
+                        logger.info("✅ CV contour detection succeeded")
+                    else:
+                        logger.warning("❌ All detection methods failed, using original image")
+                        # Save normalized image (at least we fixed rotation)
+                        img.save(image_path, 'JPEG', quality=95, optimize=True)
+                        return image_path
+
+            # Step 3: Apply crop
+            x, y, width, height = bounds
+            logger.info(f"Cropping with bounds: x={x}, y={y}, w={width}, h={height}")
 
             # Convert bounds to PIL box format (left, top, right, bottom)
             box = (x, y, x + width, y + height)
-            logger.info(f"PIL crop box (left, top, right, bottom): {box}")
 
             # Validate box is within image dimensions
             if (
@@ -335,13 +492,11 @@ Return ONLY a number 0-10. No explanation."""
                 return None
 
             # Crop image
-            logger.info(f"Cropping from top-left ({box[0]}, {box[1]}) to bottom-right ({box[2]}, {box[3]})")
             cropped = img.crop(box)
-            logger.info(f"Cropped image size: {cropped.width}x{cropped.height}")
+            logger.info(f"Cropped to: {cropped.width}x{cropped.height}")
 
             # Convert to RGB if needed (for PNG palette mode)
             if cropped.mode in ('P', 'RGBA', 'LA'):
-                # Convert palette or transparent images to RGB
                 rgb_img = Image.new('RGB', cropped.size, (255, 255, 255))
                 if cropped.mode == 'P':
                     cropped = cropped.convert('RGB')
@@ -352,7 +507,7 @@ Return ONLY a number 0-10. No explanation."""
             # Save cropped version (overwrite original)
             cropped.save(image_path, 'JPEG', quality=95, optimize=True)
 
-            logger.info(f"Cropped image saved to {image_path}")
+            logger.info(f"✅ Cropped image saved to {image_path}")
             return image_path
 
         except Exception as e:
