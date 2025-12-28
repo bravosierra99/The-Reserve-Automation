@@ -159,6 +159,7 @@ async def search_bottles(
     q: str,
     beverage_type: Optional[str] = None,
     limit: int = 10,
+    event_id: Optional[str] = None,
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Search for bottles in the vault."""
@@ -168,6 +169,22 @@ async def search_bottles(
     if not core_config or not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
 
+    # If event_id is provided, allow search without session (for event participants)
+    if event_id:
+        tasting_service = TastingService(core_config)
+        results = tasting_service.search_bottles(
+            query=q,
+            beverage_type=beverage_type,
+            limit=limit,
+            event_id=event_id
+        )
+
+        return {
+            "query": q,
+            "results": [r.model_dump() for r in results]
+        }
+
+    # For non-event searches, require session
     if not session_token:
         raise HTTPException(status_code=401, detail="No active session")
 
@@ -180,11 +197,16 @@ async def search_bottles(
     if not session_data:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
+    # Get event_id from session if not provided as query param
+    if not event_id:
+        event_id = session_data.get("event_id")
+
     tasting_service = TastingService(core_config)
     results = tasting_service.search_bottles(
         query=q,
         beverage_type=beverage_type,
-        limit=limit
+        limit=limit,
+        event_id=event_id
     )
 
     return {
@@ -449,6 +471,44 @@ async def find_labels(
         raise
     except Exception as e:
         logger.error(f"Failed to find labels: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/bottles/search-labels")
+async def search_labels_for_bottle(request: Request):
+    """
+    Search for label images for a bottle (used by management interface).
+
+    Uses the EXACT same label finding logic as the upload flow.
+
+    Request body: BottleMetadata dict
+
+    Returns:
+        List of label image candidates
+    """
+    from ..app import core_config
+    from ..services.label_service import LabelService
+    from reserve_automation.core.models import BottleMetadata
+
+    if not core_config:
+        raise HTTPException(status_code=500, detail="Service not initialized")
+
+    try:
+        # Get bottle data from request body
+        bottle_data = await request.json()
+
+        # Convert to BottleMetadata
+        bottle = BottleMetadata(**bottle_data)
+
+        # Find labels using LLM web search (SAME code as upload flow)
+        extraction_service = ExtractionService(core_config)
+        label_service = LabelService(extraction_service.llm_gateway)
+        label_candidates = await label_service.find_labels(bottle)
+
+        return {"images": label_candidates}
+
+    except Exception as e:
+        logger.error(f"Failed to search labels: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1282,6 +1342,50 @@ async def serve_temp_image(extraction_id: str, filename: str):
         raise
     except Exception as e:
         logger.error(f"Failed to serve temp image: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/v1/bottle-label/{bottle_path:path}")
+async def serve_bottle_label(bottle_path: str):
+    """
+    Serve label image from a bottle's labels folder.
+
+    Args:
+        bottle_path: Relative path to bottle folder (e.g., "1_Whiskeys/Bottle Name")
+
+    Returns:
+        Image file response
+    """
+    from ..app import core_config
+    from fastapi.responses import FileResponse
+
+    if not core_config:
+        raise HTTPException(status_code=500, detail="Service not initialized")
+
+    try:
+        # Construct path to bottle's label
+        bottle_folder = core_config.vault_path / bottle_path
+        label_path = bottle_folder / "labels" / "label.jpg"
+
+        # Security: Ensure path doesn't escape vault
+        if not label_path.resolve().is_relative_to(core_config.vault_path.resolve()):
+            raise HTTPException(status_code=403, detail="Invalid bottle path")
+
+        # Check if file exists
+        if not label_path.exists():
+            raise HTTPException(status_code=404, detail="Label not found")
+
+        # Serve the image
+        return FileResponse(
+            path=label_path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=3600"}
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to serve bottle label: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
