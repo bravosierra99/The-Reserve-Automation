@@ -22,6 +22,27 @@
                 <h3 class="font-bold text-lg mb-2">Batch Update All Bottles</h3>
                 <p class="text-sm text-gray-600">Verify all bottles in the background, approve as they complete</p>
             </button>
+
+            <button @click="selectMode('create-event')"
+                    class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-green-50 hover:bg-green-100">
+                <div class="text-4xl mb-2">📅</div>
+                <h3 class="font-bold text-lg mb-2">Create Tasting Event</h3>
+                <p class="text-sm text-gray-600">Create a tasting event with selected bottles</p>
+            </button>
+
+            <button @click="selectMode('manage-events')"
+                    class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-yellow-50 hover:bg-yellow-100">
+                <div class="text-4xl mb-2">🎭</div>
+                <h3 class="font-bold text-lg mb-2">Manage Events</h3>
+                <p class="text-sm text-gray-600">View and manage your tasting events</p>
+            </button>
+
+            <button @click="selectMode('review-labels')"
+                    class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-orange-50 hover:bg-orange-100">
+                <div class="text-4xl mb-2">🖼️</div>
+                <h3 class="font-bold text-lg mb-2">Review Label Quality</h3>
+                <p class="text-sm text-gray-600">Scan and improve low-quality label images</p>
+            </button>
         </div>
 
         <div class="mt-6">
@@ -376,7 +397,446 @@
             </div>
         </div>
     </div>
-</div>
+
+    <!-- Create Event Mode -->
+    <div x-show="mode === 'create-event'">
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">Create Tasting Event</h2>
+
+            <!-- Event Details -->
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Event Name</label>
+                    <input type="text"
+                           x-model="eventName"
+                           placeholder="e.g., Bourbon Night, Napa Cabernet Tasting"
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Beverage Type</label>
+                    <select x-model="eventBeverageType"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                        <option value="wine">Wine</option>
+                        <option value="whiskey">Whiskey</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Your Name (Host)</label>
+                    <input type="text"
+                           x-model="eventHostName"
+                           placeholder="Enter your name"
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                </div>
+
+                <div>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox"
+                               x-model="eventIsBlind"
+                               class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                        <span class="text-sm font-semibold text-gray-700">Blind Tasting (numbered bottles)</span>
+                    </label>
+                    <p class="text-xs text-gray-600 mt-1 ml-7">Participants will see "Bottle #1, #2, #3" instead of actual names</p>
+                </div>
+            </div>
+
+            <!-- Bottle Selection -->
+            <div class="mb-6">
+                <h3 class="text-lg font-bold text-gray-800 mb-3">Select Bottles</h3>
+
+                <div class="mb-4">
+                    <div class="flex gap-2">
+                        <input type="text"
+                               x-model="eventBottleSearchQuery"
+                               @keyup.enter="searchBottlesForEvent()"
+                               placeholder="Search for bottles to add..."
+                               class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                        <button @click="searchBottlesForEvent()"
+                                :disabled="eventBottleSearching || !eventBottleSearchQuery"
+                                class="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-lg">
+                            <span x-show="!eventBottleSearching">Search</span>
+                            <span x-show="eventBottleSearching">...</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Search Results -->
+                <div x-show="eventBottleSearchResults.length > 0" class="mb-4 bg-gray-50 rounded-lg p-4 max-h-60 overflow-y-auto">
+                    <h4 class="text-sm font-semibold text-gray-700 mb-2">Search Results (click to add)</h4>
+                    <div class="space-y-2">
+                        <template x-for="bottle in eventBottleSearchResults" :key="bottle._index">
+                            <button @click="addBottleToEvent(bottle)"
+                                    :disabled="isBottleInEvent(bottle)"
+                                    class="w-full text-left p-3 border border-gray-300 rounded-lg hover:bg-blue-50 disabled:bg-gray-200 disabled:cursor-not-allowed transition-colors">
+                                <div class="font-semibold text-gray-800">
+                                    <span x-text="bottle.producer"></span> - <span x-text="bottle.name"></span>
+                                    <span x-show="bottle.year" class="text-gray-600">(<span x-text="bottle.year"></span>)</span>
+                                </div>
+                                <div class="text-xs text-gray-600">
+                                    <span x-text="bottle.type"></span>
+                                    <span x-show="bottle.region"> • <span x-text="bottle.region"></span></span>
+                                </div>
+                                <div x-show="isBottleInEvent(bottle)" class="text-xs text-green-600 font-semibold mt-1">✓ Added</div>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Selected Bottles -->
+                <div x-show="eventSelectedBottles.length > 0" class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h4 class="text-sm font-semibold text-gray-800 mb-3">
+                        Selected Bottles (<span x-text="eventSelectedBottles.length"></span>)
+                    </h4>
+                    <div class="space-y-2">
+                        <template x-for="(bottle, index) in eventSelectedBottles" :key="bottle._index">
+                            <div class="flex items-start gap-3 bg-white rounded-lg p-3 border border-gray-300">
+                                <div class="flex-1">
+                                    <div class="font-semibold text-gray-800">
+                                        <span x-show="eventIsBlind" class="text-green-600">#<span x-text="index + 1"></span>: </span>
+                                        <span x-text="bottle.producer"></span> - <span x-text="bottle.name"></span>
+                                        <span x-show="bottle.year" class="text-gray-600">(<span x-text="bottle.year"></span>)</span>
+                                    </div>
+                                    <div class="text-xs text-gray-600" x-text="bottle.vault_path"></div>
+                                </div>
+                                <button @click="removeBottleFromEvent(index)"
+                                        class="text-red-600 hover:text-red-800 font-semibold text-sm">
+                                    Remove
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                    <p x-show="eventIsBlind" class="text-xs text-gray-600 mt-3">
+                        Note: Bottle numbers will be randomly assigned to prevent bias (you won't know which is which!)
+                    </p>
+                </div>
+
+                <div x-show="eventSelectedBottles.length === 0" class="text-sm text-gray-500 text-center py-6 border border-dashed border-gray-300 rounded-lg">
+                    No bottles selected yet. Search and add bottles above.
+                </div>
+            </div>
+
+            <!-- Create Button -->
+            <div class="flex gap-3">
+                <button @click="createEvent()"
+                        :disabled="!canCreateEvent() || eventCreating"
+                        class="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg transition-colors">
+                    <span x-show="!eventCreating">Create Event</span>
+                    <span x-show="eventCreating">Creating...</span>
+                </button>
+                <button @click="cancelCreateEvent()"
+                        :disabled="eventCreating"
+                        class="px-6 py-3 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                    Cancel
+                </button>
+            </div>
+
+            <!-- Success Message -->
+            <div x-show="eventCreated" class="mt-6 bg-green-50 border-2 border-green-400 rounded-lg p-4">
+                <p class="text-green-800 font-bold mb-2">✓ Event Created Successfully!</p>
+                <p class="text-gray-700 mb-4">Your event has been created. Share this link with participants:</p>
+                <div class="bg-white border border-green-300 rounded p-3 mb-4">
+                    <code class="text-sm text-gray-800" x-text="eventCreatedUrl"></code>
+                </div>
+                <div class="flex gap-3">
+                    <button @click="window.location.href = eventCreatedUrl"
+                            class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg">
+                        Go to Event
+                    </button>
+                    <button @click="window.location.href = '/events'"
+                            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg">
+                        View All Events
+                    </button>
+                    <button @click="resetCreateEvent()"
+                            class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg">
+                        Create Another Event
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manage Events Mode -->
+    <div x-show="mode === 'manage-events'">
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">Manage Events</h2>
+                <button @click="mode = null" class="text-blue-600 hover:text-blue-800 font-semibold">
+                    ← Back
+                </button>
+            </div>
+
+            <!-- Loading state -->
+            <div x-show="manageEventsLoading" class="text-center py-8">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p class="text-gray-600">Loading events...</p>
+            </div>
+
+            <!-- Empty state -->
+            <div x-show="!manageEventsLoading && managedEvents.length === 0" class="text-center py-12 bg-gray-50 rounded-lg">
+                <div class="text-6xl mb-4">📅</div>
+                <h3 class="text-xl font-bold text-gray-800 mb-2">No Events Yet</h3>
+                <p class="text-gray-600 mb-4">Create your first tasting event</p>
+                <button @click="mode = 'create-event'" class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
+                    Create Event
+                </button>
+            </div>
+
+            <!-- Events list -->
+            <div x-show="!manageEventsLoading && managedEvents.length > 0" class="space-y-4">
+                <template x-for="event in managedEvents" :key="event.event_id">
+                    <div class="border border-gray-300 rounded-lg p-6">
+                        <!-- Event header -->
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-800" x-text="event.name"></h3>
+                                <p class="text-gray-600 text-sm mt-1">
+                                    <span x-text="event.beverage_type === 'wine' ? '🍷 Wine' : '🥃 Whiskey'"></span> •
+                                    <span x-text="event.bottles.length"></span> bottles •
+                                    <span x-text="Object.keys(event.participants).length"></span> participants
+                                </p>
+                            </div>
+                            <div class="flex gap-2">
+                                <span x-show="event.is_blind && event.status === 'open'" class="px-3 py-1 bg-purple-100 text-purple-800 text-sm font-semibold rounded">
+                                    🎭 Blind
+                                </span>
+                                <span x-show="event.status === 'open'" class="px-3 py-1 bg-green-100 text-green-800 text-sm font-semibold rounded">
+                                    ✓ Open
+                                </span>
+                                <span x-show="event.status === 'revealed'" class="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded">
+                                    👁️ Revealed
+                                </span>
+                                <span x-show="event.status === 'closed'" class="px-3 py-1 bg-gray-100 text-gray-800 text-sm font-semibold rounded">
+                                    🔒 Closed
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Event details -->
+                        <div class="grid grid-cols-2 gap-4 mb-4 text-sm">
+                            <div>
+                                <span class="text-gray-600">Host:</span>
+                                <span class="font-semibold text-gray-800" x-text="event.host_name"></span>
+                            </div>
+                            <div>
+                                <span class="text-gray-600">Created:</span>
+                                <span class="font-semibold text-gray-800" x-text="new Date(event.created_at).toLocaleDateString()"></span>
+                            </div>
+                        </div>
+
+                        <!-- Peek at Bottles (Blind Tastings Only) -->
+                        <div x-show="event.is_blind" class="mb-4">
+                            <div x-show="!peekingBottles[event.event_id]">
+                                <button @click="peekingBottles[event.event_id] = true"
+                                        class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold rounded-lg">
+                                    👁️ Peek at Bottle Mapping
+                                </button>
+                            </div>
+
+                            <div x-show="peekingBottles[event.event_id]"
+                                 class="bg-yellow-50 border-4 border-yellow-500 rounded-lg p-6">
+                                <div class="flex justify-between items-center mb-4">
+                                    <h4 class="text-xl font-bold text-yellow-900">🔓 Bottle Mapping Revealed</h4>
+                                    <button @click="peekingBottles[event.event_id] = false"
+                                            class="px-6 py-3 bg-red-600 hover:bg-red-700 text-white text-lg font-bold rounded-lg shadow-lg">
+                                        🙈 HIDE
+                                    </button>
+                                </div>
+
+                                <div class="space-y-3">
+                                    <template x-for="bottle in event.bottles" :key="bottle.bottle_path">
+                                        <div class="bg-white border-2 border-yellow-400 rounded-lg p-4 flex items-center gap-4">
+                                            <div class="text-3xl font-bold text-yellow-800 bg-yellow-200 rounded-full w-16 h-16 flex items-center justify-center">
+                                                <span x-text="bottle.blind_number"></span>
+                                            </div>
+                                            <div class="flex-1">
+                                                <div class="font-bold text-lg text-gray-800" x-text="bottle.bottle_name"></div>
+                                                <div class="text-sm text-gray-600" x-text="bottle.bottle_path"></div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <div class="mt-4 text-center">
+                                    <button @click="peekingBottles[event.event_id] = false"
+                                            class="px-8 py-4 bg-red-600 hover:bg-red-700 text-white text-xl font-bold rounded-lg shadow-lg">
+                                        🙈 HIDE BOTTLES
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="flex gap-3 pt-4 border-t border-gray-200">
+                            <a :href="`/events/${event.event_id}`"
+                               class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg">
+                                View Event
+                            </a>
+                            <button @click="revealEventBottles(event.event_id)"
+                                    x-show="event.is_blind && event.status === 'open'"
+                                    class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg">
+                                Reveal Bottles
+                            </button>
+                            <button @click="closeEventFromManagement(event.event_id)"
+                                    x-show="event.status !== 'closed'"
+                                    class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg">
+                                Close Event
+                            </button>
+                            <button @click="deleteEventFromManagement(event.event_id)"
+                                    class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- Review Labels Mode -->
+    <div x-show="mode === 'review-labels'">
+        <!-- Grid View -->
+        <div x-show="!selectedLabelBottle">
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800">Label Review - Quick Fix</h2>
+                <p class="text-gray-600 mb-4">
+                    Click any bottle to search for better label images or re-crop using the improved detection.
+                </p>
+
+                <div class="flex gap-3 items-center mb-6">
+                    <button @click="loadLabelsForReview()"
+                            :disabled="labelsLoading"
+                            class="px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                        <span x-show="!labelsLoading">🖼️ Load All Bottles</span>
+                        <span x-show="labelsLoading">Loading...</span>
+                    </button>
+                    <button @click="mode = null" class="text-blue-600 hover:text-blue-800 font-semibold">
+                        ← Back to Mode Selection
+                    </button>
+                </div>
+
+                <!-- Loading -->
+                <div x-show="labelsLoading" class="text-center py-12">
+                    <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-orange-600 mx-auto mb-4"></div>
+                    <p class="text-gray-600">Loading bottles...</p>
+                </div>
+
+                <!-- Bottle Grid -->
+                <div x-show="!labelsLoading && labelBottles.length > 0">
+                    <p class="text-sm text-gray-600 mb-4">
+                        <span class="font-bold" x-text="labelBottles.length"></span> bottles loaded. Click any to fix its label.
+                    </p>
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        <template x-for="bottle in labelBottles" :key="bottle.vault_path">
+                            <div @click="selectLabelBottle(bottle)"
+                                 class="cursor-pointer border-2 border-gray-200 hover:border-blue-500 rounded-lg p-3 transition-all hover:shadow-lg">
+                                <div class="bg-gray-100 rounded-lg mb-2 h-48 flex items-center justify-center overflow-hidden">
+                                    <img x-show="bottle.vault_path"
+                                         :src="`/api/v1/labels/view?path=${encodeURIComponent('/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' + bottle.vault_path + '/labels/label.jpg')}`"
+                                         :alt="bottle.producer"
+                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+                                         class="max-h-full max-w-full object-contain">
+                                    <div class="text-gray-400 text-4xl" style="display: none;">📷</div>
+                                </div>
+                                <div class="text-sm font-semibold text-gray-800 truncate" x-text="bottle.producer"></div>
+                                <div class="text-xs text-gray-600 truncate" x-text="bottle.name"></div>
+                                <div class="text-xs text-gray-500" x-text="bottle.year"></div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Selected Bottle Detail -->
+        <div x-show="selectedLabelBottle">
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <button @click="selectedLabelBottle = null; labelSearchResults = []; labelCropPreview = null"
+                        class="mb-4 text-blue-600 hover:text-blue-800 font-semibold">
+                    ← Back to Grid
+                </button>
+
+                <h3 class="text-2xl font-bold text-gray-800 mb-2">
+                    <span x-text="selectedLabelBottle?.producer"></span> - <span x-text="selectedLabelBottle?.name"></span>
+                </h3>
+                <p class="text-gray-600 mb-6">
+                    <span x-text="selectedLabelBottle?.type"></span> • <span x-text="selectedLabelBottle?.year || 'N/A'"></span>
+                </p>
+
+                <!-- Current Label -->
+                <div class="mb-6">
+                    <h4 class="font-bold text-gray-800 mb-3">Current Label</h4>
+                    <div class="max-w-md bg-gray-100 rounded-lg p-4">
+                        <img x-show="selectedLabelBottle?.vault_path"
+                             :src="`/api/v1/labels/view?path=${encodeURIComponent('/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' + (selectedLabelBottle?.vault_path || '') + '/labels/label.jpg')}`"
+                             alt="Current label"
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+                             class="w-full h-auto rounded shadow-sm">
+                        <div class="text-gray-400 text-6xl text-center py-12" style="display: none;">📷</div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <button @click="searchForLabelReplacement()"
+                            :disabled="labelActionInProgress"
+                            class="px-6 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                        🔍 Search for Better Label
+                    </button>
+                    <button @click="cropExistingLabel()"
+                            :disabled="labelActionInProgress"
+                            class="px-6 py-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                        ✂️ Crop Current Label
+                    </button>
+                </div>
+
+                <!-- Search Results -->
+                <div x-show="labelSearchResults.length > 0" class="mb-6">
+                    <h4 class="font-bold text-gray-800 mb-3">Search Results - Click to Select</h4>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                        <template x-for="(result, idx) in labelSearchResults" :key="idx">
+                            <div @click="selectedSearchImage = result"
+                                 :class="selectedSearchImage === result ? 'ring-4 ring-blue-500' : 'hover:ring-2 hover:ring-gray-300'"
+                                 class="cursor-pointer border-2 border-gray-200 rounded-lg p-2 transition-all">
+                                <img :src="result.url"
+                                     alt="Label option"
+                                     class="w-full h-48 object-contain rounded mb-2">
+                                <div class="text-xs text-gray-600 text-center" x-text="result.source || 'Web'"></div>
+                            </div>
+                        </template>
+                    </div>
+                    <button @click="useSelectedSearchImage()"
+                            :disabled="!selectedSearchImage || labelActionInProgress"
+                            class="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                        <span x-show="!labelActionInProgress">Download & Use Selected</span>
+                        <span x-show="labelActionInProgress">Processing...</span>
+                    </button>
+                </div>
+
+                <!-- Crop Preview -->
+                <div x-show="labelCropPreview" class="mb-6">
+                    <h4 class="font-bold text-gray-800 mb-3">Cropped Preview</h4>
+                    <div class="max-w-md bg-gray-100 rounded-lg p-4">
+                        <img :src="labelCropPreview"
+                             alt="Cropped preview"
+                             class="w-full h-auto rounded shadow-sm">
+                    </div>
+                    <div class="flex gap-3 mt-4">
+                        <button @click="acceptLabelCrop()"
+                                :disabled="labelActionInProgress"
+                                class="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                            ✓ Accept This Crop
+                        </button>
+                        <button @click="labelCropPreview = null"
+                                class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
 <script>
 function managementApp() {
@@ -406,8 +866,38 @@ function managementApp() {
         batchCollapsedStates: {},
         batchAppliedStates: {},
 
+        // Create event mode
+        eventName: '',
+        eventBeverageType: 'wine',
+        eventHostName: '',
+        eventIsBlind: false,
+        eventBottleSearchQuery: '',
+        eventBottleSearching: false,
+        eventBottleSearchResults: [],
+        eventSelectedBottles: [],
+        eventCreating: false,
+        eventCreated: false,
+        eventCreatedUrl: '',
+
+        // Manage events mode
+        managedEvents: [],
+        manageEventsLoading: false,
+        peekingBottles: {},  // Track which events are showing bottle mapping
+
+        // Label review mode
+        labelsLoading: false,
+        labelBottles: [],
+        selectedLabelBottle: null,
+        labelSearchResults: [],
+        selectedSearchImage: null,
+        labelCropPreview: null,
+        labelActionInProgress: false,
+
         selectMode(m) {
             this.mode = m;
+            if (m === 'manage-events') {
+                this.loadManagedEvents();
+            }
         },
 
         initBatchResult(result) {
@@ -713,6 +1203,189 @@ function managementApp() {
             this.mode = null;
         },
 
+        // Create Event Functions
+        async searchBottlesForEvent() {
+            if (!this.eventBottleSearchQuery) return;
+
+            this.eventBottleSearching = true;
+            try {
+                const response = await fetch(`/api/v1/management/bottles/search?q=${encodeURIComponent(this.eventBottleSearchQuery)}`);
+                const data = await response.json();
+                this.eventBottleSearchResults = data.bottles;
+            } catch (error) {
+                console.error('Bottle search failed:', error);
+                alert('Bottle search failed: ' + error.message);
+            } finally {
+                this.eventBottleSearching = false;
+            }
+        },
+
+        addBottleToEvent(bottle) {
+            if (!this.isBottleInEvent(bottle)) {
+                this.eventSelectedBottles.push(bottle);
+            }
+        },
+
+        removeBottleFromEvent(index) {
+            this.eventSelectedBottles.splice(index, 1);
+        },
+
+        isBottleInEvent(bottle) {
+            return this.eventSelectedBottles.some(b => b._index === bottle._index);
+        },
+
+        canCreateEvent() {
+            return this.eventName.trim() !== '' &&
+                   this.eventHostName.trim() !== '' &&
+                   this.eventSelectedBottles.length > 0;
+        },
+
+        async createEvent() {
+            if (!this.canCreateEvent()) return;
+
+            this.eventCreating = true;
+            try {
+                // Build bottle paths and blind numbers
+                const bottlePaths = this.eventSelectedBottles.map(b => b.vault_path);
+
+                // Generate randomized blind numbers for blind tastings
+                let blindNumbers = null;
+                if (this.eventIsBlind) {
+                    // Create array [1, 2, 3, ..., n]
+                    blindNumbers = Array.from({length: bottlePaths.length}, (_, i) => i + 1);
+                    // Shuffle using Fisher-Yates algorithm
+                    for (let i = blindNumbers.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [blindNumbers[i], blindNumbers[j]] = [blindNumbers[j], blindNumbers[i]];
+                    }
+                }
+
+                const requestData = {
+                    name: this.eventName,
+                    beverage_type: this.eventBeverageType,
+                    is_blind: this.eventIsBlind,
+                    host_name: this.eventHostName,
+                    bottle_paths: bottlePaths,
+                    blind_numbers: blindNumbers
+                };
+
+                const response = await fetch('/api/v1/events', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestData)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Failed to create event');
+                }
+
+                const event = await response.json();
+                this.eventCreatedUrl = `/events/${event.event_id}`;
+                this.eventCreated = true;
+            } catch (error) {
+                console.error('Event creation failed:', error);
+                alert('Event creation failed: ' + error.message);
+            } finally {
+                this.eventCreating = false;
+            }
+        },
+
+        cancelCreateEvent() {
+            this.mode = null;
+            this.resetCreateEvent();
+        },
+
+        resetCreateEvent() {
+            this.eventName = '';
+            this.eventBeverageType = 'wine';
+            this.eventHostName = '';
+            this.eventIsBlind = false;
+            this.eventBottleSearchQuery = '';
+            this.eventBottleSearchResults = [];
+            this.eventSelectedBottles = [];
+            this.eventCreating = false;
+            this.eventCreated = false;
+            this.eventCreatedUrl = '';
+        },
+
+        // Manage Events Functions
+        async loadManagedEvents() {
+            this.manageEventsLoading = true;
+            try {
+                const response = await fetch('/api/v1/events');
+                if (!response.ok) {
+                    throw new Error('Failed to load events');
+                }
+                this.managedEvents = await response.json();
+            } catch (error) {
+                console.error('Failed to load events:', error);
+                alert('Failed to load events: ' + error.message);
+            } finally {
+                this.manageEventsLoading = false;
+            }
+        },
+
+        async revealEventBottles(eventId) {
+            if (!confirm('Reveal all bottle names to participants? This cannot be undone.')) return;
+
+            try {
+                const response = await fetch(`/api/v1/events/${eventId}/reveal`, {
+                    method: 'PUT'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to reveal bottles');
+                }
+
+                await this.loadManagedEvents();
+                alert('Bottles revealed successfully!');
+            } catch (error) {
+                console.error('Failed to reveal bottles:', error);
+                alert('Failed to reveal bottles: ' + error.message);
+            }
+        },
+
+        async closeEventFromManagement(eventId) {
+            if (!confirm('Close this event? No more tastings will be allowed.')) return;
+
+            try {
+                const response = await fetch(`/api/v1/events/${eventId}/close`, {
+                    method: 'PUT'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to close event');
+                }
+
+                await this.loadManagedEvents();
+                alert('Event closed successfully!');
+            } catch (error) {
+                console.error('Failed to close event:', error);
+                alert('Failed to close event: ' + error.message);
+            }
+        },
+
+        async deleteEventFromManagement(eventId) {
+            if (!confirm('Delete this event permanently? This cannot be undone.')) return;
+
+            try {
+                const response = await fetch(`/api/v1/events/${eventId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to delete event');
+                }
+
+                await this.loadManagedEvents();
+                alert('Event deleted successfully!');
+            } catch (error) {
+                console.error('Failed to delete event:', error);
+                alert('Failed to delete event: ' + error.message);
+            }
+        },
+
         renderBottleReview() {
             if (!this.selectedBottle) return '';
 
@@ -896,7 +1569,143 @@ function managementApp() {
             `;
 
             return html;
-        }
+        },
+
+        // Label Review Functions
+        async loadLabelsForReview() {
+            this.labelsLoading = true;
+            try {
+                // Load all bottles from vault
+                const response = await fetch('/api/v1/management/bottles');
+                const data = await response.json();
+
+                // Each bottle already has vault_path from the backend
+                // We need to construct the full path to the label image
+                this.labelBottles = data.bottles;
+
+                console.log(`Loaded ${this.labelBottles.length} bottles for label review`);
+            } catch (error) {
+                console.error('Failed to load bottles:', error);
+                alert('Failed to load bottles: ' + error.message);
+            } finally {
+                this.labelsLoading = false;
+            }
+        },
+
+        selectLabelBottle(bottle) {
+            this.selectedLabelBottle = bottle;
+            this.labelSearchResults = [];
+            this.selectedSearchImage = null;
+            this.labelCropPreview = null;
+        },
+
+        async searchForLabelReplacement() {
+            if (!this.selectedLabelBottle) return;
+
+            this.labelActionInProgress = true;
+            try {
+                // Use existing label search endpoint (from upload flow)
+                const response = await fetch('/api/v1/bottles/search-labels', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.selectedLabelBottle)
+                });
+
+                const data = await response.json();
+                this.labelSearchResults = data.images || [];
+                console.log(`Found ${this.labelSearchResults.length} label candidates`);
+            } catch (error) {
+                console.error('Label search failed:', error);
+                alert('Label search failed: ' + error.message);
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
+        async cropExistingLabel() {
+            if (!this.selectedLabelBottle) return;
+
+            this.labelActionInProgress = true;
+            try {
+                // Call backend to crop current label using improved detection
+                const response = await fetch('/api/v1/management/labels/crop-current', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bottle: this.selectedLabelBottle
+                    })
+                });
+
+                const data = await response.json();
+                // Show preview of cropped version
+                this.labelCropPreview = `/api/v1/labels/view?path=${encodeURIComponent(data.preview_path)}&t=${Date.now()}`;
+            } catch (error) {
+                console.error('Crop failed:', error);
+                alert('Crop failed: ' + error.message);
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
+        async useSelectedSearchImage() {
+            if (!this.selectedSearchImage || !this.selectedLabelBottle) return;
+
+            this.labelActionInProgress = true;
+            try {
+                // Download selected image, crop it, and replace label
+                const response = await fetch('/api/v1/management/labels/replace-from-url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bottle: this.selectedLabelBottle,
+                        image_url: this.selectedSearchImage.url
+                    })
+                });
+
+                if (!response.ok) throw new Error('Failed to replace label');
+
+                alert('✅ Label replaced successfully!');
+                // Go back to grid
+                this.selectedLabelBottle = null;
+                // Reload bottles to show new label
+                await this.loadLabelsForReview();
+            } catch (error) {
+                console.error('Failed to replace label:', error);
+                alert('Failed to replace label: ' + error.message);
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
+        async acceptLabelCrop() {
+            if (!this.selectedLabelBottle) return;
+
+            this.labelActionInProgress = true;
+            try {
+                // Accept the cropped version
+                const response = await fetch('/api/v1/management/labels/accept-crop', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bottle: this.selectedLabelBottle
+                    })
+                });
+
+                if (!response.ok) throw new Error('Failed to accept crop');
+
+                alert('✅ Cropped label accepted!');
+                // Go back to grid
+                this.selectedLabelBottle = null;
+                // Reload bottles
+                await this.loadLabelsForReview();
+            } catch (error) {
+                console.error('Failed to accept crop:', error);
+                alert('Failed to accept crop: ' + error.message);
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
     }
 }
 
