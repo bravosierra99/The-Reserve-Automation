@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 from shutil import copyfile
 from typing import Dict, Optional
-from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Request, HTTPException, BackgroundTasks, UploadFile, Form
 from fastapi.responses import HTMLResponse, FileResponse
 from loguru import logger
 
@@ -1067,15 +1067,13 @@ async def manual_crop_label(data: dict):
 
 
 @router.post("/api/v1/management/labels/upload-manual")
-async def upload_manual_label(file: "UploadFile", bottle: str = Form(...)):
+async def upload_manual_label(file: UploadFile, bottle: str = Form()):
     """
     Upload a manual label image file for a bottle.
     Saves as label_download.jpg so it can use the existing download workflow.
     """
     from ..app import core_config
     from ...core.models import BottleMetadata
-    from pathlib import Path
-    from fastapi import UploadFile, Form
     import json
 
     try:
