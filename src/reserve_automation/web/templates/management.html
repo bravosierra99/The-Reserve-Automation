@@ -704,19 +704,14 @@
         <!-- Grid View -->
         <div x-show="!selectedLabelBottle">
             <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                <h2 class="text-2xl font-bold mb-4 text-gray-800">Label Review - Quick Fix</h2>
-                <p class="text-gray-600 mb-4">
-                    Click any bottle to search for better label images or re-crop using the improved detection.
-                </p>
-
-                <div class="flex gap-3 items-center mb-6">
-                    <button @click="loadLabelsForReview()"
-                            :disabled="labelsLoading"
-                            class="px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                        <span x-show="!labelsLoading">🖼️ Load All Bottles</span>
-                        <span x-show="labelsLoading">Loading...</span>
-                    </button>
-                    <button @click="mode = null" class="text-blue-600 hover:text-blue-800 font-semibold">
+                <div class="flex justify-between items-center mb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800">Label Review - Quick Fix</h2>
+                        <p class="text-gray-600 mt-1">
+                            Click any bottle to search for better label images or re-crop using the improved detection.
+                        </p>
+                    </div>
+                    <button @click="mode = null" class="text-blue-600 hover:text-blue-800 font-semibold whitespace-nowrap ml-4">
                         ← Back to Mode Selection
                     </button>
                 </div>
@@ -1053,6 +1048,8 @@ function managementApp() {
             this.mode = m;
             if (m === 'manage-events') {
                 this.loadManagedEvents();
+            } else if (m === 'review-labels') {
+                this.loadLabelsForReview();
             }
         },
 
