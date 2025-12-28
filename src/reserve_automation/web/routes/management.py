@@ -130,6 +130,110 @@ async def search_bottles(q: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/api/v1/management/bottles/tastings-summary")
+async def get_bottle_tastings_summary(request: Request):
+    """
+    Get summary statistics for all tastings of a bottle.
+
+    Returns:
+    - tasting_count: Number of tasting files
+    - avg_score: Average total score across all tastings
+    - max_score: Maximum possible score for bottle type
+    - latest_date: Most recent tasting date
+    - earliest_date: Oldest tasting date
+    - tasters: List of unique taster names
+    """
+    from ..app import core_config
+    from ...core.models import BottleMetadata
+    from pathlib import Path
+    import re
+    from datetime import datetime
+
+    try:
+        # Get bottle data from request body
+        body = await request.json()
+        bottle_data = body.get("bottle")
+
+        if not bottle_data:
+            raise HTTPException(status_code=400, detail="Missing bottle data")
+
+        bottle = BottleMetadata(**bottle_data)
+
+        if not bottle.vault_path:
+            raise HTTPException(status_code=404, detail="Bottle has no vault path")
+
+        # Get bottle folder path
+        bottle_folder = core_config.vault_path / bottle.vault_path
+
+        if not bottle_folder.exists():
+            raise HTTPException(status_code=404, detail="Bottle folder not found")
+
+        # Find all tasting files (pattern: Tasting-YYYY-MM-DD-TasterName.md)
+        tasting_files = list(bottle_folder.glob("Tasting-*.md"))
+
+        if not tasting_files:
+            return {
+                "tasting_count": 0,
+                "avg_score": None,
+                "max_score": 20 if bottle.type == "wine" else 10,
+                "latest_date": None,
+                "earliest_date": None,
+                "tasters": []
+            }
+
+        # Parse each tasting file for scores and metadata
+        scores = []
+        dates = []
+        tasters = set()
+
+        for tasting_file in tasting_files:
+            try:
+                # Extract taster and date from filename: Tasting-YYYY-MM-DD-TasterName.md
+                match = re.match(r'Tasting-(\d{4}-\d{2}-\d{2})-(.+)\.md', tasting_file.name)
+                if match:
+                    date_str, taster = match.groups()
+                    dates.append(date_str)
+                    tasters.add(taster)
+
+                # Read file to get score from frontmatter
+                content = tasting_file.read_text(encoding='utf-8')
+
+                # Parse frontmatter for score fields
+                if bottle.type == "wine":
+                    # Look for AWS Score (sum of 5 components) or 100pt Scale
+                    aws_match = re.search(r'^AWS Score::\s*(\d+(?:\.\d+)?)', content, re.MULTILINE)
+                    if aws_match:
+                        scores.append(float(aws_match.group(1)))
+                else:
+                    # Look for TotalScore (whiskey 10-point scale)
+                    total_match = re.search(r'^TotalScore::\s*(\d+(?:\.\d+)?)', content, re.MULTILINE)
+                    if total_match:
+                        scores.append(float(total_match.group(1)))
+
+            except Exception as e:
+                logger.warning(f"Failed to parse tasting file {tasting_file.name}: {e}")
+                continue
+
+        # Calculate summary stats
+        avg_score = sum(scores) / len(scores) if scores else None
+        max_score = 20 if bottle.type == "wine" else 10
+
+        return {
+            "tasting_count": len(tasting_files),
+            "avg_score": round(avg_score, 1) if avg_score is not None else None,
+            "max_score": max_score,
+            "latest_date": max(dates) if dates else None,
+            "earliest_date": min(dates) if dates else None,
+            "tasters": sorted(list(tasters))
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get tasting summary: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/api/v1/management/bottles/{bottle_index}/verify")
 async def verify_bottle_metadata(bottle_index: int, request: Request):
     """

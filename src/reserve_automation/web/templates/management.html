@@ -45,9 +45,9 @@
 
             <button @click="selectMode('review-labels')"
                     class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-orange-50 hover:bg-orange-100">
-                <div class="text-4xl mb-2">🖼️</div>
-                <h3 class="font-bold text-lg mb-2">Review Label Quality</h3>
-                <p class="text-sm text-gray-600">Scan and improve low-quality label images</p>
+                <div class="text-4xl mb-2">📊</div>
+                <h3 class="font-bold text-lg mb-2">Bottle Grid View</h3>
+                <p class="text-sm text-gray-600">Browse, search, and edit your entire collection</p>
             </button>
         </div>
 
@@ -706,14 +706,44 @@
             <div class="bg-white rounded-lg shadow-md p-6 mb-6">
                 <div class="flex justify-between items-center mb-4">
                     <div>
-                        <h2 class="text-2xl font-bold text-gray-800">Label Review - Quick Fix</h2>
+                        <h2 class="text-2xl font-bold text-gray-800">Bottle Grid View</h2>
                         <p class="text-gray-600 mt-1">
-                            Click any bottle to search for better label images or re-crop using the improved detection.
+                            Browse your collection, search, filter, and edit any bottle's details.
                         </p>
                     </div>
                     <button @click="mode = null" class="text-blue-600 hover:text-blue-800 font-semibold whitespace-nowrap ml-4">
-                        ← Back to Mode Selection
+                        ← Back to Menu
                     </button>
+                </div>
+
+                <!-- Filters -->
+                <div class="mb-6 flex flex-col md:flex-row gap-4">
+                    <!-- Type Filter -->
+                    <div class="flex gap-2">
+                        <button @click="gridFilterType = 'all'"
+                                :class="gridFilterType === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'"
+                                class="px-4 py-2 rounded-lg font-semibold transition-colors">
+                            All
+                        </button>
+                        <button @click="gridFilterType = 'wine'"
+                                :class="gridFilterType === 'wine' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'"
+                                class="px-4 py-2 rounded-lg font-semibold transition-colors">
+                            🍷 Wine
+                        </button>
+                        <button @click="gridFilterType = 'whiskey'"
+                                :class="gridFilterType === 'whiskey' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'"
+                                class="px-4 py-2 rounded-lg font-semibold transition-colors">
+                            🥃 Whiskey
+                        </button>
+                    </div>
+
+                    <!-- Search Filter -->
+                    <div class="flex-1">
+                        <input type="text"
+                               x-model="gridSearchQuery"
+                               placeholder="Search by producer, name, or year..."
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
                 </div>
 
                 <!-- Loading -->
@@ -725,11 +755,11 @@
                 <!-- Bottle Grid -->
                 <div x-show="!labelsLoading && labelBottles.length > 0">
                     <p class="text-sm text-gray-600 mb-4">
-                        <span class="font-bold" x-text="labelBottles.length"></span> bottles loaded. Click any to fix its label.
+                        Showing <span class="font-bold" x-text="filteredBottles.length"></span> of <span class="font-bold" x-text="labelBottles.length"></span> bottles.
                     </p>
 
                     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                        <template x-for="bottle in labelBottles" :key="bottle.vault_path">
+                        <template x-for="bottle in filteredBottles" :key="bottle.vault_path">
                             <div @click="selectLabelBottle(bottle)"
                                  class="cursor-pointer border-2 border-gray-200 hover:border-blue-500 rounded-lg p-3 transition-all hover:shadow-lg">
                                 <div class="bg-gray-100 rounded-lg mb-2 h-48 flex items-center justify-center overflow-hidden">
@@ -740,9 +770,10 @@
                                          class="max-h-full max-w-full object-contain">
                                     <div class="text-gray-400 text-4xl" style="display: none;">📷</div>
                                 </div>
-                                <div class="text-sm font-semibold text-gray-800 truncate" x-text="bottle.producer"></div>
-                                <div class="text-xs text-gray-600 truncate" x-text="bottle.name"></div>
-                                <div class="text-xs text-gray-500" x-text="bottle.year"></div>
+                                <p class="text-xs mt-2 line-clamp-3 text-gray-700 leading-tight"
+                                   :title="`${bottle.producer} - ${bottle.name} ${bottle.year ? '(' + bottle.year + ')' : ''}`"
+                                   x-text="`${bottle.producer} - ${bottle.name} ${bottle.year ? '(' + bottle.year + ')' : ''}`">
+                                </p>
                             </div>
                         </template>
                     </div>
@@ -779,6 +810,45 @@
                         </div>
                         <div x-show="selectedLabelBottle?.age_statement && selectedLabelBottle?.age_statement !== 'MISSING'">
                             <span class="font-semibold">Age:</span> <span x-text="selectedLabelBottle?.age_statement"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tasting Summary -->
+                <div class="mb-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <h4 class="font-bold text-gray-800 mb-3">Tasting Summary</h4>
+
+                    <!-- Loading State -->
+                    <div x-show="tastingSummaryLoading" class="text-center py-4">
+                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    </div>
+
+                    <!-- No Tastings -->
+                    <div x-show="!tastingSummaryLoading && tastingSummary && tastingSummary.tasting_count === 0" class="text-gray-600 text-sm">
+                        No tastings recorded yet.
+                    </div>
+
+                    <!-- Tasting Stats -->
+                    <div x-show="!tastingSummaryLoading && tastingSummary && tastingSummary.tasting_count > 0" class="text-sm space-y-2">
+                        <div class="flex justify-between">
+                            <span class="font-semibold text-gray-700">Total Tastings:</span>
+                            <span x-text="tastingSummary.tasting_count"></span>
+                        </div>
+                        <div x-show="tastingSummary.avg_score !== null" class="flex justify-between">
+                            <span class="font-semibold text-gray-700">Average Score:</span>
+                            <span><span x-text="tastingSummary.avg_score"></span> / <span x-text="tastingSummary.max_score"></span></span>
+                        </div>
+                        <div x-show="tastingSummary.earliest_date" class="flex justify-between">
+                            <span class="font-semibold text-gray-700">First Tasting:</span>
+                            <span x-text="tastingSummary.earliest_date"></span>
+                        </div>
+                        <div x-show="tastingSummary.latest_date" class="flex justify-between">
+                            <span class="font-semibold text-gray-700">Latest Tasting:</span>
+                            <span x-text="tastingSummary.latest_date"></span>
+                        </div>
+                        <div x-show="tastingSummary.tasters && tastingSummary.tasters.length > 0" class="flex justify-between">
+                            <span class="font-semibold text-gray-700">Tasters:</span>
+                            <span x-text="tastingSummary.tasters.join(', ')"></span>
                         </div>
                     </div>
                 </div>
@@ -1081,6 +1151,36 @@ function managementApp() {
         manualUploadFile: null,
         manualUploadPreview: null,
 
+        // Grid filters
+        gridFilterType: 'all',  // 'all', 'wine', 'whiskey'
+        gridSearchQuery: '',
+
+        // Tasting summary
+        tastingSummary: null,
+        tastingSummaryLoading: false,
+
+        // Computed property for filtered bottles
+        get filteredBottles() {
+            let bottles = this.labelBottles;
+
+            // Filter by type
+            if (this.gridFilterType !== 'all') {
+                bottles = bottles.filter(b => b.type === this.gridFilterType);
+            }
+
+            // Filter by search (producer, name, year)
+            if (this.gridSearchQuery) {
+                const query = this.gridSearchQuery.toLowerCase();
+                bottles = bottles.filter(b =>
+                    (b.producer || '').toLowerCase().includes(query) ||
+                    (b.name || '').toLowerCase().includes(query) ||
+                    (b.year || '').toString().includes(query)
+                );
+            }
+
+            return bottles;
+        },
+
         selectMode(m) {
             this.mode = m;
             if (m === 'manage-events') {
@@ -1161,6 +1261,11 @@ function managementApp() {
                 fields.push({ key: 'mash_bill', label: 'Mash Bill' });
                 fields.push({ key: 'barrel_type', label: 'Barrel Type' });
             }
+
+            // Additional common fields
+            fields.push({ key: 'price', label: 'Price' });
+            fields.push({ key: 'purchase_source', label: 'Where Purchased' });
+            fields.push({ key: 'inventory', label: 'Inventory Count' });
 
             return fields;
         },
@@ -1824,6 +1929,31 @@ function managementApp() {
             this.labelCropPreview = null;
             this.labelDownloadedOriginal = null;
             this.labelDownloadedCropped = null;
+
+            // Load tasting summary
+            this.loadTastingSummary();
+        },
+
+        async loadTastingSummary() {
+            if (!this.selectedLabelBottle) return;
+
+            this.tastingSummaryLoading = true;
+            try {
+                const response = await fetch('/api/v1/management/bottles/tastings-summary', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bottle: this.selectedLabelBottle })
+                });
+
+                if (!response.ok) throw new Error('Failed to load tasting summary');
+
+                this.tastingSummary = await response.json();
+            } catch (error) {
+                console.error('Failed to load tasting summary:', error);
+                this.tastingSummary = null;
+            } finally {
+                this.tastingSummaryLoading = false;
+            }
         },
 
         async searchForLabelReplacement() {
