@@ -66,16 +66,44 @@ class LLMLabelFinder:
 
     def _create_search_prompt(self, bottle: BottleMetadata) -> str:
         """Create prompt that instructs LLM to search for bottle labels."""
+        # Build search query with ALL relevant metadata
         query = f"{bottle.producer} {bottle.name}"
         if bottle.year:
             query += f" {bottle.year}"
+
+        # Add variety/mash_bill for specificity
+        if bottle.variety and bottle.variety != "MISSING":
+            query += f" {bottle.variety}"
+        elif bottle.mash_bill and bottle.mash_bill != "MISSING":
+            query += f" {bottle.mash_bill}"
+
+        # Add region for wines
+        if bottle.region and bottle.region != "MISSING":
+            query += f" {bottle.region}"
+
         query += f" {bottle.type} bottle label"
+
+        # Build detailed bottle description for prompt
+        bottle_desc = f"{bottle.producer} {bottle.name}"
+        if bottle.year:
+            bottle_desc += f" {bottle.year}"
+        if bottle.variety and bottle.variety != "MISSING":
+            bottle_desc += f" ({bottle.variety})"
+        elif bottle.mash_bill and bottle.mash_bill != "MISSING":
+            bottle_desc += f" ({bottle.mash_bill})"
+        if bottle.region and bottle.region != "MISSING":
+            bottle_desc += f" from {bottle.region}"
+        if bottle.vineyard and bottle.vineyard != "MISSING":
+            bottle_desc += f" - {bottle.vineyard}"
+        if bottle.age_statement and bottle.age_statement != "MISSING":
+            bottle_desc += f" - {bottle.age_statement}"
+        bottle_desc += f" {bottle.type}"
 
         prompt = f"""CRITICAL: You MUST use your web search tool to find REAL URLs. Do NOT make up or guess URLs.
 
 **Task: Find bottle label image URLs**
 
-Bottle: {bottle.producer} {bottle.name} {bottle.year or ''} {bottle.type}
+Bottle: {bottle_desc}
 
 **REQUIRED STEPS:**
 1. USE WEB SEARCH TOOL to search: "{query}"
