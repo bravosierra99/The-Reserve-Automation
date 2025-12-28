@@ -819,14 +819,12 @@ async def accept_label_crop(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/management/labels/replace-from-url")
-async def replace_label_from_url(data: dict):
+@router.post("/api/v1/management/labels/download-image")
+async def download_label_image(data: dict):
     """
-    Download image from URL, crop it, and CREATE A PREVIEW (not replace yet).
+    Download image from URL and save as label_download.jpg (no cropping yet).
     """
     from ..app import core_config
-    from ...llm.gateway import LLMGateway
-    from ...utils.label_processor import LabelImageProcessor
     from ...core.models import BottleMetadata
     from pathlib import Path
     import httpx
@@ -838,6 +836,10 @@ async def replace_label_from_url(data: dict):
         if not bottle_data or not image_url:
             raise HTTPException(status_code=400, detail="Missing data")
 
+        # Add protocol if missing
+        if not image_url.startswith(('http://', 'https://')):
+            image_url = 'https://' + image_url
+
         bottle = BottleMetadata(**bottle_data)
 
         if not bottle.vault_path:
@@ -847,29 +849,135 @@ async def replace_label_from_url(data: dict):
         label_dir.mkdir(parents=True, exist_ok=True)
 
         # Download image
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             response = await client.get(image_url)
             response.raise_for_status()
             image_bytes = response.content
 
-        # Save as PREVIEW (not final label yet)
-        preview_path = label_dir / "label_preview.jpg"
-        preview_path.write_bytes(image_bytes)
-
-        # Crop the preview using improved detection
-        llm = LLMGateway(core_config.llm)
-        processor = LabelImageProcessor(llm)
-        processor.crop_to_label(preview_path)
+        # Save as downloaded image (NOT cropped)
+        download_path = label_dir / "label_download.jpg"
+        download_path.write_bytes(image_bytes)
 
         return {
             "status": "success",
-            "preview_path": str(preview_path)
+            "download_path": str(download_path)
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Replace label failed: {e}", exc_info=True)
+        logger.error(f"Download image failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/management/labels/crop-download")
+async def crop_downloaded_image(data: dict):
+    """
+    Crop the downloaded image and save as label_download_cropped.jpg.
+    """
+    from ..app import core_config
+    from ...llm.gateway import LLMGateway
+    from ...utils.label_processor import LabelImageProcessor
+    from ...core.models import BottleMetadata
+    from pathlib import Path
+    from shutil import copyfile
+
+    try:
+        bottle_data = data.get("bottle")
+        if not bottle_data:
+            raise HTTPException(status_code=400, detail="Missing bottle data")
+
+        bottle = BottleMetadata(**bottle_data)
+
+        if not bottle.vault_path:
+            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+
+        label_dir = core_config.vault_path / bottle.vault_path / "labels"
+        download_path = label_dir / "label_download.jpg"
+
+        if not download_path.exists():
+            raise HTTPException(status_code=404, detail="No downloaded image found")
+
+        # Copy to cropped version
+        cropped_path = label_dir / "label_download_cropped.jpg"
+        copyfile(download_path, cropped_path)
+
+        # Crop it
+        llm = LLMGateway(core_config.llm)
+        processor = LabelImageProcessor(llm)
+        processor.crop_to_label(cropped_path)
+
+        return {
+            "status": "success",
+            "cropped_path": str(cropped_path)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Crop download failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/management/labels/use-downloaded")
+async def use_downloaded_label(data: dict):
+    """
+    Use either the original downloaded or cropped version as the final label.
+    """
+    from ..app import core_config
+    from ...core.models import BottleMetadata
+    from pathlib import Path
+    from shutil import copyfile
+
+    try:
+        bottle_data = data.get("bottle")
+        use_cropped = data.get("use_cropped", False)
+
+        if not bottle_data:
+            raise HTTPException(status_code=400, detail="Missing bottle data")
+
+        bottle = BottleMetadata(**bottle_data)
+
+        if not bottle.vault_path:
+            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+
+        label_dir = core_config.vault_path / bottle.vault_path / "labels"
+
+        # Choose source
+        if use_cropped:
+            source_path = label_dir / "label_download_cropped.jpg"
+        else:
+            source_path = label_dir / "label_download.jpg"
+
+        if not source_path.exists():
+            raise HTTPException(status_code=404, detail="Downloaded image not found")
+
+        # Backup current label if exists
+        current_label = label_dir / "label.jpg"
+        if not current_label.exists():
+            current_label = label_dir / "label.png"
+
+        if current_label.exists():
+            backup_path = label_dir / "label_backup.jpg"
+            copyfile(current_label, backup_path)
+
+        # Replace with chosen version
+        final_label = label_dir / "label.jpg"
+        copyfile(source_path, final_label)
+
+        # Clean up temp files
+        (label_dir / "label_download.jpg").unlink(missing_ok=True)
+        (label_dir / "label_download_cropped.jpg").unlink(missing_ok=True)
+
+        return {
+            "status": "success",
+            "message": "Label replaced successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Use downloaded failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
