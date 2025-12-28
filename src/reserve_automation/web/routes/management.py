@@ -27,6 +27,23 @@ verification_results: Dict[str, dict] = {}
 batch_status: Dict[str, dict] = {}
 
 
+def get_temp_label_dir(vault_path: str) -> Path:
+    """
+    Get temporary directory for label operations on a specific bottle.
+
+    Uses /tmp to avoid cluttering Obsidian vault with intermediate files.
+    Only final accepted label.jpg is saved to vault.
+
+    Args:
+        vault_path: The vault_path from BottleMetadata (e.g., "1_Wines/Producer - Name - Year")
+    """
+    # Use vault_path as unique identifier, replacing slashes with underscores
+    safe_path = vault_path.replace("/", "_").replace(" ", "_")
+    temp_dir = Path("/tmp/reserve-automation/labels") / safe_path
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    return temp_dir
+
+
 @router.get("/management", response_class=HTMLResponse)
 async def management_page(request: Request):
     """
@@ -738,8 +755,9 @@ async def crop_current_label(data: dict):
         if not current_label.exists():
             raise HTTPException(status_code=404, detail="No label found")
 
-        # Create preview path
-        preview_path = label_dir / "label_preview.jpg"
+        # Create preview path in /tmp (not in vault)
+        temp_dir = get_temp_label_dir(bottle.vault_path)
+        preview_path = temp_dir / "label_preview.jpg"
 
         # Copy current to preview
         copyfile(current_label, preview_path)
@@ -786,7 +804,8 @@ async def accept_label_crop(data: dict):
             raise HTTPException(status_code=400, detail="Bottle has no vault path")
 
         label_dir = core_config.vault_path / bottle.vault_path / "labels"
-        preview_path = label_dir / "label_preview.jpg"
+        temp_dir = get_temp_label_dir(bottle.vault_path)
+        preview_path = temp_dir / "label_preview.jpg"
 
         if not preview_path.exists():
             raise HTTPException(status_code=404, detail="No preview found")
@@ -859,8 +878,8 @@ async def download_label_image(data: dict):
         if not bottle.vault_path:
             raise HTTPException(status_code=400, detail="Bottle has no vault path")
 
-        label_dir = core_config.vault_path / bottle.vault_path / "labels"
-        label_dir.mkdir(parents=True, exist_ok=True)
+        # Save to /tmp instead of vault
+        temp_dir = get_temp_label_dir(bottle.vault_path)
 
         # Download image
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
@@ -868,8 +887,8 @@ async def download_label_image(data: dict):
             response.raise_for_status()
             image_bytes = response.content
 
-        # Save as downloaded image (NOT cropped)
-        download_path = label_dir / "label_download.jpg"
+        # Save as downloaded image (NOT cropped) in /tmp
+        download_path = temp_dir / "label_download.jpg"
         download_path.write_bytes(image_bytes)
 
         return {
@@ -906,14 +925,15 @@ async def crop_downloaded_image(data: dict):
         if not bottle.vault_path:
             raise HTTPException(status_code=400, detail="Bottle has no vault path")
 
-        label_dir = core_config.vault_path / bottle.vault_path / "labels"
-        download_path = label_dir / "label_download.jpg"
+        # Use /tmp for intermediate files
+        temp_dir = get_temp_label_dir(bottle.vault_path)
+        download_path = temp_dir / "label_download.jpg"
 
         if not download_path.exists():
             raise HTTPException(status_code=404, detail="No downloaded image found")
 
-        # Copy to cropped version
-        cropped_path = label_dir / "label_download_cropped.jpg"
+        # Copy to cropped version in /tmp
+        cropped_path = temp_dir / "label_download_cropped.jpg"
         copyfile(download_path, cropped_path)
 
         # Crop it
@@ -956,12 +976,13 @@ async def use_downloaded_label(data: dict):
             raise HTTPException(status_code=400, detail="Bottle has no vault path")
 
         label_dir = core_config.vault_path / bottle.vault_path / "labels"
+        temp_dir = get_temp_label_dir(bottle.vault_path)
 
-        # Choose source
+        # Choose source from /tmp
         if use_cropped:
-            source_path = label_dir / "label_download_cropped.jpg"
+            source_path = temp_dir / "label_download_cropped.jpg"
         else:
-            source_path = label_dir / "label_download.jpg"
+            source_path = temp_dir / "label_download.jpg"
 
         if not source_path.exists():
             raise HTTPException(status_code=404, detail="Downloaded image not found")
@@ -975,13 +996,13 @@ async def use_downloaded_label(data: dict):
             backup_path = label_dir / "label_backup.jpg"
             copyfile(current_label, backup_path)
 
-        # Replace with chosen version
+        # Replace with chosen version (only final label.jpg goes to vault)
         final_label = label_dir / "label.jpg"
         copyfile(source_path, final_label)
 
-        # Clean up temp files
-        (label_dir / "label_download.jpg").unlink(missing_ok=True)
-        (label_dir / "label_download_cropped.jpg").unlink(missing_ok=True)
+        # Clean up temp files from /tmp
+        (temp_dir / "label_download.jpg").unlink(missing_ok=True)
+        (temp_dir / "label_download_cropped.jpg").unlink(missing_ok=True)
 
         return {
             "status": "success",
@@ -1031,8 +1052,9 @@ async def manual_crop_label(data: dict):
 
         logger.info(f"Manual crop: x={x}, y={y}, w={width}, h={height}")
 
-        # Backup original
-        backup_path = label_dir / "label_manual_backup.jpg"
+        # Backup original to /tmp (not vault)
+        temp_dir = get_temp_label_dir(bottle.vault_path)
+        backup_path = temp_dir / "label_manual_backup.jpg"
         copyfile(current_label, backup_path)
 
         # Crop using PIL
@@ -1089,11 +1111,11 @@ async def upload_manual_label(file: UploadFile, bottle: str = Form()):
         if not bottle_obj.vault_path:
             raise HTTPException(status_code=400, detail="Bottle has no vault path")
 
-        label_dir = core_config.vault_path / bottle_obj.vault_path / "labels"
-        label_dir.mkdir(parents=True, exist_ok=True)
+        # Save uploaded file to /tmp (not vault)
+        temp_dir = get_temp_label_dir(bottle_obj.vault_path)
 
-        # Save uploaded file as label_download.jpg
-        download_path = label_dir / "label_download.jpg"
+        # Save uploaded file as label_download.jpg in /tmp
+        download_path = temp_dir / "label_download.jpg"
 
         # Read and save file
         content = await file.read()
@@ -1141,8 +1163,9 @@ async def manual_crop_downloaded_label(data: dict):
         if not bottle.vault_path:
             raise HTTPException(status_code=400, detail="Bottle has no vault path")
 
-        label_dir = core_config.vault_path / bottle.vault_path / "labels"
-        downloaded_label = label_dir / "label_download.jpg"
+        # Use /tmp for intermediate files
+        temp_dir = get_temp_label_dir(bottle.vault_path)
+        downloaded_label = temp_dir / "label_download.jpg"
 
         if not downloaded_label.exists():
             raise HTTPException(status_code=404, detail="No downloaded label found")
@@ -1169,8 +1192,8 @@ async def manual_crop_downloaded_label(data: dict):
         # Crop (left, top, right, bottom)
         cropped = img.crop((x, y, x + width, y + height))
 
-        # Save as cropped version
-        cropped_label = label_dir / "label_download_cropped.jpg"
+        # Save as cropped version in /tmp
+        cropped_label = temp_dir / "label_download_cropped.jpg"
         cropped.save(cropped_label, "JPEG", quality=95)
 
         logger.info(f"Manual crop downloaded complete: {cropped_label}")
@@ -1350,13 +1373,29 @@ async def view_label_image(path: str):
         if not image_path.exists():
             raise HTTPException(status_code=404, detail="Image not found")
 
-        # Security check - ensure path is within vault
+        # Security check - ensure path is within vault or temp directory
         # (prevents directory traversal attacks)
+        from ..app import core_config
+        vault_path = core_config.vault_path
+        temp_path = Path("/tmp/reserve-automation")
+
+        resolved_path = image_path.resolve()
+        is_in_vault = False
+        is_in_temp = False
+
         try:
-            from ..app import core_config
-            vault_path = core_config.vault_path
-            image_path.resolve().relative_to(vault_path.resolve())
+            resolved_path.relative_to(vault_path.resolve())
+            is_in_vault = True
         except ValueError:
+            pass
+
+        try:
+            resolved_path.relative_to(temp_path.resolve())
+            is_in_temp = True
+        except ValueError:
+            pass
+
+        if not (is_in_vault or is_in_temp):
             raise HTTPException(status_code=403, detail="Access denied")
 
         return FileResponse(
