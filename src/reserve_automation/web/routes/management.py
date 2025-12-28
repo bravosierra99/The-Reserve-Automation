@@ -833,12 +833,26 @@ async def download_label_image(data: dict):
         bottle_data = data.get("bottle")
         image_url = data.get("image_url")
 
-        if not bottle_data or not image_url:
-            raise HTTPException(status_code=400, detail="Missing data")
+        logger.info(f"Download request - URL: '{image_url}' (type: {type(image_url)})")
+
+        if not bottle_data:
+            raise HTTPException(status_code=400, detail="Missing bottle data")
+
+        if not image_url:
+            raise HTTPException(status_code=400, detail="Missing image URL")
+
+        # Strip whitespace
+        image_url = str(image_url).strip()
+
+        if not image_url:
+            raise HTTPException(status_code=400, detail="Image URL is empty")
 
         # Add protocol if missing
         if not image_url.startswith(('http://', 'https://')):
+            logger.info(f"Adding https:// to URL: {image_url}")
             image_url = 'https://' + image_url
+
+        logger.info(f"Final URL: {image_url}")
 
         bottle = BottleMetadata(**bottle_data)
 

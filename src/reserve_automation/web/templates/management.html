@@ -1714,6 +1714,9 @@ function managementApp() {
 
             this.labelActionInProgress = true;
             try {
+                console.log('Download request - selected image:', this.selectedSearchImage);
+                console.log('Download request - URL:', this.selectedSearchImage.url);
+
                 // Download selected image (no cropping yet)
                 const response = await fetch('/api/v1/management/labels/download-image', {
                     method: 'POST',
@@ -1724,7 +1727,11 @@ function managementApp() {
                     })
                 });
 
-                if (!response.ok) throw new Error('Failed to download image');
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Download failed:', errorText);
+                    throw new Error('Failed to download image');
+                }
 
                 const data = await response.json();
                 // Show downloaded original

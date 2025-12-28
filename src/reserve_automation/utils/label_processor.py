@@ -344,9 +344,9 @@ class LabelImageProcessor:
             text_width = max_x - min_x
             text_height = max_y - min_y
 
-            # Use 20% padding to capture label borders and graphics
-            padding_x = int(text_width * 0.20)
-            padding_y = int(text_height * 0.20)
+            # Use 10% padding to capture label borders and graphics (more aggressive)
+            padding_x = int(text_width * 0.10)
+            padding_y = int(text_height * 0.10)
 
             x = max(0, min_x - padding_x)
             y = max(0, min_y - padding_y)
