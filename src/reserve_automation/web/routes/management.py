@@ -715,6 +715,7 @@ async def crop_current_label(data: dict):
     from ..app import core_config
     from ...llm.gateway import LLMGateway
     from ...utils.label_processor import LabelImageProcessor
+    from ...core.models import BottleMetadata
     from pathlib import Path
     from shutil import copyfile
 
@@ -770,6 +771,7 @@ async def accept_label_crop(data: dict):
     Accept the cropped preview and replace the original label.
     """
     from ..app import core_config
+    from ...core.models import BottleMetadata
     from pathlib import Path
     from shutil import copyfile
 
@@ -825,6 +827,7 @@ async def replace_label_from_url(data: dict):
     from ..app import core_config
     from ...llm.gateway import LLMGateway
     from ...utils.label_processor import LabelImageProcessor
+    from ...core.models import BottleMetadata
     from pathlib import Path
     import httpx
 
