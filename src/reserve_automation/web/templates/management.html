@@ -788,7 +788,7 @@
                     <h4 class="font-bold text-gray-800 mb-3">Current Label</h4>
                     <div class="max-w-md bg-gray-100 rounded-lg p-4">
                         <img x-show="selectedLabelBottle?.vault_path"
-                             :src="`/api/v1/labels/view?path=${encodeURIComponent('/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' + (selectedLabelBottle?.vault_path || '') + '/labels/label.jpg')}`"
+                             :src="`/api/v1/labels/view?path=${encodeURIComponent('/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' + (selectedLabelBottle?.vault_path || '') + '/labels/label.jpg')}&t=${currentLabelTimestamp}`"
                              alt="Current label"
                              onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
                              class="w-full h-auto rounded shadow-sm">
@@ -1071,6 +1071,7 @@ function managementApp() {
         labelDownloadedOriginal: null,
         labelDownloadedCropped: null,
         labelGridTimestamp: Date.now(),
+        currentLabelTimestamp: Date.now(),  // Cache buster for current label display
         manualCropActive: false,
         manualCropImageSrc: null,
         cropperInstance: null,
@@ -1087,6 +1088,38 @@ function managementApp() {
             } else if (m === 'review-labels') {
                 this.loadLabelsForReview();
             }
+        },
+
+        // Reset operations on CURRENT label (auto-crop, manual-crop)
+        // Call this before starting a new operation on current label
+        resetCurrentLabelOperations() {
+            // Clear auto-crop preview
+            this.labelCropPreview = null;
+
+            // Clear manual crop state
+            if (this.cropperInstance) {
+                this.cropperInstance.destroy();
+                this.cropperInstance = null;
+            }
+            this.manualCropActive = false;
+            this.manualCropImageSrc = null;
+        },
+
+        // Reset downloaded/uploaded image operations
+        // Call this when going back to current label operations
+        resetDownloadedOperations() {
+            this.labelDownloadedOriginal = null;
+            this.labelDownloadedCropped = null;
+            if (this.cropperDownloadedInstance) {
+                this.cropperDownloadedInstance.destroy();
+                this.cropperDownloadedInstance = null;
+            }
+            this.manualCropDownloadedActive = false;
+            this.manualCropDownloadedSrc = null;
+            this.manualUploadFile = null;
+            this.manualUploadPreview = null;
+            const fileInputs = document.querySelectorAll('input[type="file"]');
+            fileInputs.forEach(input => input.value = '');
         },
 
         initBatchResult(result) {
@@ -1796,6 +1829,9 @@ function managementApp() {
         async searchForLabelReplacement() {
             if (!this.selectedLabelBottle) return;
 
+            // Reset current label operations (keep downloaded state for workflow continuity)
+            this.resetCurrentLabelOperations();
+
             this.labelActionInProgress = true;
             try {
                 // Use existing label search endpoint (from upload flow)
@@ -1818,6 +1854,10 @@ function managementApp() {
 
         async cropExistingLabel() {
             if (!this.selectedLabelBottle) return;
+
+            // Reset conflicting operations first
+            this.resetCurrentLabelOperations();
+            this.resetDownloadedOperations();
 
             this.labelActionInProgress = true;
             try {
@@ -1922,6 +1962,9 @@ function managementApp() {
 
                 if (!response.ok) throw new Error('Failed to replace label');
 
+                // Update timestamp to force reload of current label
+                this.currentLabelTimestamp = Date.now();
+
                 alert('✅ Label replaced successfully!');
                 // Go back to grid
                 this.selectedLabelBottle = null;
@@ -1945,11 +1988,9 @@ function managementApp() {
         startManualCrop() {
             if (!this.selectedLabelBottle) return;
 
-            // Clean up any existing cropper first
-            if (this.cropperInstance) {
-                this.cropperInstance.destroy();
-                this.cropperInstance = null;
-            }
+            // Reset ALL conflicting operations first
+            this.resetCurrentLabelOperations();
+            this.resetDownloadedOperations();
 
             // Set the image source from current label
             const labelPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
@@ -2017,6 +2058,9 @@ function managementApp() {
                 });
 
                 if (!response.ok) throw new Error('Failed to crop');
+
+                // Update timestamp to force reload of current label
+                this.currentLabelTimestamp = Date.now();
 
                 alert('✅ Label cropped successfully!');
 
@@ -2157,6 +2201,9 @@ function managementApp() {
             const file = event.target.files[0];
             if (!file) return;
 
+            // Reset current label operations when uploading new image
+            this.resetCurrentLabelOperations();
+
             this.manualUploadFile = file;
 
             // Show preview
@@ -2228,7 +2275,12 @@ function managementApp() {
 
                 if (!response.ok) throw new Error('Failed to accept crop');
 
+                // Update timestamp to force reload of current label
+                this.currentLabelTimestamp = Date.now();
+
                 alert('✅ Cropped label accepted!');
+                // Clear preview state
+                this.labelCropPreview = null;
                 // Go back to grid
                 this.selectedLabelBottle = null;
                 // Reload bottles
