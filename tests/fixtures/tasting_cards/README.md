@@ -1,4 +1,4 @@
-# Extraction Test Fixtures
+# Tasting Card Test Fixtures
 
 This directory contains ground truth test cases for validating tasting card extraction accuracy.
 
@@ -22,7 +22,7 @@ Each test case consists of two files:
 
 1. **Save the test image**:
    ```bash
-   cp /path/to/tasting_card.jpg tests/fixtures/extraction/aws_wine_test_002.jpg
+   cp /path/to/tasting_card.jpg tests/fixtures/tasting_cards/aws_wine_test_002.jpg
    ```
 
 2. **Create ground truth JSON**:

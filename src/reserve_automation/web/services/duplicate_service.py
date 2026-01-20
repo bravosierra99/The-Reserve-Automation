@@ -55,8 +55,9 @@ class DuplicateDetectionService:
             logger.warning(f"Search directory does not exist: {search_dir}")
             return []
 
-        # Get all markdown files (excluding subdirectories with tastings)
-        bottle_files = [f for f in search_dir.glob("*/*.md") if f.is_file()]
+        # Get all markdown files (excluding tasting files)
+        bottle_files = [f for f in search_dir.glob("*/*.md")
+                        if f.is_file() and not f.name.startswith("Tasting-")]
         logger.info(f"Found {len(bottle_files)} bottle files to check")
 
         all_scores = []  # Track all scores for debugging
@@ -102,7 +103,9 @@ class DuplicateDetectionService:
         """
         Calculate similarity score between bottle and existing file.
 
-        Uses multiple matching strategies to be robust against formatting variations.
+        CRITICAL: Compares bottle metadata fields (producer/name/year) against
+        the existing bottle's METADATA, not just the filename. This prevents
+        false matches when extraction gets producer wrong but it appears in name.
 
         Args:
             bottle: Bottle metadata
@@ -113,7 +116,44 @@ class DuplicateDetectionService:
         Returns:
             Similarity score (0.0-1.0)
         """
-        # Normalize both strings for better matching
+        # Read existing bottle metadata from vault
+        from reserve_automation.utils.vault_reader import VaultReader
+        try:
+            vault_reader = VaultReader(self.vault_path)
+            existing_bottle = vault_reader.read_bottle(file_path)
+
+            # Compare metadata fields directly
+            bottle_producer = (bottle.producer or "").lower().strip()
+            bottle_name = (bottle.name or "").lower().strip()
+            bottle_year_str = str(bottle.year) if bottle.year else ""
+
+            existing_producer = (existing_bottle.producer or "").lower().strip()
+            existing_name = (existing_bottle.name or "").lower().strip()
+            existing_year_str = str(existing_bottle.year) if existing_bottle.year else ""
+
+            # Calculate weighted similarity on actual metadata fields
+            producer_sim = self._fuzzy_match(bottle_producer, existing_producer) if bottle_producer and existing_producer else 0.0
+            name_sim = self._fuzzy_match(bottle_name, existing_name) if bottle_name and existing_name else 0.0
+            year_match = 1.0 if bottle_year_str and existing_year_str and bottle_year_str == existing_year_str else 0.0
+
+            # Weighted scoring: producer (40%), name (40%), year (20%)
+            metadata_score = (producer_sim * 0.4) + (name_sim * 0.4) + (year_match * 0.2)
+
+            if debug or metadata_score >= 0.4:
+                logger.info(f"Metadata similarity with '{filename}':")
+                logger.info(f"  Input: '{bottle_producer}' - '{bottle_name}' ({bottle_year_str})")
+                logger.info(f"  Existing: '{existing_producer}' - '{existing_name}' ({existing_year_str})")
+                logger.info(f"  Producer: {producer_sim:.2f}, Name: {name_sim:.2f}, Year: {year_match:.2f}")
+                logger.info(f"  Final: {metadata_score:.2f}")
+
+            return metadata_score
+
+        except Exception as e:
+            logger.warning(f"Failed to read bottle metadata for {file_path}, falling back to filename matching: {e}")
+            # Fallback to filename matching if metadata read fails
+            pass
+
+        # FALLBACK: Filename matching (only if metadata read failed)
         bottle_producer = (bottle.producer or "").lower().strip()
         bottle_name = (bottle.name or "").lower().strip()
         bottle_year_str = str(bottle.year) if bottle.year else ""

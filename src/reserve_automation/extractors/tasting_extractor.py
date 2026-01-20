@@ -9,6 +9,7 @@ from typing import Literal, Optional
 from ..core.models import LLMRequest
 from ..core.tasting_note import TastingExtractionResult, TastingNote
 from ..llm.gateway import LLMGateway
+from ..llm.response_parser import LLMResponseParser
 from ..utils.table_ocr import detect_table_structure
 from ..utils.llm_whisperer import extract_layout_text
 
@@ -219,33 +220,107 @@ Important:
             response_format="json"
         )
 
-        # Parse response and create TastingNote objects
-        import json
+        # Parse response and create TastingNote objects with robust error handling
+        data = LLMResponseParser.safe_parse_json(
+            response.content,
+            context="AWS wine tasting extraction"
+        )
 
-        data = json.loads(response.content)
+        if not data:
+            logger.error("Failed to parse LLM response for wine tasting")
+            return TastingExtractionResult(
+                tastings=[],
+                template_type="aws_wine",
+                raw_text=response.content,
+                confidence=0.0,
+            )
 
         tastings = []
-        for wine_data in data.get("tastings", []):
-            tasting = TastingNote(
-                bottle_name=wine_data["bottle_name"],
-                taster_name=data.get("taster_name", "Unknown"),
-                tasting_date=date.fromisoformat(data.get("tasting_date", str(date.today()))),
-                beverage_type="wine",
-                wine_appearance=wine_data.get("wine_appearance"),
-                wine_aroma=wine_data.get("wine_aroma"),
-                wine_taste=wine_data.get("wine_taste"),
-                wine_aftertaste=wine_data.get("wine_aftertaste"),
-                wine_overall=wine_data.get("wine_overall"),
-                nose_notes=wine_data.get("nose_notes"),
-                palate_notes=wine_data.get("palate_notes"),
-                finish_notes=wine_data.get("finish_notes"),
-                overall_notes=wine_data.get("overall_notes"),
-                place=data.get("place"),
-                theme=data.get("theme"),
-                price=wine_data.get("price"),
-                confidence=0.8,  # TODO: Calculate based on completeness
-            )
-            tastings.append(tasting)
+        for i, wine_data in enumerate(data.get("tastings", [])):
+            try:
+                tasting = TastingNote(
+                    bottle_name=LLMResponseParser.sanitize_string(
+                        wine_data.get("bottle_name"),
+                        max_length=200,
+                        field_name=f"wine[{i}].bottle_name",
+                        default="Unknown Wine"
+                    ),
+                    taster_name=LLMResponseParser.sanitize_string(
+                        data.get("taster_name"),
+                        max_length=100,
+                        field_name="taster_name",
+                        default="Unknown"
+                    ),
+                    tasting_date=LLMResponseParser.sanitize_date(
+                        data.get("tasting_date"),
+                        field_name="tasting_date",
+                        default=date.today()
+                    ),
+                    beverage_type="wine",
+                    wine_appearance=LLMResponseParser.sanitize_float(
+                        wine_data.get("wine_appearance"),
+                        min_value=0.0,
+                        max_value=3.0,
+                        field_name=f"wine[{i}].appearance"
+                    ),
+                    wine_aroma=LLMResponseParser.sanitize_float(
+                        wine_data.get("wine_aroma"),
+                        min_value=0.0,
+                        max_value=6.0,
+                        field_name=f"wine[{i}].aroma"
+                    ),
+                    wine_taste=LLMResponseParser.sanitize_float(
+                        wine_data.get("wine_taste"),
+                        min_value=0.0,
+                        max_value=6.0,
+                        field_name=f"wine[{i}].taste"
+                    ),
+                    wine_aftertaste=LLMResponseParser.sanitize_float(
+                        wine_data.get("wine_aftertaste"),
+                        min_value=0.0,
+                        max_value=3.0,
+                        field_name=f"wine[{i}].aftertaste"
+                    ),
+                    wine_overall=LLMResponseParser.sanitize_float(
+                        wine_data.get("wine_overall"),
+                        min_value=0.0,
+                        max_value=2.0,
+                        field_name=f"wine[{i}].overall"
+                    ),
+                    nose_notes=LLMResponseParser.sanitize_list(
+                        wine_data.get("nose_notes"),
+                        field_name=f"wine[{i}].nose_notes"
+                    ),
+                    palate_notes=LLMResponseParser.sanitize_list(
+                        wine_data.get("palate_notes"),
+                        field_name=f"wine[{i}].palate_notes"
+                    ),
+                    finish_notes=LLMResponseParser.sanitize_list(
+                        wine_data.get("finish_notes"),
+                        field_name=f"wine[{i}].finish_notes"
+                    ),
+                    overall_notes=LLMResponseParser.sanitize_string(
+                        wine_data.get("overall_notes"),
+                        field_name=f"wine[{i}].overall_notes"
+                    ),
+                    place=LLMResponseParser.sanitize_string(
+                        data.get("place"),
+                        field_name="place"
+                    ),
+                    theme=LLMResponseParser.sanitize_string(
+                        data.get("theme"),
+                        field_name="theme"
+                    ),
+                    price=LLMResponseParser.sanitize_string(
+                        wine_data.get("price"),
+                        field_name=f"wine[{i}].price"
+                    ),
+                    confidence=0.8,  # TODO: Calculate based on completeness
+                )
+                tastings.append(tasting)
+            except Exception as e:
+                logger.error(f"Failed to create tasting note for wine #{i+1}: {e}")
+                continue
 
         return TastingExtractionResult(
             tastings=tastings,
@@ -339,32 +414,109 @@ Return ONLY the JSON object."""
         # Log raw LLM response for debugging
         logger.debug(f"Raw LLM response: {response.content[:1000]}")  # Log first 1000 chars
 
-        # Parse response and create TastingNote objects
-        data = json.loads(response.content)
-        logger.debug(f"Parsed JSON data: {json.dumps(data, indent=2)}")
+        # Parse response and create TastingNote objects with robust error handling
+        data = LLMResponseParser.safe_parse_json(
+            response.content,
+            context="AWS wine tasting (LLM guided)"
+        )
+
+        if not data:
+            logger.error("Failed to parse LLM response for wine tasting (guided)")
+            return TastingExtractionResult(
+                tastings=[],
+                template_type="aws_wine",
+                raw_text=response.content,
+                confidence=0.0,
+            )
+
+        logger.debug(f"Parsed JSON data successfully")
 
         tastings = []
-        for wine_data in data.get("tastings", []):
-            tasting = TastingNote(
-                bottle_name=wine_data["bottle_name"],
-                taster_name=data.get("taster_name", "Unknown"),
-                tasting_date=date.fromisoformat(data.get("tasting_date", str(date.today()))),
-                beverage_type="wine",
-                wine_appearance=wine_data.get("wine_appearance"),
-                wine_aroma=wine_data.get("wine_aroma"),
-                wine_taste=wine_data.get("wine_taste"),
-                wine_aftertaste=wine_data.get("wine_aftertaste"),
-                wine_overall=wine_data.get("wine_overall"),
-                nose_notes=wine_data.get("nose_notes"),
-                palate_notes=wine_data.get("palate_notes"),
-                finish_notes=wine_data.get("finish_notes"),
-                overall_notes=wine_data.get("overall_notes"),
-                place=data.get("place"),
-                theme=data.get("theme"),
-                price=wine_data.get("price"),
-                confidence=0.9,  # Higher confidence with structure guidance
-            )
-            tastings.append(tasting)
+        for i, wine_data in enumerate(data.get("tastings", [])):
+            try:
+                tasting = TastingNote(
+                    bottle_name=LLMResponseParser.sanitize_string(
+                        wine_data.get("bottle_name"),
+                        max_length=200,
+                        field_name=f"wine[{i}].bottle_name",
+                        default="Unknown Wine"
+                    ),
+                    taster_name=LLMResponseParser.sanitize_string(
+                        data.get("taster_name"),
+                        max_length=100,
+                        field_name="taster_name",
+                        default="Unknown"
+                    ),
+                    tasting_date=LLMResponseParser.sanitize_date(
+                        data.get("tasting_date"),
+                        field_name="tasting_date",
+                        default=date.today()
+                    ),
+                    beverage_type="wine",
+                    wine_appearance=LLMResponseParser.sanitize_float(
+                        wine_data.get("wine_appearance"),
+                        min_value=0.0,
+                        max_value=3.0,
+                        field_name=f"wine[{i}].appearance"
+                    ),
+                    wine_aroma=LLMResponseParser.sanitize_float(
+                        wine_data.get("wine_aroma"),
+                        min_value=0.0,
+                        max_value=6.0,
+                        field_name=f"wine[{i}].aroma"
+                    ),
+                    wine_taste=LLMResponseParser.sanitize_float(
+                        wine_data.get("wine_taste"),
+                        min_value=0.0,
+                        max_value=6.0,
+                        field_name=f"wine[{i}].taste"
+                    ),
+                    wine_aftertaste=LLMResponseParser.sanitize_float(
+                        wine_data.get("wine_aftertaste"),
+                        min_value=0.0,
+                        max_value=3.0,
+                        field_name=f"wine[{i}].aftertaste"
+                    ),
+                    wine_overall=LLMResponseParser.sanitize_float(
+                        wine_data.get("wine_overall"),
+                        min_value=0.0,
+                        max_value=2.0,
+                        field_name=f"wine[{i}].overall"
+                    ),
+                    nose_notes=LLMResponseParser.sanitize_list(
+                        wine_data.get("nose_notes"),
+                        field_name=f"wine[{i}].nose_notes"
+                    ),
+                    palate_notes=LLMResponseParser.sanitize_list(
+                        wine_data.get("palate_notes"),
+                        field_name=f"wine[{i}].palate_notes"
+                    ),
+                    finish_notes=LLMResponseParser.sanitize_list(
+                        wine_data.get("finish_notes"),
+                        field_name=f"wine[{i}].finish_notes"
+                    ),
+                    overall_notes=LLMResponseParser.sanitize_string(
+                        wine_data.get("overall_notes"),
+                        field_name=f"wine[{i}].overall_notes"
+                    ),
+                    place=LLMResponseParser.sanitize_string(
+                        data.get("place"),
+                        field_name="place"
+                    ),
+                    theme=LLMResponseParser.sanitize_string(
+                        data.get("theme"),
+                        field_name="theme"
+                    ),
+                    price=LLMResponseParser.sanitize_string(
+                        wine_data.get("price"),
+                        field_name=f"wine[{i}].price"
+                    ),
+                    confidence=0.9,  # Higher confidence with structure guidance
+                )
+                tastings.append(tasting)
+            except Exception as e:
+                logger.error(f"Failed to create tasting note for wine #{i+1}: {e}")
+                continue
 
         return TastingExtractionResult(
             tastings=tastings,
@@ -441,43 +593,117 @@ Return valid JSON only, no other text.
             response_format="json"
         )
 
-        # Parse response and create TastingNote object
-        import json
+        # Parse response and create TastingNote object with robust error handling
+        data = LLMResponseParser.safe_parse_json(
+            response.content,
+            context="bourbon tasting extraction"
+        )
 
-        data = json.loads(response.content)
+        if not data:
+            logger.error("Failed to parse LLM response for bourbon tasting")
+            return TastingExtractionResult(
+                tastings=[],
+                template_type="bourbon",
+                raw_text=response.content,
+                confidence=0.0,
+            )
 
         # Use explicit numeric scores if provided, otherwise fall back to rating-based estimation
-        if "nose_score" in data and data["nose_score"] is not None:
+        if "nose_score" in data and data.get("nose_score") is not None:
             # Explicit scores provided
-            nose_score = data.get("nose_score", 2.5)
-            palate_score = data.get("palate_score", 2.5)
-            finish_score = data.get("finish_score", 2.5)
-            overall_score = data.get("overall_score", 0.75)
+            nose_score = LLMResponseParser.sanitize_float(
+                data.get("nose_score"),
+                min_value=0.0,
+                max_value=3.0,
+                field_name="nose_score",
+                default=2.5
+            )
+            palate_score = LLMResponseParser.sanitize_float(
+                data.get("palate_score"),
+                min_value=0.0,
+                max_value=3.0,
+                field_name="palate_score",
+                default=2.5
+            )
+            finish_score = LLMResponseParser.sanitize_float(
+                data.get("finish_score"),
+                min_value=0.0,
+                max_value=3.0,
+                field_name="finish_score",
+                default=2.5
+            )
+            overall_score = LLMResponseParser.sanitize_float(
+                data.get("overall_score"),
+                min_value=0.0,
+                max_value=1.0,
+                field_name="overall_score",
+                default=0.75
+            )
         else:
             # Fall back to rating-based estimation
-            rating = data.get("rating", 3)
+            rating = LLMResponseParser.sanitize_int(
+                data.get("rating"),
+                min_value=1,
+                max_value=5,
+                field_name="rating",
+                default=3
+            )
             scores = self._rating_to_scores(rating)
             nose_score = scores["nose"]
             palate_score = scores["palate"]
             finish_score = scores["finish"]
             overall_score = scores["overall"]
 
-        tasting = TastingNote(
-            bottle_name=data.get("bottle_name", "Unknown Bourbon"),
-            taster_name=data.get("taster_name", "Unknown"),
-            tasting_date=date.today(),  # TODO: Extract if visible
-            beverage_type="whiskey",
-            whiskey_nose=nose_score,
-            whiskey_palate=palate_score,
-            whiskey_finish=finish_score,
-            whiskey_overall=overall_score,
-            nose_notes=data.get("nose_notes", []),
-            palate_notes=data.get("palate_notes", []),
-            finish_notes=data.get("finish_notes", []),
-            overall_notes=data.get("overall_notes"),
-            color=data.get("color"),
-            confidence=0.8,
-        )
+        try:
+            tasting = TastingNote(
+                bottle_name=LLMResponseParser.sanitize_string(
+                    data.get("bottle_name"),
+                    max_length=200,
+                    field_name="bottle_name",
+                    default="Unknown Bourbon"
+                ),
+                taster_name=LLMResponseParser.sanitize_string(
+                    data.get("taster_name"),
+                    max_length=100,
+                    field_name="taster_name",
+                    default="Unknown"
+                ),
+                tasting_date=date.today(),  # TODO: Extract if visible
+                beverage_type="whiskey",
+                whiskey_nose=nose_score,
+                whiskey_palate=palate_score,
+                whiskey_finish=finish_score,
+                whiskey_overall=overall_score,
+                nose_notes=LLMResponseParser.sanitize_list(
+                    data.get("nose_notes"),
+                    field_name="nose_notes"
+                ),
+                palate_notes=LLMResponseParser.sanitize_list(
+                    data.get("palate_notes"),
+                    field_name="palate_notes"
+                ),
+                finish_notes=LLMResponseParser.sanitize_list(
+                    data.get("finish_notes"),
+                    field_name="finish_notes"
+                ),
+                overall_notes=LLMResponseParser.sanitize_string(
+                    data.get("overall_notes"),
+                    field_name="overall_notes"
+                ),
+                color=LLMResponseParser.sanitize_string(
+                    data.get("color"),
+                    field_name="color"
+                ),
+                confidence=0.8,
+            )
+        except Exception as e:
+            logger.error(f"Failed to create bourbon tasting note: {e}")
+            return TastingExtractionResult(
+                tastings=[],
+                template_type="bourbon",
+                raw_text=response.content,
+                confidence=0.0,
+            )
 
         return TastingExtractionResult(
             tastings=[tasting],

@@ -18,10 +18,11 @@ class TestObsidianGenerator:
         """Create temporary vault directory."""
         vault = tmp_path / "test_vault"
         vault.mkdir()
-        (vault / "Cellar").mkdir()
-        (vault / "Cellar" / "1_Wines").mkdir()
-        (vault / "Cellar" / "1_Whiskeys").mkdir()
-        return vault
+        cellar = vault / "Cellar"
+        cellar.mkdir()
+        (cellar / "1_Wines").mkdir()
+        (cellar / "1_Whiskeys").mkdir()
+        return cellar
 
     @pytest.fixture
     def temp_templates(self, tmp_path):
@@ -78,6 +79,8 @@ class TestObsidianGenerator:
             region="Napa Valley",
             price=45.99,
             source="test",
+            inventory=1,
+            buy=0,
         )
 
     @pytest.fixture
@@ -93,6 +96,8 @@ class TestObsidianGenerator:
             age_statement=10,
             price=75.00,
             source="test",
+            inventory=1,
+            buy=0,
         )
 
     def test_init_with_valid_paths(self, temp_vault, temp_templates):

@@ -37,6 +37,8 @@ Country-Region: USA - Napa Valley
 Variety: Cabernet Sauvignon
 Price: 85.00
 ABV: 14.5
+Inventory: 1
+Buy: 0
 ---
 
 # Tasting Notes
@@ -50,6 +52,8 @@ Excellent wine.
 fileClass: Wine
 Winemaker: Producer
 WineName: Simple
+Inventory: 0
+Buy: 0
 ---
 """)
     
@@ -71,6 +75,8 @@ ABV: 65.2
 MashBill: High rye
 BarrelType: Charred oak
 Price: 125.00
+Inventory: 1
+Buy: 0
 ---
 
 # Tasting Notes
@@ -256,8 +262,10 @@ class TestFrontmatterParsing:
 fileClass: Wine
 Winemaker: Producer
 WineName: Wine
-Price: 
+Price:
 Variety: ""
+Inventory: 0
+Buy: 0
 ---
 """)
         

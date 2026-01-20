@@ -1,5 +1,44 @@
 # Testing Guide
 
+## Quick Reference
+
+| System Modified | Tests to Run | Location |
+|----------------|--------------|----------|
+| Management routes (update bottles) | `uv run pytest tests/integration/routes/test_management_routes.py -v` | `tests/integration/routes/` |
+| Event system | `./tests/events/run_all_tests.sh` | `tests/events/` |
+| Tasting upload/creation | `./tests/tastings/run_all_tests.sh` | `tests/tastings/` |
+| Bottle extraction | `uv run pytest tests/test_bottle_extraction_*.py -v` | `tests/` |
+| ObsidianGenerator | Management + Bottle extraction tests | Multiple |
+
+## Management Routes Tests ⭐ CRITICAL
+
+**Location:** `tests/integration/routes/test_management_routes.py`
+
+### Quick Commands
+
+```bash
+# Run management route tests
+uv run pytest tests/integration/routes/test_management_routes.py -v
+```
+
+### When to Test
+
+**⚠️ ALWAYS run management tests after modifying:**
+- `src/reserve_automation/web/routes/management/*.py`
+- `src/reserve_automation/generators/obsidian.py`
+- Template directory paths or module import structures
+- Any refactoring that changes file paths
+
+### What It Tests
+
+- ✅ Load bottles from vault
+- ✅ **Update bottle fields (writes to vault!)**
+- ✅ Verify/enrich bottle metadata
+- ✅ Rename directories when producer/name/year changes
+- ✅ Tasting summaries
+
+**WHY:** These are the tests that would have caught the import/path errors. They actually write to the vault and verify side effects. See `tests/TESTING_GAP_ANALYSIS.md`.
+
 ## Event System Tests
 
 **Location:** `tests/events/`

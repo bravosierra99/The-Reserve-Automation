@@ -1,19 +1,21 @@
+{# NOTE: Use inline conditionals {{ x if x else '' }} not block tags {% if %}{% endif %} #}
+{# Block tags with trim_blocks=True cause newlines to be stripped, breaking frontmatter #}
 ---
 fileClass: Whiskey
 Name: {{ name }}
 Distiller: {{ producer }}
 WhiskeyName: {{ whiskey_name }}
-AgeStatement: {% if age_statement %}{{ age_statement }}{% endif %}
-Year: {% if year %}"{{ year }}"{% endif %}
-Type: {% if beverage_type %}{{ beverage_type }}{% endif %}
-MashBill: {% if mash_bill %}{{ mash_bill }}{% endif %}
-BarrelType: {% if barrel_type %}{{ barrel_type }}{% endif %}
-Proof: {% if proof %}{{ proof }}{% endif %}
-Region-State: {% if region %}{{ region }}{% endif %}
+AgeStatement: {{ age_statement if age_statement else '' }}
+Year: {{ '"%s"' % year if year else '' }}
+Type: {{ beverage_type if beverage_type else '' }}
+MashBill: {{ mash_bill if mash_bill else '' }}
+BarrelType: {{ barrel_type if barrel_type else '' }}
+Proof: {{ proof if proof else '' }}
+Region-State: {{ region if region else '' }}
 BatchNumber:
 BottleNumber:
-Price: {% if price %}"{{ price }}"{% endif %}
-PurchaseSource: {% if purchase_source %}{{ purchase_source }}{% endif %}
+Price: {{ '"%s"' % price if price else '' }}
+PurchaseSource: {{ purchase_source if purchase_source else '' }}
 PurchaseLink:
 Inventory: {{ inventory }}
 Buy: 0

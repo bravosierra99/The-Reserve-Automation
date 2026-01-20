@@ -217,6 +217,23 @@ pkill -f "uvicorn.*reserve_automation"
 
 **MANDATORY: Always check for and run tests when modifying code.**
 
+### CRITICAL: Vault Safety
+
+**NEVER run tests against the real vault at `/mnt/d/Users/ben/Documents/the-reserve/Cellar/`**
+
+All tests MUST use isolated test vaults in `/tmp/`. If you need to create tests, use the **test-runner agent** (`.claude/agents/test-runner.md`) which has the isolation patterns.
+
+Key safety documents:
+- `tests/e2e/TESTING_SAFETY.md` - Vault isolation requirements
+- `tests/e2e/conftest.py` - Reference implementation for isolated test vaults
+
+### E2E Testing Priority
+
+Most bugs come from **frontend/backend integration issues**. Prefer E2E browser tests over unit tests:
+1. Tests in `tests/e2e/` run real browsers against real servers
+2. They catch integration issues that unit tests miss
+3. Use real fixture data from the vault (copied to `/tmp/test-vault-*`)
+
 ### Before Making Changes
 
 1. **Identify which system you're modifying** (events, extraction, vault, web UI, etc.)

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Test editing an existing tasting in an event."""
+import pytest
+pytest.skip("Manual integration test script requiring web server on localhost:8000", allow_module_level=True)
+
 import requests
 import json
 import urllib.parse

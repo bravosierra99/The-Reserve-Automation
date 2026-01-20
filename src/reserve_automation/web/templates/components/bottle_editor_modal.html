@@ -1,0 +1,824 @@
+<!-- Unified Bottle Editor Modal -->
+<!-- Used by both management grid and upload workflows -->
+
+<div x-show="bottleEditor.isOpen"
+     x-cloak
+     @keydown.escape="bottleEditor.close()"
+     class="fixed inset-0 z-50 overflow-y-auto"
+     style="display: none;">
+
+    <!-- Overlay -->
+    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+         @click="bottleEditor.close()"></div>
+
+    <!-- Modal Container -->
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+        <div @click.stop
+             class="relative bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+
+            <!-- Header -->
+            <div class="sticky top-0 bg-white border-b-2 border-gray-300 p-6 z-10">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h2 class="text-3xl font-bold text-gray-800 mb-2">
+                            <span x-text="bottleEditor.bottle?.producer"></span> - <span x-text="bottleEditor.bottle?.name"></span>
+                        </h2>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-gray-700">
+                            <div><span class="font-semibold">Type:</span> <span x-text="bottleEditor.bottle?.beverage_type"></span></div>
+                            <div><span class="font-semibold">Year:</span> <span x-text="bottleEditor.bottle?.year || 'N/A'"></span></div>
+                            <div x-show="bottleEditor.bottle?.variety">
+                                <span class="font-semibold">Variety:</span> <span x-text="bottleEditor.bottle?.variety"></span>
+                            </div>
+                            <div x-show="bottleEditor.bottle?.mash_bill">
+                                <span class="font-semibold">Mash Bill:</span> <span x-text="bottleEditor.bottle?.mash_bill"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button @click="bottleEditor.close()"
+                            class="text-gray-500 hover:text-gray-700 text-3xl font-bold">
+                        ×
+                    </button>
+                </div>
+
+                <!-- Manifest Progress (upload mode only) -->
+                <div x-show="bottleEditor.manifestContext" class="mt-4 text-sm text-gray-600">
+                    Bottle <span x-text="(bottleEditor.manifestContext?.currentIndex || 0) + 1"></span> of <span x-text="bottleEditor.manifestContext?.bottles?.length || 0"></span>
+                </div>
+            </div>
+
+            <!-- Content -->
+            <div class="p-6 space-y-6">
+
+                <!-- Metadata Section -->
+                <div class="bg-gray-50 rounded-lg p-6 border-2 border-gray-300">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold text-gray-800">Bottle Metadata</h3>
+                        <div class="flex gap-2">
+                            <button @click="bottleEditor.enrichMetadata()"
+                                    :disabled="bottleEditor.verifying"
+                                    class="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition-colors">
+                                <span x-show="!bottleEditor.verifying">🔍 Search for Updates</span>
+                                <span x-show="bottleEditor.verifying">Searching...</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Verifying State -->
+                    <div x-show="bottleEditor.verifying" class="text-center py-8">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-purple-600 mx-auto mb-4"></div>
+                        <p class="text-gray-600">Searching the web for metadata updates...</p>
+                    </div>
+
+                    <!-- Search Results -->
+                    <div x-show="bottleEditor.searchResult && !bottleEditor.verifying" class="mb-4">
+                        <!-- No Changes Found -->
+                        <div x-show="!bottleEditor.hasChanges"
+                             class="bg-green-50 border-2 border-green-400 rounded-lg p-4">
+                            <p class="text-green-800 font-bold">✓ No Updates Needed</p>
+                            <p class="text-green-700 text-sm">All metadata is accurate!</p>
+                        </div>
+
+                        <!-- Changes Found -->
+                        <div x-show="bottleEditor.hasChanges">
+                            <div class="bg-blue-50 border-2 border-blue-400 rounded-lg p-4 mb-4">
+                                <p class="text-blue-800 font-bold">✓ Search Complete</p>
+                                <p class="text-blue-700 text-sm">Review suggested changes below and select which ones to apply:</p>
+                            </div>
+
+                            <!-- Suggested Changes -->
+                            <div class="space-y-3 mb-4">
+                                <template x-for="[field, change] in Object.entries(bottleEditor.searchResult?.changes || {})" :key="field">
+                                    <div class="border-2 border-yellow-300 rounded-lg p-3 bg-yellow-50">
+                                        <div class="flex items-start gap-3">
+                                            <input type="checkbox"
+                                                   :checked="bottleEditor.approvedChanges[field]"
+                                                   @change="bottleEditor.approvedChanges[field] = $event.target.checked"
+                                                   class="mt-1 w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                                            <div class="flex-1">
+                                                <label class="block text-sm font-bold text-gray-800 mb-2" x-text="bottleEditor.getFieldLabel(field)"></label>
+                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    <div>
+                                                        <span class="text-xs text-gray-600 block mb-1">Current:</span>
+                                                        <div class="px-3 py-2 bg-red-50 border-2 border-red-300 rounded text-gray-800 line-through text-sm"
+                                                             x-text="change.old || '(empty)'"></div>
+                                                    </div>
+                                                    <div>
+                                                        <span class="text-xs text-green-700 font-semibold block mb-1">Proposed:</span>
+                                                        <div class="px-3 py-2 bg-green-50 border-2 border-green-400 rounded text-gray-900 font-semibold text-sm"
+                                                             x-text="change.new"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- Action Buttons for Changes -->
+                            <div class="flex gap-3 mb-4">
+                                <button @click="bottleEditor.applySelectedChanges()"
+                                        class="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
+                                    ✓ Apply Selected Changes
+                                </button>
+                                <button @click="bottleEditor.applyAllChanges()"
+                                        class="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
+                                    ✓ Accept All
+                                </button>
+                                <button @click="bottleEditor.cancelChanges()"
+                                        class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Editable Fields -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Producer -->
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">
+                                <span x-text="bottleEditor.bottle?.type === 'wine' ? 'Winemaker' : 'Distiller'"></span>
+                            </label>
+                            <input type="text"
+                                   x-model="bottleEditor.editableBottle.producer"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                        </div>
+
+                        <!-- Name -->
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">
+                                <span x-text="bottleEditor.bottle?.type === 'wine' ? 'Wine Name' : 'Whiskey Name'"></span>
+                            </label>
+                            <input type="text"
+                                   x-model="bottleEditor.editableBottle.name"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                        </div>
+
+                        <!-- Year -->
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">
+                                <span x-text="bottleEditor.bottle?.type === 'wine' ? 'Vintage' : 'Year'"></span>
+                            </label>
+                            <input type="text"
+                                   x-model="bottleEditor.editableBottle.year"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                        </div>
+
+                        <!-- Type (Specific description like "Bourbon", "Cabernet Sauvignon") -->
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">Type</label>
+                            <input type="text"
+                                   x-model="bottleEditor.editableBottle.beverage_type"
+                                   placeholder="e.g., Bourbon, Cabernet Sauvignon, Reposado Tequila"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                        </div>
+
+                        <!-- Wine-specific fields -->
+                        <template x-if="bottleEditor.bottle?.type === 'wine'">
+                            <div class="col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-2">Country</label>
+                                    <input type="text" x-model="bottleEditor.editableBottle.country"
+                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-2">Region</label>
+                                    <input type="text" x-model="bottleEditor.editableBottle.region"
+                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-2">Variety</label>
+                                    <input type="text" x-model="bottleEditor.editableBottle.variety"
+                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-2">Vineyard</label>
+                                    <input type="text" x-model="bottleEditor.editableBottle.vineyard"
+                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-2">ABV</label>
+                                    <input type="text" x-model="bottleEditor.editableBottle.abv"
+                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-2">Style</label>
+                                    <input type="text" x-model="bottleEditor.editableBottle.style"
+                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- Whiskey-specific fields -->
+                        <template x-if="bottleEditor.bottle?.type !== 'wine'">
+                            <div class="col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-2">Region</label>
+                                    <input type="text" x-model="bottleEditor.editableBottle.region"
+                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-2">Age Statement</label>
+                                    <input type="text" x-model="bottleEditor.editableBottle.age_statement"
+                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-2">Proof</label>
+                                    <input type="text" x-model="bottleEditor.editableBottle.proof"
+                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-2">Mash Bill</label>
+                                    <input type="text" x-model="bottleEditor.editableBottle.mash_bill"
+                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-2">Barrel Type</label>
+                                    <input type="text" x-model="bottleEditor.editableBottle.barrel_type"
+                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-2">Batch Number</label>
+                                    <input type="text" x-model="bottleEditor.editableBottle.batch_number"
+                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- Common fields -->
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">Price</label>
+                            <input type="text" x-model="bottleEditor.editableBottle.price"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">Inventory</label>
+                            <input type="text" x-model="bottleEditor.editableBottle.inventory"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Potential Duplicates (Upload Mode Only) -->
+                <div x-show="bottleEditor.mode === 'upload' && bottleEditor.duplicates && bottleEditor.duplicates.length > 0"
+                     class="bg-yellow-50 rounded-lg p-6 border-2 border-yellow-400">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="text-3xl">⚠️</span>
+                        <div>
+                            <h3 class="text-xl font-bold text-orange-800">
+                                <span x-text="`${bottleEditor.duplicates.length} Potential Duplicate${bottleEditor.duplicates.length === 1 ? '' : 's'} Found`"></span>
+                            </h3>
+                            <p class="text-sm text-orange-700">
+                                <span x-show="bottleEditor.duplicates.length > 5">Showing top 5 matches (sorted by similarity)</span>
+                                <span x-show="bottleEditor.duplicates.length <= 5">Review all matches below (sorted by similarity) and choose what to do:</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3 max-h-96 overflow-y-auto mb-4">
+                        <template x-for="(dup, index) in bottleEditor.duplicates.slice(0, 5)" :key="dup.vault_path">
+                            <div @click="bottleEditor.selectedDuplicate = dup.vault_path; bottleEditor.duplicateAction = 'replace'"
+                                 class="cursor-pointer transition-all bg-white border-2 rounded-lg p-4"
+                                 :class="{
+                                     'border-blue-500 bg-blue-50 ring-2 ring-blue-300': bottleEditor.selectedDuplicate === dup.vault_path,
+                                     'border-red-400 bg-red-50': bottleEditor.selectedDuplicate !== dup.vault_path && Math.round(dup.confidence * 100) >= 70,
+                                     'border-orange-300 hover:border-orange-500': bottleEditor.selectedDuplicate !== dup.vault_path && Math.round(dup.confidence * 100) < 70
+                                 }">
+                                <div class="flex items-start gap-4">
+                                    <!-- Match Badge -->
+                                    <div class="flex-shrink-0 text-center">
+                                        <div class="text-2xl font-bold mb-1"
+                                             :class="Math.round(dup.confidence * 100) >= 70 ? 'text-red-600' : 'text-orange-600'"
+                                             x-text="`${Math.round(dup.confidence * 100)}%`"></div>
+                                        <div class="text-xs text-gray-600">match</div>
+                                    </div>
+
+                                    <img :src="`/api/v1/labels/view?path=/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/${dup.vault_path}/labels/label.jpg`"
+                                         alt="Label"
+                                         class="w-20 h-20 object-cover rounded flex-shrink-0"
+                                         @error="$el.src='/static/images/no-label.svg'">
+
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-start justify-between mb-2">
+                                            <h4 class="font-bold text-gray-900" x-text="`${dup.producer} - ${dup.name}`"></h4>
+                                            <span class="text-sm font-semibold text-gray-700 ml-2" x-text="dup.year || 'N/A'"></span>
+                                        </div>
+                                        <div class="grid grid-cols-1 gap-1 text-sm">
+                                            <div>
+                                                <span class="font-semibold text-gray-700">Region:</span>
+                                                <span class="text-gray-600" x-text="dup.region || 'N/A'"></span>
+                                            </div>
+                                            <div class="text-xs text-gray-500 italic" x-text="dup.reason"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="border-t-2 border-yellow-300 pt-4">
+                        <div class="mb-4">
+                            <label class="block text-sm font-bold text-gray-800 mb-3">What would you like to do?</label>
+                            <div class="space-y-2">
+                                <label class="flex items-center p-3 bg-white border-2 border-gray-300 rounded-lg hover:border-green-500 cursor-pointer">
+                                    <input type="radio"
+                                           x-model="bottleEditor.duplicateAction"
+                                           value="save_new"
+                                           class="mr-3 w-4 h-4 text-green-600">
+                                    <div>
+                                        <div class="font-semibold text-gray-900">Save as New Bottle</div>
+                                        <div class="text-xs text-gray-600">Create a new entry even though similar bottles exist</div>
+                                    </div>
+                                </label>
+
+                                <label class="flex items-center p-3 bg-white border-2 border-gray-300 rounded-lg hover:border-orange-500 cursor-pointer"
+                                       :class="{'opacity-50': !bottleEditor.selectedDuplicate}">
+                                    <input type="radio"
+                                           x-model="bottleEditor.duplicateAction"
+                                           value="replace"
+                                           :disabled="!bottleEditor.selectedDuplicate"
+                                           class="mr-3 w-4 h-4 text-orange-600">
+                                    <div class="flex-1">
+                                        <div class="font-semibold text-gray-900">Replace Selected Duplicate</div>
+                                        <div class="text-xs text-gray-600">
+                                            <span x-show="!bottleEditor.selectedDuplicate">Click on a duplicate above to select it</span>
+                                            <span x-show="bottleEditor.selectedDuplicate">Update the bottle you selected above with this metadata</span>
+                                        </div>
+                                    </div>
+                                </label>
+
+                                <label class="flex items-center p-3 bg-white border-2 border-gray-300 rounded-lg hover:border-gray-500 cursor-pointer">
+                                    <input type="radio"
+                                           x-model="bottleEditor.duplicateAction"
+                                           value="skip"
+                                           class="mr-3 w-4 h-4 text-gray-600">
+                                    <div>
+                                        <div class="font-semibold text-gray-900">Skip This Bottle</div>
+                                        <div class="text-xs text-gray-600">Don't save, move to next bottle</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-3 justify-end">
+                            <button @click="bottleEditor.manualCheckDuplicates()"
+                                    :disabled="bottleEditor.saving"
+                                    class="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-semibold rounded-lg text-sm">
+                                🔍 Re-check Duplicates
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tasting Summary (Management Mode Only) -->
+                <div x-show="bottleEditor.mode === 'management' && bottleEditor.tastingSummary"
+                     class="bg-gray-50 rounded-lg border-2 border-gray-300 overflow-hidden">
+
+                    <!-- Clickable Header -->
+                    <div @click="bottleEditor.tastingSummary?.tasting_count > 0 && bottleEditor.toggleTastingsList()"
+                         class="p-6 cursor-pointer hover:bg-gray-100 transition-colors"
+                         :class="{'cursor-default hover:bg-gray-50': !bottleEditor.tastingSummary?.tasting_count}">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-bold text-gray-800">Tasting Summary</h3>
+                            <span x-show="bottleEditor.tastingSummary?.tasting_count > 0"
+                                  class="text-blue-600 font-semibold text-sm flex items-center gap-1">
+                                <span x-text="bottleEditor.showTastingsList ? '▲ Collapse' : '▼ Expand'"></span>
+                            </span>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                                <span class="font-semibold block text-gray-600">Total Tastings:</span>
+                                <span class="text-2xl font-bold text-gray-800" x-text="bottleEditor.tastingSummary?.tasting_count || 0"></span>
+                            </div>
+                            <div>
+                                <span class="font-semibold block text-gray-600">Avg Score:</span>
+                                <span class="text-2xl font-bold text-gray-800" x-text="bottleEditor.tastingSummary?.avg_score || 'N/A'"></span>
+                            </div>
+                            <div class="col-span-2">
+                                <span class="font-semibold block text-gray-600">Tasters:</span>
+                                <span class="text-sm text-gray-800" x-text="bottleEditor.tastingSummary?.tasters?.join(', ') || 'None'"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Expanded Tastings List -->
+                    <div x-show="bottleEditor.showTastingsList && !bottleEditor.selectedTasting"
+                         x-cloak
+                         class="border-t-2 border-gray-300 p-4 bg-white max-h-96 overflow-y-auto">
+
+                        <!-- Loading indicator -->
+                        <div x-show="bottleEditor.loadingTastings" class="text-center py-4">
+                            <span class="text-gray-500">Loading tastings...</span>
+                        </div>
+
+                        <!-- Tastings list -->
+                        <div x-show="!bottleEditor.loadingTastings" class="space-y-3">
+                            <template x-for="tasting in bottleEditor.tastingsList" :key="tasting.filename">
+                                <div @click="bottleEditor.selectTasting(tasting)"
+                                     class="p-4 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 hover:border-blue-300 transition-colors">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-semibold text-gray-800" x-text="tasting.date"></span>
+                                            <span class="text-gray-500">-</span>
+                                            <span class="text-gray-700" x-text="tasting.taster"></span>
+                                        </div>
+                                        <span class="text-lg font-bold text-blue-600">
+                                            <span x-text="tasting.total_score"></span>/<span x-text="tasting.max_score"></span>
+                                        </span>
+                                    </div>
+                                    <!-- Whiskey scores -->
+                                    <div x-show="bottleEditor.bottle?.type !== 'wine'" class="text-sm text-gray-600">
+                                        <span>Nose: <span x-text="tasting.scores?.nose ?? '-'"></span></span>
+                                        <span class="mx-2">|</span>
+                                        <span>Palate: <span x-text="tasting.scores?.palate ?? '-'"></span></span>
+                                        <span class="mx-2">|</span>
+                                        <span>Finish: <span x-text="tasting.scores?.finish ?? '-'"></span></span>
+                                        <span class="mx-2">|</span>
+                                        <span>Overall: <span x-text="tasting.scores?.overall ?? '-'"></span></span>
+                                    </div>
+                                    <!-- Wine scores -->
+                                    <div x-show="bottleEditor.bottle?.type === 'wine'" class="text-sm text-gray-600">
+                                        <span>App: <span x-text="tasting.scores?.appearance ?? '-'"></span></span>
+                                        <span class="mx-2">|</span>
+                                        <span>Aroma: <span x-text="tasting.scores?.aroma ?? '-'"></span></span>
+                                        <span class="mx-2">|</span>
+                                        <span>Taste: <span x-text="tasting.scores?.taste ?? '-'"></span></span>
+                                        <span class="mx-2">|</span>
+                                        <span>After: <span x-text="tasting.scores?.aftertaste ?? '-'"></span></span>
+                                        <span class="mx-2">|</span>
+                                        <span>Overall: <span x-text="tasting.scores?.overall ?? '-'"></span></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Selected Tasting Detail View -->
+                    <div x-show="bottleEditor.selectedTasting"
+                         x-cloak
+                         class="border-t-2 border-gray-300 bg-white">
+
+                        <!-- Detail Header -->
+                        <div class="p-4 bg-gray-100 border-b border-gray-200 flex items-center justify-between">
+                            <button @click="bottleEditor.closeTastingDetail()"
+                                    class="text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">
+                                ← Back to List
+                            </button>
+                            <div class="text-right">
+                                <span class="font-semibold text-gray-800" x-text="bottleEditor.selectedTasting?.date"></span>
+                                <span class="text-gray-500 mx-1">-</span>
+                                <span class="text-gray-700" x-text="bottleEditor.selectedTasting?.taster"></span>
+                                <span class="ml-4 text-xl font-bold text-blue-600">
+                                    <span x-text="bottleEditor.selectedTasting?.total_score"></span>/<span x-text="bottleEditor.selectedTasting?.max_score"></span>
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Detail Content -->
+                        <div class="p-4 space-y-4 max-h-96 overflow-y-auto">
+                            <!-- Whiskey Detail View -->
+                            <template x-if="bottleEditor.bottle?.type !== 'wine'">
+                                <div class="space-y-4">
+                                    <!-- Nose -->
+                                    <div class="border-b border-gray-200 pb-3">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="font-semibold text-gray-800">Nose</span>
+                                            <span class="text-blue-600 font-bold" x-text="(bottleEditor.selectedTasting?.scores?.nose ?? '-') + '/3'"></span>
+                                        </div>
+                                        <div class="text-sm text-gray-600" x-text="bottleEditor.formatNotesAsHashtags(bottleEditor.selectedTasting?.notes?.nose) || 'No notes'"></div>
+                                    </div>
+                                    <!-- Palate -->
+                                    <div class="border-b border-gray-200 pb-3">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="font-semibold text-gray-800">Palate</span>
+                                            <span class="text-blue-600 font-bold" x-text="(bottleEditor.selectedTasting?.scores?.palate ?? '-') + '/3'"></span>
+                                        </div>
+                                        <div class="text-sm text-gray-600" x-text="bottleEditor.formatNotesAsHashtags(bottleEditor.selectedTasting?.notes?.palate) || 'No notes'"></div>
+                                    </div>
+                                    <!-- Finish -->
+                                    <div class="border-b border-gray-200 pb-3">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="font-semibold text-gray-800">Finish</span>
+                                            <span class="text-blue-600 font-bold" x-text="(bottleEditor.selectedTasting?.scores?.finish ?? '-') + '/3'"></span>
+                                        </div>
+                                        <div class="text-sm text-gray-600" x-text="bottleEditor.formatNotesAsHashtags(bottleEditor.selectedTasting?.notes?.finish) || 'No notes'"></div>
+                                    </div>
+                                    <!-- Overall -->
+                                    <div class="border-b border-gray-200 pb-3">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="font-semibold text-gray-800">Overall</span>
+                                            <span class="text-blue-600 font-bold" x-text="(bottleEditor.selectedTasting?.scores?.overall ?? '-') + '/1'"></span>
+                                        </div>
+                                        <div class="text-sm text-gray-600 italic" x-text="bottleEditor.selectedTasting?.notes?.overall || 'No overall impression'"></div>
+                                    </div>
+                                    <!-- Days from Crack / Fill Level -->
+                                    <div class="flex gap-6 text-sm text-gray-600 pt-2">
+                                        <span>Days from Crack: <span class="font-semibold" x-text="bottleEditor.selectedTasting?.days_from_crack ?? '-'"></span></span>
+                                        <span>Fill Level: <span class="font-semibold" x-text="(bottleEditor.selectedTasting?.fill_level ?? '-') + '%'"></span></span>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Wine Detail View -->
+                            <template x-if="bottleEditor.bottle?.type === 'wine'">
+                                <div class="space-y-4">
+                                    <!-- Appearance -->
+                                    <div class="border-b border-gray-200 pb-3">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="font-semibold text-gray-800">Appearance</span>
+                                            <span class="text-blue-600 font-bold" x-text="(bottleEditor.selectedTasting?.scores?.appearance ?? '-') + '/3'"></span>
+                                        </div>
+                                        <div class="text-sm text-gray-600" x-text="bottleEditor.selectedTasting?.notes?.appearance?.join(', ') || 'No notes'"></div>
+                                    </div>
+                                    <!-- Aroma -->
+                                    <div class="border-b border-gray-200 pb-3">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="font-semibold text-gray-800">Aroma</span>
+                                            <span class="text-blue-600 font-bold" x-text="(bottleEditor.selectedTasting?.scores?.aroma ?? '-') + '/6'"></span>
+                                        </div>
+                                        <div class="text-sm text-gray-600" x-text="bottleEditor.formatNotesAsHashtags(bottleEditor.selectedTasting?.notes?.aroma) || 'No notes'"></div>
+                                    </div>
+                                    <!-- Taste -->
+                                    <div class="border-b border-gray-200 pb-3">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="font-semibold text-gray-800">Taste</span>
+                                            <span class="text-blue-600 font-bold" x-text="(bottleEditor.selectedTasting?.scores?.taste ?? '-') + '/6'"></span>
+                                        </div>
+                                        <div class="text-sm text-gray-600" x-text="bottleEditor.formatNotesAsHashtags(bottleEditor.selectedTasting?.notes?.taste) || 'No notes'"></div>
+                                    </div>
+                                    <!-- Aftertaste -->
+                                    <div class="border-b border-gray-200 pb-3">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="font-semibold text-gray-800">Aftertaste</span>
+                                            <span class="text-blue-600 font-bold" x-text="(bottleEditor.selectedTasting?.scores?.aftertaste ?? '-') + '/3'"></span>
+                                        </div>
+                                        <div class="text-sm text-gray-600" x-text="bottleEditor.formatNotesAsHashtags(bottleEditor.selectedTasting?.notes?.aftertaste) || 'No notes'"></div>
+                                    </div>
+                                    <!-- Overall -->
+                                    <div class="pb-3">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="font-semibold text-gray-800">Overall Impression</span>
+                                            <span class="text-blue-600 font-bold" x-text="(bottleEditor.selectedTasting?.scores?.overall ?? '-') + '/2'"></span>
+                                        </div>
+                                        <div class="text-sm text-gray-600 italic" x-text="bottleEditor.selectedTasting?.notes?.overall || 'No overall impression'"></div>
+                                    </div>
+                                    <!-- AWS Score (20-point scale) -->
+                                    <div class="text-sm text-gray-600 pt-2 border-t border-gray-200">
+                                        <span>AWS Score: <span class="font-semibold" x-text="(bottleEditor.selectedTasting?.aws_score ?? '-') + '/20'"></span></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Label Operations Section -->
+                <div class="bg-gray-50 rounded-lg p-6 border-2 border-gray-300">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">Label Image</h3>
+
+                    <!-- Current Label Display -->
+                    <div class="mb-4">
+                        <img x-show="bottleEditor.mode === 'management'"
+                             :src="`/api/v1/labels/view?path=/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/${bottleEditor.vaultPath}/labels/label.jpg&t=${bottleEditor.currentLabelTimestamp}`"
+                             alt="Current Label"
+                             class="max-w-md mx-auto rounded-lg shadow-md"
+                             @error="$el.src='/static/images/no-label.svg'">
+
+                        <img x-show="bottleEditor.mode === 'upload' && bottleEditor.uploadId"
+                             :src="bottleEditor.uploadId ? `/api/v1/temp-images/${bottleEditor.uploadId}/label.jpg?t=${bottleEditor.currentLabelTimestamp}` : '/static/images/no-label.svg'"
+                             alt="Uploaded Label"
+                             class="max-w-md mx-auto rounded-lg shadow-md"
+                             @error="$el.src='/static/images/no-label.svg'">
+                    </div>
+
+                    <!-- Label Action Buttons -->
+                    <div class="flex flex-wrap gap-3 justify-center">
+                        <button @click="bottleEditor.searchForLabelReplacement()"
+                                :disabled="bottleEditor.labelActionInProgress"
+                                class="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition-colors">
+                            🔍 Search Web
+                        </button>
+
+                        <button @click="bottleEditor.cropExistingLabel()"
+                                :disabled="bottleEditor.labelActionInProgress"
+                                class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition-colors">
+                            🤖 Auto-Crop
+                        </button>
+
+                        <button @click="bottleEditor.startManualCrop()"
+                                :disabled="bottleEditor.labelActionInProgress"
+                                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition-colors">
+                            ✂️ Manual Crop
+                        </button>
+
+                        <label class="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition-colors cursor-pointer">
+                            📤 Upload Custom
+                            <input type="file"
+                                   accept="image/*"
+                                   @change="bottleEditor.uploadCustomLabel($event)"
+                                   :disabled="bottleEditor.labelActionInProgress"
+                                   class="hidden">
+                        </label>
+                    </div>
+
+                    <!-- Manual Crop UI -->
+                    <div x-show="bottleEditor.manualCropActive" class="mt-6 border-4 border-blue-500 rounded-lg p-4">
+                        <h4 class="font-bold text-lg mb-4 text-blue-800">Manual Crop - Adjust the box to select the label area</h4>
+                        <div class="mb-4">
+                            <img id="manualCropImage"
+                                 :src="bottleEditor.manualCropImageSrc"
+                                 alt="Crop Preview"
+                                 class="max-w-full mx-auto">
+                        </div>
+                        <div class="flex gap-3 justify-center">
+                            <button @click="bottleEditor.acceptManualCrop()"
+                                    class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
+                                ✓ Accept Crop
+                            </button>
+                            <button @click="bottleEditor.cancelManualCrop()"
+                                    class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Auto-Crop Preview -->
+                    <div x-show="bottleEditor.labelCropPreview" class="mt-6 border-4 border-green-500 rounded-lg p-4">
+                        <h4 class="font-bold text-lg mb-4 text-green-800">Auto-Crop Preview</h4>
+                        <div class="mb-4">
+                            <img :src="bottleEditor.labelCropPreview"
+                                 alt="Cropped Preview"
+                                 class="max-w-md mx-auto rounded-lg shadow-md">
+                        </div>
+                        <div class="flex gap-3 justify-center">
+                            <button @click="bottleEditor.acceptCropPreview()"
+                                    class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
+                                ✓ Accept & Replace Label
+                            </button>
+                            <button @click="bottleEditor.cancelCropPreview()"
+                                    class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Label Search Results -->
+                    <div x-show="bottleEditor.labelSearchResults.length > 0" class="mt-6">
+                        <h4 class="font-bold text-lg mb-4 text-purple-800">Search Results - Click to download</h4>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            <template x-for="(image, index) in bottleEditor.labelSearchResults" :key="index">
+                                <div @click="bottleEditor.useSelectedSearchImage(image.url)"
+                                     class="cursor-pointer border-2 border-gray-300 hover:border-purple-500 rounded-lg p-2 transition-all">
+                                    <img :src="image.thumbnail || image.url"
+                                         :alt="`Search result ${index + 1}`"
+                                         class="w-full h-48 object-contain rounded">
+                                    <p class="text-xs text-gray-600 mt-2 truncate" x-text="image.source"></p>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Downloaded Label Preview -->
+                    <div x-show="bottleEditor.labelDownloadedOriginal" class="mt-6 border-4 border-purple-500 rounded-lg p-4">
+                        <h4 class="font-bold text-lg mb-4 text-purple-800">Downloaded Label</h4>
+                        <div class="mb-4">
+                            <img :src="bottleEditor.labelDownloadedOriginal"
+                                 alt="Downloaded Label"
+                                 class="max-w-md mx-auto rounded-lg shadow-md">
+                        </div>
+                        <div class="flex gap-3 justify-center">
+                            <button @click="bottleEditor.useDownloadedLabel(false)"
+                                    class="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg">
+                                ✓ Use As-Is
+                            </button>
+                            <button @click="bottleEditor.startManualCropDownloaded()"
+                                    class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
+                                ✂️ Crop First
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Manual Crop Downloaded -->
+                    <div x-show="bottleEditor.manualCropDownloadedActive" class="mt-6 border-4 border-blue-500 rounded-lg p-4">
+                        <h4 class="font-bold text-lg mb-4 text-blue-800">Crop Downloaded Label</h4>
+                        <div class="mb-4">
+                            <img id="manualCropDownloadedImage"
+                                 :src="bottleEditor.manualCropDownloadedSrc"
+                                 alt="Crop Downloaded"
+                                 class="max-w-full mx-auto">
+                        </div>
+                        <div class="flex gap-3 justify-center">
+                            <button @click="bottleEditor.acceptManualCropDownloaded()"
+                                    class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
+                                ✓ Accept & Use
+                            </button>
+                            <button @click="bottleEditor.cancelManualCropDownloaded()"
+                                    class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Footer Actions -->
+            <div class="sticky bottom-0 bg-white border-t-2 border-gray-300 p-6 flex justify-between items-center">
+                <div class="flex gap-3">
+                    <!-- Navigation (Upload/Manifest Mode) -->
+                    <button x-show="bottleEditor.manifestContext && (bottleEditor.manifestContext.currentIndex || 0) > 0"
+                            @click="bottleEditor.previousBottle()"
+                            class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg">
+                        ← Previous
+                    </button>
+
+                    <button x-show="bottleEditor.manifestContext"
+                            @click="bottleEditor.skipBottle()"
+                            class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold rounded-lg">
+                        Skip
+                    </button>
+                </div>
+
+                <div class="flex gap-3">
+                    <button @click="bottleEditor.close()"
+                            class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg">
+                        <span x-text="bottleEditor.mode === 'upload' ? 'Cancel' : 'Close'"></span>
+                    </button>
+
+                    <button @click="bottleEditor.save()"
+                            :disabled="bottleEditor.saving"
+                            class="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                        <span x-show="!bottleEditor.saving">💾 Save</span>
+                        <span x-show="bottleEditor.saving">Saving...</span>
+                    </button>
+
+                    <button x-show="bottleEditor.manifestContext && (bottleEditor.manifestContext.currentIndex || 0) < (bottleEditor.manifestContext.bottles?.length || 1) - 1"
+                            @click="bottleEditor.nextBottle()"
+                            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg">
+                            Save & Next →
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Duplicate Detection Dialog (Upload Mode Only) -->
+<div x-show="bottleEditor.showDuplicateDialog"
+     x-cloak
+     class="fixed inset-0 z-60 overflow-y-auto"
+     style="display: none;">
+
+    <div class="fixed inset-0 bg-black bg-opacity-75"></div>
+
+    <div class="relative min-h-screen flex items-center justify-center p-4">
+        <div @click.stop
+             class="relative bg-white rounded-lg shadow-2xl max-w-4xl w-full p-6">
+
+            <h3 class="text-2xl font-bold text-red-600 mb-4">⚠️ Potential Duplicate Found</h3>
+            <p class="text-gray-700 mb-4">This bottle appears to already exist in your vault. What would you like to do?</p>
+
+            <!-- Duplicate List -->
+            <div class="space-y-3 mb-6 max-h-96 overflow-y-auto">
+                <template x-for="dup in bottleEditor.duplicates" :key="dup.vault_path">
+                    <div class="border-2 border-yellow-400 rounded-lg p-4 bg-yellow-50">
+                        <div class="flex items-start gap-4">
+                            <img :src="`/api/v1/labels/view?path=/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/${dup.vault_path}/labels/label.jpg`"
+                                 alt="Label"
+                                 class="w-24 h-24 object-cover rounded"
+                                 @error="$el.src='/static/images/no-label.svg'">
+                            <div class="flex-1">
+                                <h4 class="font-bold text-gray-800" x-text="`${dup.producer} - ${dup.name}`"></h4>
+                                <p class="text-sm text-gray-600"><span class="font-semibold">Year:</span> <span x-text="dup.year"></span></p>
+                                <p class="text-sm text-gray-600"><span class="font-semibold">Match:</span> <span x-text="dup.confidence"></span>%</p>
+                                <p class="text-sm text-gray-600" x-text="dup.reason"></p>
+                                <button type="button"
+                                        @click.prevent="bottleEditor.handleDuplicateResolution('replace', dup.vault_path)"
+                                        class="mt-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded text-sm">
+                                    Replace This Bottle
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-3 justify-end">
+                <button type="button"
+                        @click.prevent="bottleEditor.handleDuplicateResolution('skip')"
+                        class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg">
+                    Skip This Bottle
+                </button>
+                <button type="button"
+                        @click.prevent="bottleEditor.handleDuplicateResolution('new')"
+                        class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
+                    Save as New Bottle
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>

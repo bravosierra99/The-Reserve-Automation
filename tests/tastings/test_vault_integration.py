@@ -10,35 +10,45 @@ IMPORTANT: These tests write real files to disk (in temp vault).
 
 import json
 import os
-import requests
+import pytest
 import subprocess
 import sys
 from pathlib import Path
+from fastapi.testclient import TestClient
+
+from reserve_automation.web.app import app
+from reserve_automation.web.config import load_web_config
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 TEST_VAULT = Path("/tmp/test-vault")
-BASE_URL = "http://localhost:8000"
 
 
 def setup_test_vault():
     """Ensure test vault exists with test bottles."""
     print("\n🔧 Setting up test vault...")
 
+    # Clean up existing vault completely to start fresh
+    import shutil
+    if TEST_VAULT.exists():
+        shutil.rmtree(TEST_VAULT)
+        print("   ✓ Cleaned existing test vault")
+
     # Create directories
     (TEST_VAULT / "1_Whiskeys").mkdir(parents=True, exist_ok=True)
     (TEST_VAULT / "1_Wines").mkdir(parents=True, exist_ok=True)
 
-    # Create test whiskey if doesn't exist
+    # Always recreate test whiskey to ensure correct format
     whiskey_dir = TEST_VAULT / "1_Whiskeys" / "Test Distillery - Test Bourbon - 2020"
     whiskey_file = whiskey_dir / "Test Distillery - Test Bourbon - 2020.md"
-    if not whiskey_file.exists():
-        whiskey_dir.mkdir(parents=True, exist_ok=True)
-        whiskey_file.write_text("""---
+    whiskey_dir.mkdir(parents=True, exist_ok=True)
+    whiskey_file.write_text("""---
 fileClass: Whiskey
 Producer: Test Distillery
 Name: Test Bourbon
 Year: 2020
 Type: Bourbon
+Inventory: 1
+Buy: 0
 ---
 
 # Test Distillery - Test Bourbon - 2020
@@ -46,17 +56,18 @@ Type: Bourbon
 Test whiskey for vault integration tests.
 """)
 
-    # Create test wine if doesn't exist
+    # Always recreate test wine to ensure correct format
     wine_dir = TEST_VAULT / "1_Wines" / "Château Test - Bordeaux - 2015"
     wine_file = wine_dir / "Château Test - Bordeaux - 2015.md"
-    if not wine_file.exists():
-        wine_dir.mkdir(parents=True, exist_ok=True)
-        wine_file.write_text("""---
+    wine_dir.mkdir(parents=True, exist_ok=True)
+    wine_file.write_text("""---
 fileClass: Wine
 Producer: Château Test
 Name: Bordeaux
 Year: 2015
 Type: Red
+Inventory: 1
+Buy: 0
 ---
 
 # Château Test - Bordeaux - 2015
@@ -83,25 +94,48 @@ def cleanup_tasting_files():
         print("   ✓ No tasting files to remove")
 
 
-def test_manual_obsidian_tasting():
-    """Test manual Obsidian mode tasting creation."""
+@pytest.fixture(scope="module")
+def test_client():
+    """Create test client with proper configuration using test vault."""
+    # Setup test vault first
+    setup_test_vault()
+
+    # Set environment to use test vault
+    os.environ["RESERVE_VAULT_PATH"] = str(TEST_VAULT)
+
+    # Load config (will pick up RESERVE_VAULT_PATH from environment)
+    core_config, web_config = load_web_config()
+
+    # Override dependencies
+    from reserve_automation.web import app as web_app
+    web_app.core_config = core_config
+    web_app.web_config = web_config
+
+    # Create services
+    from reserve_automation.web.services.upload_service import UploadService
+    web_app.upload_service = UploadService(
+        temp_dir=web_config.uploads.temp_dir,
+        max_file_size_mb=web_config.uploads.max_file_size_mb,
+        allowed_extensions=web_config.uploads.allowed_extensions
+    )
+
+    with TestClient(app, follow_redirects=False) as client:
+        yield client
+
+
+def test_manual_obsidian_tasting(test_client):
+    """Test manual Obsidian mode tasting creation.
+
+    Uses the new sessionless API - all data is passed in a single POST request.
+    """
     print("\n📝 Test: Manual Obsidian Mode Tasting")
     print("=" * 60)
 
-    # Setup
-    setup_test_vault()
+    # Cleanup before test
     cleanup_tasting_files()
 
-    # Set environment to use test vault
-    env = os.environ.copy()
-    env["RESERVE_VAULT_PATH"] = str(TEST_VAULT)
-
-    print("\n1️⃣ Starting web server with test vault...")
-    # Note: Assumes server is already running with test vault configured
-    # In practice, you'd restart the server with RESERVE_VAULT_PATH set
-
-    print("\n2️⃣ Searching for test bottle in vault...")
-    response = requests.get(f"{BASE_URL}/api/v1/management/bottles/search?q=Test Bourbon")
+    print("\n1️⃣ Searching for test bottle in vault...")
+    response = test_client.get("/api/v1/management/bottles/search?q=Test Bourbon")
     assert response.status_code == 200, "Bottle search failed"
     bottles = response.json()["bottles"]
 
@@ -111,36 +145,17 @@ def test_manual_obsidian_tasting():
     test_bottle = test_bottles[0]
     print(f"   ✓ Found: {test_bottle['name']}")
 
-    print("\n3️⃣ Starting manual tasting wizard (Obsidian mode)...")
-    session = requests.Session()
-    response = session.post(
-        f"{BASE_URL}/api/v1/manual-tasting/start",
+    print("\n2️⃣ Saving manual tasting (Obsidian mode)...")
+    # New sessionless API - all data in one request
+    response = test_client.post(
+        "/api/v1/manual-tasting/save",
         json={
             "mode": "obsidian",
+            "beverage_type": "whiskey",
             "taster_name": "TestTaster",
-            "tasting_date": "2025-12-27"
-        }
-    )
-    assert response.status_code == 200, f"Wizard start failed: {response.status_code}"
-    print("   ✓ Wizard started in Obsidian mode")
-
-    print("\n4️⃣ Selecting bottle...")
-    response = session.put(
-        f"{BASE_URL}/api/v1/manual-tasting/session/step",
-        json={
-            "step": "bottle_selection",
-            "data": {"bottle_path": test_bottle["vault_path"]}
-        }
-    )
-    assert response.status_code == 200, "Bottle selection failed"
-    print(f"   ✓ Selected: {test_bottle['name']}")
-
-    print("\n5️⃣ Submitting tasting data...")
-    response = session.put(
-        f"{BASE_URL}/api/v1/manual-tasting/session/step",
-        json={
-            "step": "tasting_form",
-            "data": {"tasting_data": {
+            "tasting_date": "2025-12-27",
+            "selected_bottle_path": test_bottle["vault_path"],
+            "tasting_data": {
                 "whiskey_nose": 2.8,
                 "whiskey_palate": 2.5,
                 "whiskey_finish": 2.2,
@@ -149,20 +164,16 @@ def test_manual_obsidian_tasting():
                 "palate_notes": ["test", "palate"],
                 "finish_notes": ["long", "test"],
                 "overall_notes": "Test tasting for vault integration"
-            }}
+            }
         }
     )
-    assert response.status_code == 200, "Tasting data submission failed"
-    print("   ✓ Tasting data submitted")
-
-    print("\n6️⃣ Saving to vault...")
-    response = session.post(f"{BASE_URL}/api/v1/manual-tasting/save")
-    assert response.status_code == 200, f"Save failed: {response.status_code}"
+    assert response.status_code == 200, f"Save failed: {response.status_code} - {response.text}"
     print("   ✓ Save request completed")
 
-    print("\n7️⃣ Verifying tasting file created...")
+    print("\n3️⃣ Verifying tasting file created...")
     # Look for tasting file in test bottle directory
-    bottle_dir = Path(test_bottle["vault_path"]).parent
+    # vault_path is already the bottle directory, not the file path
+    bottle_dir = TEST_VAULT / test_bottle["vault_path"]
     tasting_files = list(bottle_dir.glob("Tasting-*.md"))
 
     assert len(tasting_files) > 0, f"No tasting files found in {bottle_dir}"
@@ -173,7 +184,7 @@ def test_manual_obsidian_tasting():
 
     # Verify file content
     content = tasting_file.read_text()
-    assert "fileClass: Whiskey Tasting" in content, "Missing fileClass"
+    assert "fileClass: Tasting" in content, "Missing fileClass"
     assert "TestTaster" in content, "Missing taster name"
     assert "2025-12-27" in content, "Missing tasting date"
     assert "2.8" in content or "2.80" in content, "Missing nose score"
@@ -191,7 +202,6 @@ def test_manual_obsidian_tasting():
     print("\n" + "=" * 60)
     print("✅ TEST PASSED: Manual Obsidian Tasting")
     print("=" * 60)
-    return True
 
 
 def test_cli_extraction_to_vault():
@@ -204,7 +214,7 @@ def test_cli_extraction_to_vault():
     cleanup_tasting_files()
 
     # Check for test image
-    fixtures_dir = PROJECT_ROOT / "tests" / "fixtures" / "extraction"
+    fixtures_dir = PROJECT_ROOT / "tests" / "fixtures" / "tasting_cards"
     image_path = fixtures_dir / "aws_wine_test_001.jpg"
 
     if not image_path.exists():
@@ -262,86 +272,77 @@ def test_cli_extraction_to_vault():
     print("\n" + "=" * 60)
     print("✅ TEST PASSED: CLI Extraction to Vault")
     print("=" * 60)
-    return True
 
 
-def test_duplicate_detection():
-    """Test that system warns about duplicate tastings."""
+
+def test_duplicate_detection(test_client):
+    """Test that system handles duplicate tastings by overwriting.
+
+    Uses the new sessionless API - all data is passed in a single POST request.
+    """
     print("\n⚠️ Test: Duplicate Tasting Detection")
     print("=" * 60)
 
-    # Setup
-    setup_test_vault()
+    # Cleanup before test
     cleanup_tasting_files()
 
     print("\n1️⃣ Creating first tasting...")
-    # Create initial tasting via manual wizard
-    response = requests.get(f"{BASE_URL}/api/v1/management/bottles/search?q=Test Bourbon")
+    # Search for test bottle
+    response = test_client.get("/api/v1/management/bottles/search?q=Test Bourbon")
     bottles = response.json()["bottles"]
     test_bottle = [b for b in bottles if "Test Bourbon" in b["name"]][0]
 
-    session = requests.Session()
-    session.post(f"{BASE_URL}/api/v1/manual-tasting/start", json={
+    # Create initial tasting via new sessionless API
+    response = test_client.post("/api/v1/manual-tasting/save", json={
         "mode": "obsidian",
+        "beverage_type": "whiskey",
         "taster_name": "DupeTestTaster",
-        "tasting_date": "2025-12-27"
-    })
-    session.put(f"{BASE_URL}/api/v1/manual-tasting/session/step", json={
-        "step": "bottle_selection",
-        "data": {"bottle_path": test_bottle["vault_path"]}
-    })
-    session.put(f"{BASE_URL}/api/v1/manual-tasting/session/step", json={
-        "step": "tasting_form",
-        "data": {"tasting_data": {
+        "tasting_date": "2025-12-27",
+        "selected_bottle_path": test_bottle["vault_path"],
+        "tasting_data": {
             "whiskey_nose": 2.0,
             "whiskey_palate": 2.0,
             "whiskey_finish": 2.0,
             "whiskey_overall": 0.5
-        }}
+        }
     })
-    session.post(f"{BASE_URL}/api/v1/manual-tasting/save")
+    assert response.status_code == 200, f"First save failed: {response.status_code} - {response.text}"
     print("   ✓ First tasting created")
 
     print("\n2️⃣ Attempting to create duplicate...")
     # Try to create another tasting for same bottle, same taster, same date
-    session2 = requests.Session()
-    session2.post(f"{BASE_URL}/api/v1/manual-tasting/start", json={
+    # The system should overwrite the existing file (same filename pattern)
+    response = test_client.post("/api/v1/manual-tasting/save", json={
         "mode": "obsidian",
+        "beverage_type": "whiskey",
         "taster_name": "DupeTestTaster",
-        "tasting_date": "2025-12-27"
-    })
-    session2.put(f"{BASE_URL}/api/v1/manual-tasting/session/step", json={
-        "step": "bottle_selection",
-        "data": {"bottle_path": test_bottle["vault_path"]}
-    })
-
-    # The system should detect duplicate and either:
-    # - Prevent save, OR
-    # - Allow save but update existing file
-
-    session2.put(f"{BASE_URL}/api/v1/manual-tasting/session/step", json={
-        "step": "tasting_form",
-        "data": {"tasting_data": {
+        "tasting_date": "2025-12-27",
+        "selected_bottle_path": test_bottle["vault_path"],
+        "tasting_data": {
             "whiskey_nose": 3.0,
             "whiskey_palate": 3.0,
             "whiskey_finish": 3.0,
             "whiskey_overall": 1.0
-        }}
+        }
     })
-    response = session2.post(f"{BASE_URL}/api/v1/manual-tasting/save")
+    assert response.status_code == 200, f"Second save failed: {response.status_code} - {response.text}"
 
-    # Either way, verify only 1 file exists
-    bottle_dir = Path(test_bottle["vault_path"]).parent
+    # Verify only 1 file exists (duplicate was overwritten)
+    # vault_path is already the bottle directory
+    bottle_dir = TEST_VAULT / test_bottle["vault_path"]
     tasting_files = list(bottle_dir.glob("Tasting-2025-12-27-DupeTestTaster*.md"))
 
     assert len(tasting_files) == 1, f"Should only have 1 tasting file, found {len(tasting_files)}"
-    print("   ✓ Duplicate prevented or existing file updated")
+
+    # Verify the file contains the updated scores (3.0, not 2.0)
+    content = tasting_files[0].read_text()
+    assert "3.0" in content or "3.00" in content, "File should contain updated scores (3.0)"
+    print("   ✓ Duplicate was overwritten with new scores")
     print(f"   ✓ Only 1 tasting file exists")
 
     print("\n" + "=" * 60)
     print("✅ TEST PASSED: Duplicate Detection")
     print("=" * 60)
-    return True
 
 
 if __name__ == "__main__":

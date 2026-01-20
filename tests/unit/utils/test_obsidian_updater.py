@@ -32,7 +32,9 @@ fileClass: Wine
 Winemaker: Test Producer
 WineName: Test Wine
 Vintage: 2020
-Label: 
+Label:
+Inventory: 1
+Buy: 0
 ---
 
 # Tasting Notes

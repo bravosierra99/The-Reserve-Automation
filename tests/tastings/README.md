@@ -21,14 +21,16 @@ python3 tests/tastings/test_vault_integration.py    # Suite 3: Vault integration
 
 Tests manual tasting wizard in event mode, which stores tastings in in-memory event store without writing to vault.
 
+**Architecture Note:** The manual tasting wizard is sessionless - all state is managed in the frontend (Alpine.js). The only server interaction is a single POST to `/api/v1/manual-tasting/save` with all tasting data when the user clicks Save.
+
 **Tests:**
 - `test_manual_event_tasting()` - Complete manual tasting workflow
   - Search for bottles
   - Create event
   - Join as participant
-  - Start wizard in event mode
+  - Open wizard (state managed in frontend)
   - Select bottle
-  - Submit tasting scores
+  - Submit tasting scores via single POST
   - Verify saved to event store (not vault)
 
 - `test_edit_event_tasting()` - Edit existing event tasting
@@ -109,7 +111,7 @@ Tests CLI `extract-tasting` command with `--dry-run` flag to verify extraction w
 
 **Tests:**
 - `test_aws_wine_extraction()` - Extract from AWS wine tasting card
-  - Uses `tests/fixtures/extraction/aws_wine_test_001.jpg`
+  - Uses `tests/fixtures/tasting_cards/aws_wine_test_001.jpg`
   - Verifies extraction completes without errors
   - Confirms dry-run mode (no files written)
   - Compares to ground truth if available
@@ -145,10 +147,10 @@ python3 tests/tastings/test_cli_extraction.py
 ```
 
 **Adding Bourbon Test Images:**
-Place bourbon tasting card images in `tests/fixtures/extraction/`:
+Place bourbon tasting card images in `tests/fixtures/tasting_cards/`:
 ```
-tests/fixtures/extraction/bourbon_test_001.jpg
-tests/fixtures/extraction/bourbon_test_002.jpg
+tests/fixtures/tasting_cards/bourbon_test_001.jpg
+tests/fixtures/tasting_cards/bourbon_test_002.jpg
 ```
 
 Tests will automatically detect and use them.
@@ -268,8 +270,8 @@ If you answer yes, manually restart the server, then press Enter to continue.
 
 **AWS Wine Card:**
 ```
-tests/fixtures/extraction/aws_wine_test_001.jpg
-tests/fixtures/extraction/aws_wine_test_001.json  # Ground truth
+tests/fixtures/tasting_cards/aws_wine_test_001.jpg
+tests/fixtures/tasting_cards/aws_wine_test_001.json  # Ground truth
 ```
 
 ### Adding More Test Fixtures
@@ -277,8 +279,8 @@ tests/fixtures/extraction/aws_wine_test_001.json  # Ground truth
 **Bourbon Cards:**
 Place bourbon tasting card images here:
 ```
-tests/fixtures/extraction/bourbon_test_001.jpg
-tests/fixtures/extraction/bourbon_test_002.jpg
+tests/fixtures/tasting_cards/bourbon_test_001.jpg
+tests/fixtures/tasting_cards/bourbon_test_002.jpg
 ```
 
 **Ground Truth Files (Optional):**
@@ -391,7 +393,7 @@ RESERVE_VAULT_PATH=/tmp/test-vault ./start-web.sh
 
 **Solution:** Add bourbon tasting card images to fixtures:
 ```bash
-cp ~/path/to/bourbon_card.jpg tests/fixtures/extraction/bourbon_test_001.jpg
+cp ~/path/to/bourbon_card.jpg tests/fixtures/tasting_cards/bourbon_test_001.jpg
 ```
 
 ### LLM Extraction Unreliable

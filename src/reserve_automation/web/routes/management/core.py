@@ -16,8 +16,8 @@ from fastapi import APIRouter, Request, HTTPException, BackgroundTasks, UploadFi
 from fastapi.responses import HTMLResponse, FileResponse
 from loguru import logger
 
-from ...utils.vault_reader import VaultReader
-from ..services.extraction_service import ExtractionService
+from ....utils.vault_reader import VaultReader
+from ...services.extraction_service import ExtractionService
 
 router = APIRouter()
 
@@ -25,6 +25,36 @@ router = APIRouter()
 # In production, this should be Redis or a database
 verification_results: Dict[str, dict] = {}
 batch_status: Dict[str, dict] = {}
+
+
+def clean_bottle_data(bottle_data: dict) -> dict:
+    """
+    Clean bottle data by converting empty strings/None to appropriate values.
+
+    This handles the common issue where frontend forms send empty strings ("")
+    or null values, but Pydantic expects None or typed values (int/float).
+
+    Args:
+        bottle_data: Raw bottle data dictionary (may contain empty strings or None)
+
+    Returns:
+        Cleaned bottle data dictionary
+    """
+    cleaned = bottle_data.copy()
+
+    # Optional numeric fields - convert empty string or None to None
+    optional_fields = ['year', 'price', 'abv', 'proof', 'vintage', 'age_statement', 'value_for_money']
+    for field in optional_fields:
+        if field in cleaned and (cleaned[field] == '' or cleaned[field] is None):
+            cleaned[field] = None
+
+    # Fields with defaults - remove if empty/None so Pydantic uses default
+    fields_with_defaults = ['inventory', 'buy', 'confidence']
+    for field in fields_with_defaults:
+        if field in cleaned and (cleaned[field] == '' or cleaned[field] is None):
+            del cleaned[field]
+
+    return cleaned
 
 
 def get_temp_label_dir(vault_path: str) -> Path:
@@ -52,7 +82,7 @@ async def management_page(request: Request):
     This page provides administrative functions including:
     - Update all bottle metadata from vault
     """
-    from ..app import templates, web_config
+    from ...app import templates, web_config
 
     return templates.TemplateResponse(
         "management.html",
@@ -68,7 +98,7 @@ async def get_all_vault_bottles():
     Returns:
         dict: Contains list of bottles with their current metadata
     """
-    from ..app import core_config
+    from ...app import core_config
 
     try:
         vault_reader = VaultReader(core_config.vault_path)
@@ -100,7 +130,7 @@ async def search_bottles(q: str):
     Returns:
         dict: List of matching bottles
     """
-    from ..app import core_config
+    from ...app import core_config
 
     try:
         vault_reader = VaultReader(core_config.vault_path)
@@ -143,8 +173,8 @@ async def get_bottle_tastings_summary(request: Request):
     - earliest_date: Oldest tasting date
     - tasters: List of unique taster names
     """
-    from ..app import core_config
-    from ...core.models import BottleMetadata
+    from ...app import core_config
+    from ....core.models import BottleMetadata
     from pathlib import Path
     import re
     from datetime import datetime
@@ -175,7 +205,7 @@ async def get_bottle_tastings_summary(request: Request):
             return {
                 "tasting_count": 0,
                 "avg_score": None,
-                "max_score": 20 if bottle.type == "wine" else 10,
+                "max_score": 100 if bottle.type == "wine" else 10,
                 "latest_date": None,
                 "earliest_date": None,
                 "tasters": []
@@ -200,13 +230,21 @@ async def get_bottle_tastings_summary(request: Request):
 
                 # Parse frontmatter for score fields
                 if bottle.type == "wine":
-                    # Look for AWS Score (sum of 5 components) or 100pt Scale
-                    aws_match = re.search(r'^AWS Score::\s*(\d+(?:\.\d+)?)', content, re.MULTILINE)
-                    if aws_match:
-                        scores.append(float(aws_match.group(1)))
+                    # Look for 100pt Scale (preferred) or fall back to AWS Score
+                    # YAML frontmatter uses single colon, Dataview inline uses double colons
+                    scale_100_match = re.search(r'^100pt Scale::?\s*(\d+(?:\.\d+)?)', content, re.MULTILINE)
+                    if scale_100_match:
+                        scores.append(float(scale_100_match.group(1)))
+                    else:
+                        # Fall back to AWS Score if 100pt Scale not found
+                        aws_match = re.search(r'^AWS Score::?\s*(\d+(?:\.\d+)?)', content, re.MULTILINE)
+                        if aws_match:
+                            # Convert AWS Score (0-20) to 100pt scale
+                            scores.append(float(aws_match.group(1)) * 5)
                 else:
                     # Look for TotalScore (whiskey 10-point scale)
-                    total_match = re.search(r'^TotalScore::\s*(\d+(?:\.\d+)?)', content, re.MULTILINE)
+                    # YAML frontmatter uses single colon, Dataview inline uses double colons
+                    total_match = re.search(r'^TotalScore::?\s*(\d+(?:\.\d+)?)', content, re.MULTILINE)
                     if total_match:
                         scores.append(float(total_match.group(1)))
 
@@ -216,7 +254,7 @@ async def get_bottle_tastings_summary(request: Request):
 
         # Calculate summary stats
         avg_score = sum(scores) / len(scores) if scores else None
-        max_score = 20 if bottle.type == "wine" else 10
+        max_score = 100 if bottle.type == "wine" else 10
 
         return {
             "tasting_count": len(tasting_files),
@@ -234,6 +272,287 @@ async def get_bottle_tastings_summary(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/api/v1/management/bottles/tastings-list")
+async def get_bottle_tastings_list(request: Request):
+    """
+    Get full list of tastings for a bottle with all scores and notes.
+
+    Returns list of tastings sorted by date descending (newest first).
+    Each tasting includes individual scores, total score, and tasting notes.
+    """
+    from ...app import core_config
+    from ....core.models import BottleMetadata
+    import re
+
+    try:
+        body = await request.json()
+        bottle_data = body.get("bottle")
+
+        if not bottle_data:
+            raise HTTPException(status_code=400, detail="Missing bottle data")
+
+        bottle = BottleMetadata(**bottle_data)
+
+        if not bottle.vault_path:
+            raise HTTPException(status_code=404, detail="Bottle has no vault path")
+
+        bottle_folder = core_config.vault_path / bottle.vault_path
+
+        if not bottle_folder.exists():
+            raise HTTPException(status_code=404, detail="Bottle folder not found")
+
+        tasting_files = list(bottle_folder.glob("Tasting-*.md"))
+
+        if not tasting_files:
+            return {
+                "tastings": [],
+                "bottle_type": bottle.type
+            }
+
+        tastings = []
+
+        for tasting_file in tasting_files:
+            try:
+                # Extract date and taster from filename
+                match = re.match(r'Tasting-(\d{4}-\d{2}-\d{2})-(.+)\.md', tasting_file.name)
+                if not match:
+                    continue
+
+                date_str, taster = match.groups()
+                content = tasting_file.read_text(encoding='utf-8')
+
+                # Parse frontmatter
+                frontmatter_match = re.match(r'^---\n(.*?)\n---\n(.*)$', content, re.DOTALL)
+                if not frontmatter_match:
+                    continue
+
+                frontmatter_text = frontmatter_match.group(1)
+                body_content = frontmatter_match.group(2)
+
+                # Parse frontmatter into dict
+                frontmatter = {}
+                for line in frontmatter_text.split('\n'):
+                    if ':' in line:
+                        key, value = line.split(':', 1)
+                        frontmatter[key.strip()] = value.strip().strip('"')
+
+                tasting_data = {
+                    "filename": tasting_file.name,
+                    "date": date_str,
+                    "taster": taster,
+                    "scores": {},
+                    "total_score": None,
+                    "max_score": 100 if bottle.type == "wine" else 10,
+                    "notes": {}
+                }
+
+                if bottle.type == "wine":
+                    # Wine scores
+                    tasting_data["scores"] = {
+                        "appearance": _parse_float(frontmatter.get("Appearance")),
+                        "aroma": _parse_float(frontmatter.get("Aroma")),
+                        "taste": _parse_float(frontmatter.get("Taste")),
+                        "aftertaste": _parse_float(frontmatter.get("Aftertaste")),
+                        "overall": _parse_float(frontmatter.get("Overall"))
+                    }
+                    # Wine uses 100-point scale as primary display
+                    tasting_data["total_score"] = _parse_float(frontmatter.get("100pt Scale"))
+                    tasting_data["aws_score"] = _parse_float(frontmatter.get("AWS Score"))
+                    tasting_data["max_score"] = 100
+
+                    # Parse notes from body
+                    tasting_data["notes"] = _parse_wine_notes(body_content)
+                else:
+                    # Whiskey scores
+                    tasting_data["scores"] = {
+                        "nose": _parse_float(frontmatter.get("Nose")),
+                        "palate": _parse_float(frontmatter.get("Palate")),
+                        "finish": _parse_float(frontmatter.get("Finish")),
+                        "overall": _parse_float(frontmatter.get("Overall"))
+                    }
+                    tasting_data["total_score"] = _parse_float(frontmatter.get("TotalScore"))
+                    tasting_data["days_from_crack"] = _parse_int(frontmatter.get("DaysFromCrack"))
+                    tasting_data["fill_level"] = _parse_int(frontmatter.get("FillLevel"))
+                    tasting_data["max_score"] = 10
+
+                    # Parse notes from body
+                    tasting_data["notes"] = _parse_whiskey_notes(body_content)
+
+                tastings.append(tasting_data)
+
+            except Exception as e:
+                logger.warning(f"Failed to parse tasting file {tasting_file.name}: {e}")
+                continue
+
+        # Sort by date descending (newest first)
+        tastings.sort(key=lambda t: t["date"], reverse=True)
+
+        return {
+            "tastings": tastings,
+            "bottle_type": bottle.type
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get tasting list: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _parse_float(value: str) -> float | None:
+    """Parse a string to float, returning None if invalid."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_int(value: str) -> int | None:
+    """Parse a string to int, returning None if invalid."""
+    if value is None:
+        return None
+    try:
+        return int(float(value))
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_whiskey_notes(body_content: str) -> dict:
+    """Parse tasting notes from whiskey tasting file body."""
+    import re
+
+    notes = {
+        "nose": [],
+        "palate": [],
+        "finish": [],
+        "overall": ""
+    }
+
+    # Split by sections
+    sections = re.split(r'###\s+', body_content)
+
+    for section in sections:
+        section_lower = section.lower().strip()
+
+        if section_lower.startswith("nose"):
+            # Extract hashtags
+            notes["nose"] = _extract_hashtags(section)
+        elif section_lower.startswith("palate"):
+            notes["palate"] = _extract_hashtags(section)
+        elif section_lower.startswith("finish"):
+            notes["finish"] = _extract_hashtags(section)
+        elif section_lower.startswith("overall"):
+            # Get text after the header line
+            lines = section.split('\n', 1)
+            if len(lines) > 1:
+                notes["overall"] = lines[1].strip()
+
+    return notes
+
+
+def _parse_wine_notes(body_content: str) -> dict:
+    """Parse tasting notes from wine tasting file body."""
+    import re
+
+    notes = {
+        "appearance": [],
+        "aroma": [],
+        "taste": [],
+        "aftertaste": [],
+        "overall": ""
+    }
+
+    sections = re.split(r'###\s+', body_content)
+
+    for section in sections:
+        section_lower = section.lower().strip()
+
+        if section_lower.startswith("appearance"):
+            # Appearance may have plain text descriptions
+            lines = section.split('\n', 1)
+            if len(lines) > 1:
+                text = lines[1].strip()
+                if text:
+                    notes["appearance"] = [line.strip() for line in text.split('\n') if line.strip()]
+        elif section_lower.startswith("aroma"):
+            notes["aroma"] = _extract_hashtags(section)
+        elif section_lower.startswith("taste"):
+            notes["taste"] = _extract_hashtags(section)
+        elif section_lower.startswith("aftertaste"):
+            notes["aftertaste"] = _extract_hashtags(section)
+        elif section_lower.startswith("overall"):
+            lines = section.split('\n', 1)
+            if len(lines) > 1:
+                notes["overall"] = lines[1].strip()
+
+    return notes
+
+
+def _extract_hashtags(text: str) -> list[str]:
+    """Extract hashtag values from text, removing the # prefix."""
+    import re
+    hashtags = re.findall(r'#(\S+)', text)
+    # Replace underscores with spaces for display
+    return [tag.replace('_', ' ') for tag in hashtags]
+
+
+@router.post("/api/v1/management/bottles/verify")
+async def verify_bottle(request: Request):
+    """
+    Verify and enrich metadata for a bottle (stateless).
+
+    Used by the unified bottle editor modal for both upload and management workflows.
+
+    Args:
+        request: Request containing the bottle data
+
+    Returns:
+        dict: Contains original bottle, updated bottle, and changes made
+    """
+    from ...app import core_config
+
+    try:
+        # Get the bottle data from request body
+        body = await request.json()
+        bottle_data = body.get("bottle")
+
+        if not bottle_data:
+            raise HTTPException(status_code=400, detail="Bottle data not provided")
+
+        # Clean empty strings before validation
+        cleaned_bottle_data = clean_bottle_data(bottle_data)
+
+        # Convert to BottleMetadata
+        from ....core.models import BottleMetadata
+        bottle = BottleMetadata(**cleaned_bottle_data)
+
+        # Initialize extraction service
+        extraction_service = ExtractionService(core_config)
+
+        # Verify the bottle metadata (this will check and correct all fields)
+        updated_bottle, metadata = await extraction_service.enrich_bottle(bottle)
+
+        changes = metadata.get("changes", {})
+
+        logger.info(
+            f"Verified bottle: {bottle.producer} - {bottle.name}, "
+            f"{len(changes)} changes found"
+        )
+
+        return {
+            "original": bottle.model_dump(mode='json'),
+            "updated": updated_bottle.model_dump(mode='json'),
+            "changes": changes,
+            "metadata": metadata
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to verify bottle: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/api/v1/management/bottles/{bottle_index}/verify")
 async def verify_bottle_metadata(bottle_index: int, request: Request):
     """
@@ -246,7 +565,7 @@ async def verify_bottle_metadata(bottle_index: int, request: Request):
     Returns:
         dict: Contains original bottle, updated bottle, and changes made
     """
-    from ..app import core_config
+    from ...app import core_config
 
     try:
         # Get the bottle data from request body
@@ -257,7 +576,7 @@ async def verify_bottle_metadata(bottle_index: int, request: Request):
             raise HTTPException(status_code=400, detail="Bottle data not provided")
 
         # Convert to BottleMetadata
-        from ...core.models import BottleMetadata
+        from ....core.models import BottleMetadata
         bottle = BottleMetadata(**bottle_data)
 
         # Initialize extraction service
@@ -297,8 +616,8 @@ async def update_bottle_metadata(bottle_index: int, request: Request):
     Returns:
         dict: Status of the update operation
     """
-    from ..app import core_config
-    from ...generators.obsidian import ObsidianGenerator
+    from ...app import core_config
+    from ....generators.obsidian import ObsidianGenerator
     from pathlib import Path
 
     try:
@@ -310,7 +629,7 @@ async def update_bottle_metadata(bottle_index: int, request: Request):
             raise HTTPException(status_code=400, detail="Bottle data not provided")
 
         # Convert to BottleMetadata
-        from ...core.models import BottleMetadata
+        from ....core.models import BottleMetadata
         bottle = BottleMetadata(**bottle_data)
 
         # Check vault path is configured
@@ -318,7 +637,7 @@ async def update_bottle_metadata(bottle_index: int, request: Request):
             raise HTTPException(status_code=500, detail="Vault path not configured")
 
         # Initialize Obsidian generator
-        template_dir = Path(__file__).parent.parent.parent.parent.parent / "templates"
+        template_dir = Path(__file__).parent.parent.parent.parent.parent.parent / "templates"
         generator = ObsidianGenerator(vault_path=core_config.vault_path, template_dir=template_dir)
 
         # Generate bottle file
@@ -352,7 +671,7 @@ async def verify_bottle_background(batch_id: str, bottle_index: int, bottle_data
         core_config: Core configuration
     """
     try:
-        from ...core.models import BottleMetadata
+        from ....core.models import BottleMetadata
 
         bottle = BottleMetadata(**bottle_data)
         extraction_service = ExtractionService(core_config)
@@ -408,7 +727,7 @@ async def start_batch_verification(background_tasks: BackgroundTasks):
     Returns:
         dict: Batch ID and initial status
     """
-    from ..app import core_config
+    from ...app import core_config
     import uuid
 
     try:
@@ -517,10 +836,36 @@ def find_existing_bottle_file(vault_path: Path, bottle: BottleMetadata) -> Optio
             # Read the file and check if it matches our bottle
             try:
                 content = bottle_file.read_text(encoding="utf-8")
-                # Simple check: if producer and name appear in the file, it's probably the right one
-                if bottle.producer in content and bottle.name in content:
-                    logger.info(f"Found existing bottle file: {bottle_file}")
-                    return bottle_file
+
+                # Parse frontmatter to get year/vintage
+                import re
+                frontmatter_match = re.match(r'^---\n(.*?)\n---\n', content, re.DOTALL)
+                if frontmatter_match:
+                    frontmatter = frontmatter_match.group(1)
+
+                    # Extract year/vintage from frontmatter
+                    year_match = re.search(r'^(?:Year|Vintage):\s*(.+?)$', frontmatter, re.MULTILINE)
+                    file_year = None
+                    if year_match:
+                        try:
+                            # Remove quotes and whitespace, then parse as int
+                            year_str = year_match.group(1).strip().strip('"').strip("'")
+                            file_year = int(year_str)
+                        except ValueError:
+                            pass
+
+                    # Check if producer, name, AND year match
+                    # CRITICAL: Only match if years are equal (or both are None)
+                    # Don't accept a file if we can't determine its year when bottle has a year
+                    producer_match = bottle.producer in content
+                    name_match = bottle.name in content
+                    year_match = (bottle.year is None and file_year is None) or (bottle.year == file_year)
+
+                    if producer_match and name_match and year_match:
+                        logger.info(f"Found existing bottle file: {bottle_file} (year={file_year}, expected={bottle.year})")
+                        return bottle_file
+                    elif producer_match and name_match and not year_match:
+                        logger.debug(f"Skipping {bottle_file}: year mismatch (file={file_year}, expected={bottle.year})")
             except Exception as e:
                 logger.warning(f"Error reading {bottle_file}: {e}")
                 continue
@@ -540,9 +885,9 @@ async def update_bottle_fields(request: Request):
     Returns:
         dict: Status of the update operation
     """
-    from ..app import core_config
-    from ...generators.obsidian import ObsidianGenerator
-    from ...core.models import BottleMetadata
+    from ...app import core_config
+    from ....generators.obsidian import ObsidianGenerator
+    from ....core.models import BottleMetadata
     from pathlib import Path
     import shutil
 
@@ -557,8 +902,11 @@ async def update_bottle_fields(request: Request):
         if not bottle_data:
             raise HTTPException(status_code=400, detail="Bottle data not provided")
 
+        # Clean empty strings before validation
+        cleaned_bottle_data = clean_bottle_data(bottle_data)
+
         # Convert to BottleMetadata
-        original_bottle = BottleMetadata(**bottle_data)
+        original_bottle = BottleMetadata(**cleaned_bottle_data)
 
         logger.info(f"Original bottle before updates: producer={original_bottle.producer}, name={original_bottle.name}")
 
@@ -577,12 +925,29 @@ async def update_bottle_fields(request: Request):
         if not core_config.vault_path or not core_config.vault_path.exists():
             raise HTTPException(status_code=500, detail="Vault path not configured")
 
-        # Find existing bottle file
-        existing_file = find_existing_bottle_file(core_config.vault_path, original_bottle)
+        # Bottles loaded from vault MUST have vault_path set
+        # This endpoint is for updating existing bottles, not creating new ones
+        if not original_bottle.vault_path:
+            logger.error(f"Bottle missing vault_path - this endpoint only works with bottles loaded from vault")
+            raise HTTPException(status_code=400, detail="Bottle must have vault_path (only bottles loaded from vault can be updated)")
 
-        if not existing_file:
-            logger.error(f"Could not find existing bottle file for {original_bottle.producer} - {original_bottle.name}")
-            raise HTTPException(status_code=404, detail="Existing bottle file not found in vault")
+        # Use vault_path directly - no searching needed
+        # vault_path is relative, e.g., "1_Whiskeys/Distiller - Name - Year"
+        bottle_dir = core_config.vault_path / original_bottle.vault_path
+        if not bottle_dir.exists() or not bottle_dir.is_dir():
+            logger.error(f"Bottle directory not found: {bottle_dir}")
+            raise HTTPException(status_code=404, detail=f"Bottle directory not found: {original_bottle.vault_path}")
+
+        # Look for the bottle file
+        existing_file = bottle_dir / f"{bottle_dir.name}.md"
+        if not existing_file.exists():
+            # Try to find any .md file in the directory (in case filename doesn't match folder)
+            md_files = [f for f in bottle_dir.glob("*.md") if not f.name.startswith("Tasting-")]
+            if not md_files:
+                logger.error(f"No bottle file found in {bottle_dir}")
+                raise HTTPException(status_code=404, detail=f"No bottle file found in directory: {original_bottle.vault_path}")
+            existing_file = md_files[0]
+            logger.info(f"Found bottle file with different name: {existing_file.name}")
 
         existing_dir = existing_file.parent
         logger.info(f"Found existing bottle at: {existing_file}")
@@ -590,9 +955,9 @@ async def update_bottle_fields(request: Request):
         # Read existing file content
         existing_content = existing_file.read_text(encoding="utf-8")
 
-        # Parse frontmatter and body
+        # Parse frontmatter and body (allow leading whitespace/newlines for backwards compatibility)
         import re
-        frontmatter_match = re.match(r'^---\n(.*?)\n---\n(.*)$', existing_content, re.DOTALL)
+        frontmatter_match = re.match(r'^\s*---\n(.*?)\n---\n(.*)$', existing_content, re.DOTALL)
 
         if not frontmatter_match:
             logger.error(f"Could not parse frontmatter from {existing_file}")
@@ -614,8 +979,15 @@ async def update_bottle_fields(request: Request):
                 "region": "Country-Region",   # Special handling needed
                 "vineyard": "Vineyard",
                 "abv": "ABV",
+                "style": "Style",
                 "price": "Price",
                 "purchase_source": "PurchaseSource",
+                "purchase_link": "PurchaseLink",
+                "inventory": "Inventory",
+                "buy": "Buy",
+                "value_for_money": "ValueForMoney",
+                "points": "Points",
+                "stars": "Stars",
             }
         else:  # whiskey and other spirits
             field_name_map = {
@@ -629,8 +1001,16 @@ async def update_bottle_fields(request: Request):
                 "proof": "Proof",
                 "mash_bill": "MashBill",
                 "barrel_type": "BarrelType",
+                "batch_number": "BatchNumber",
+                "bottle_number": "BottleNumber",
                 "price": "Price",
                 "purchase_source": "PurchaseSource",
+                "purchase_link": "PurchaseLink",
+                "inventory": "Inventory",
+                "buy": "Buy",
+                "value_for_money": "ValueForMoney",
+                "stars": "Stars",
+                "bottle_opened_date": "BottleOpenedDate",
             }
 
         # Parse frontmatter into dict (preserving order and original keys)
@@ -766,16 +1146,42 @@ async def update_bottle_fields(request: Request):
         new_content = "---\n" + "\n".join(new_frontmatter_lines) + "\n---\n" + body_content
 
         # Determine new file path based on updated metadata
-        from ...generators.obsidian import ObsidianGenerator
-        template_dir = Path(__file__).parent.parent.parent.parent.parent / "templates"
+        from ....generators.obsidian import ObsidianGenerator
+        template_dir = Path(__file__).parent.parent.parent.parent.parent.parent / "templates"
         generator = ObsidianGenerator(vault_path=core_config.vault_path, template_dir=template_dir)
         obsidian_file = generator.generate_bottle_file(updated_bottle)
         new_path = obsidian_file.file_path
         new_dir = new_path.parent
 
         # Check if folder needs to move
-        if existing_dir != new_dir:
+        # Use samefile() to handle case-insensitive filesystems (WSL/Windows)
+        paths_are_same = False
+        try:
+            # Both paths must exist for samefile to work
+            if existing_dir.exists() and new_dir.exists():
+                paths_are_same = existing_dir.samefile(new_dir)
+            elif existing_dir.resolve() == new_dir.resolve():
+                # If new_dir doesn't exist yet, compare resolved paths
+                paths_are_same = True
+        except (OSError, ValueError):
+            # Fall back to string comparison if samefile fails
+            paths_are_same = str(existing_dir.resolve()).lower() == str(new_dir.resolve()).lower()
+
+        if not paths_are_same:
             logger.info(f"Bottle path changed - moving from {existing_dir} to {new_dir}")
+            logger.info(f"Resolved paths: {existing_dir.resolve()} -> {new_dir.resolve()}")
+
+            # CRITICAL: Check if destination already exists with files
+            if new_dir.exists():
+                existing_files = list(new_dir.iterdir())
+                if existing_files:
+                    error_msg = (
+                        f"Cannot move bottle: destination folder already exists with {len(existing_files)} files. "
+                        f"This would overwrite an existing bottle at '{new_dir}'. "
+                        f"If you want to rename this bottle, please ensure the year/name doesn't conflict with another bottle."
+                    )
+                    logger.error(error_msg)
+                    raise HTTPException(status_code=409, detail=error_msg)
 
             # Create new directory
             new_dir.mkdir(parents=True, exist_ok=True)
@@ -792,6 +1198,10 @@ async def update_bottle_fields(request: Request):
 
             # Update reference to existing file (now in new dir)
             existing_file = new_dir / existing_file.name
+            bottle_was_moved = True
+        else:
+            logger.info(f"Bottle path unchanged - updating file in place at {existing_dir}")
+            bottle_was_moved = False
 
         # Check if file needs to be renamed
         if existing_file.name != new_path.name:
@@ -814,7 +1224,7 @@ async def update_bottle_fields(request: Request):
             "bottle": updated_bottle.model_dump(mode='json'),
             "path": str(final_path),
             "updated_fields": list(updates.keys()),
-            "moved": existing_dir != new_dir if existing_dir != new_dir else False
+            "moved": bottle_was_moved
         }
 
     except Exception as e:
@@ -826,689 +1236,3 @@ async def update_bottle_fields(request: Request):
 # Label Quality Review Routes - Simple grid-based workflow
 # ============================================================================
 
-@router.post("/api/v1/management/labels/crop-current")
-async def crop_current_label(data: dict):
-    """
-    Crop the current label using improved detection.
-
-    Creates a preview file that can be accepted or discarded.
-    """
-    from ..app import core_config
-    from ...llm.gateway import LLMGateway
-    from ...utils.label_processor import LabelImageProcessor
-    from ...core.models import BottleMetadata
-    from pathlib import Path
-    from shutil import copyfile
-
-    try:
-        bottle_data = data.get("bottle")
-        if not bottle_data:
-            raise HTTPException(status_code=400, detail="Missing bottle data")
-
-        bottle = BottleMetadata(**bottle_data)
-
-        # Get current label path
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
-
-        label_dir = core_config.vault_path / bottle.vault_path / "labels"
-        current_label = label_dir / "label.jpg"
-        if not current_label.exists():
-            current_label = label_dir / "label.png"
-
-        if not current_label.exists():
-            raise HTTPException(status_code=404, detail="No label found")
-
-        # Create preview path in /tmp (not in vault)
-        temp_dir = get_temp_label_dir(bottle.vault_path)
-        preview_path = temp_dir / "label_preview.jpg"
-
-        # Copy current to preview
-        copyfile(current_label, preview_path)
-
-        # Crop the preview using improved detection
-        llm = LLMGateway(core_config.llm)
-        processor = LabelImageProcessor(llm)
-
-        result = processor.crop_to_label(preview_path)
-
-        if not result:
-            raise HTTPException(status_code=500, detail="Cropping failed")
-
-        return {
-            "status": "success",
-            "preview_path": str(preview_path)
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Crop current label failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/api/v1/management/labels/accept-crop")
-async def accept_label_crop(data: dict):
-    """
-    Accept the cropped preview and replace the original label.
-    """
-    from ..app import core_config
-    from ...core.models import BottleMetadata
-    from pathlib import Path
-    from shutil import copyfile
-
-    try:
-        bottle_data = data.get("bottle")
-        if not bottle_data:
-            raise HTTPException(status_code=400, detail="Missing bottle data")
-
-        bottle = BottleMetadata(**bottle_data)
-
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
-
-        label_dir = core_config.vault_path / bottle.vault_path / "labels"
-        temp_dir = get_temp_label_dir(bottle.vault_path)
-        preview_path = temp_dir / "label_preview.jpg"
-
-        if not preview_path.exists():
-            raise HTTPException(status_code=404, detail="No preview found")
-
-        # Determine current label extension
-        current_label = label_dir / "label.jpg"
-        if not current_label.exists():
-            current_label = label_dir / "label.png"
-
-        # Backup original
-        backup_path = label_dir / f"label_original_{current_label.suffix}"
-        if current_label.exists():
-            copyfile(current_label, backup_path)
-
-        # Replace with preview
-        copyfile(preview_path, current_label)
-
-        # Clean up preview
-        preview_path.unlink()
-
-        return {
-            "status": "success",
-            "message": "Cropped label accepted"
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Accept crop failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/api/v1/management/labels/download-image")
-async def download_label_image(data: dict):
-    """
-    Download image from URL and save as label_download.jpg (no cropping yet).
-    """
-    from ..app import core_config
-    from ...core.models import BottleMetadata
-    from pathlib import Path
-    import httpx
-
-    try:
-        bottle_data = data.get("bottle")
-        image_url = data.get("image_url")
-
-        logger.info(f"Download request - URL: '{image_url}' (type: {type(image_url)})")
-
-        if not bottle_data:
-            raise HTTPException(status_code=400, detail="Missing bottle data")
-
-        if not image_url:
-            raise HTTPException(status_code=400, detail="Missing image URL")
-
-        # Strip whitespace
-        image_url = str(image_url).strip()
-
-        if not image_url:
-            raise HTTPException(status_code=400, detail="Image URL is empty")
-
-        # Add protocol if missing
-        if not image_url.startswith(('http://', 'https://')):
-            logger.info(f"Adding https:// to URL: {image_url}")
-            image_url = 'https://' + image_url
-
-        logger.info(f"Final URL: {image_url}")
-
-        bottle = BottleMetadata(**bottle_data)
-
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
-
-        # Save to /tmp instead of vault
-        temp_dir = get_temp_label_dir(bottle.vault_path)
-
-        # Download image
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            response = await client.get(image_url)
-            response.raise_for_status()
-            image_bytes = response.content
-
-        # Save as downloaded image (NOT cropped) in /tmp
-        download_path = temp_dir / "label_download.jpg"
-        download_path.write_bytes(image_bytes)
-
-        return {
-            "status": "success",
-            "download_path": str(download_path)
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Download image failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/api/v1/management/labels/crop-download")
-async def crop_downloaded_image(data: dict):
-    """
-    Crop the downloaded image and save as label_download_cropped.jpg.
-    """
-    from ..app import core_config
-    from ...llm.gateway import LLMGateway
-    from ...utils.label_processor import LabelImageProcessor
-    from ...core.models import BottleMetadata
-    from pathlib import Path
-    from shutil import copyfile
-
-    try:
-        bottle_data = data.get("bottle")
-        if not bottle_data:
-            raise HTTPException(status_code=400, detail="Missing bottle data")
-
-        bottle = BottleMetadata(**bottle_data)
-
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
-
-        # Use /tmp for intermediate files
-        temp_dir = get_temp_label_dir(bottle.vault_path)
-        download_path = temp_dir / "label_download.jpg"
-
-        if not download_path.exists():
-            raise HTTPException(status_code=404, detail="No downloaded image found")
-
-        # Copy to cropped version in /tmp
-        cropped_path = temp_dir / "label_download_cropped.jpg"
-        copyfile(download_path, cropped_path)
-
-        # Crop it
-        llm = LLMGateway(core_config.llm)
-        processor = LabelImageProcessor(llm)
-        processor.crop_to_label(cropped_path)
-
-        return {
-            "status": "success",
-            "cropped_path": str(cropped_path)
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Crop download failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/api/v1/management/labels/use-downloaded")
-async def use_downloaded_label(data: dict):
-    """
-    Use either the original downloaded or cropped version as the final label.
-    """
-    from ..app import core_config
-    from ...core.models import BottleMetadata
-    from pathlib import Path
-    from shutil import copyfile
-
-    try:
-        bottle_data = data.get("bottle")
-        use_cropped = data.get("use_cropped", False)
-
-        if not bottle_data:
-            raise HTTPException(status_code=400, detail="Missing bottle data")
-
-        bottle = BottleMetadata(**bottle_data)
-
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
-
-        label_dir = core_config.vault_path / bottle.vault_path / "labels"
-        temp_dir = get_temp_label_dir(bottle.vault_path)
-
-        # Choose source from /tmp
-        if use_cropped:
-            source_path = temp_dir / "label_download_cropped.jpg"
-        else:
-            source_path = temp_dir / "label_download.jpg"
-
-        if not source_path.exists():
-            raise HTTPException(status_code=404, detail="Downloaded image not found")
-
-        # Backup current label if exists
-        current_label = label_dir / "label.jpg"
-        if not current_label.exists():
-            current_label = label_dir / "label.png"
-
-        if current_label.exists():
-            backup_path = label_dir / "label_backup.jpg"
-            copyfile(current_label, backup_path)
-
-        # Replace with chosen version (only final label.jpg goes to vault)
-        final_label = label_dir / "label.jpg"
-        copyfile(source_path, final_label)
-
-        # Clean up temp files from /tmp
-        (temp_dir / "label_download.jpg").unlink(missing_ok=True)
-        (temp_dir / "label_download_cropped.jpg").unlink(missing_ok=True)
-
-        return {
-            "status": "success",
-            "message": "Label replaced successfully"
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Use downloaded failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/api/v1/management/labels/manual-crop")
-async def manual_crop_label(data: dict):
-    """
-    Crop label using exact pixel coordinates from manual selection.
-    """
-    from ..app import core_config
-    from ...core.models import BottleMetadata
-    from pathlib import Path
-    from PIL import Image
-    from shutil import copyfile
-
-    try:
-        bottle_data = data.get("bottle")
-        x = data.get("x")
-        y = data.get("y")
-        width = data.get("width")
-        height = data.get("height")
-
-        if not bottle_data or x is None or y is None or width is None or height is None:
-            raise HTTPException(status_code=400, detail="Missing data or coordinates")
-
-        bottle = BottleMetadata(**bottle_data)
-
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
-
-        label_dir = core_config.vault_path / bottle.vault_path / "labels"
-        current_label = label_dir / "label.jpg"
-        if not current_label.exists():
-            current_label = label_dir / "label.png"
-
-        if not current_label.exists():
-            raise HTTPException(status_code=404, detail="No label found")
-
-        logger.info(f"Manual crop: x={x}, y={y}, w={width}, h={height}")
-
-        # Backup original to /tmp (not vault)
-        temp_dir = get_temp_label_dir(bottle.vault_path)
-        backup_path = temp_dir / "label_manual_backup.jpg"
-        copyfile(current_label, backup_path)
-
-        # Crop using PIL
-        img = Image.open(current_label)
-
-        # CRITICAL: Normalize EXIF orientation BEFORE cropping
-        from PIL import ImageOps
-        img = ImageOps.exif_transpose(img)
-        logger.info(f"Image size after EXIF normalization: {img.size}")
-
-        # Ensure coordinates are within image bounds
-        img_width, img_height = img.size
-        x = max(0, min(x, img_width))
-        y = max(0, min(y, img_height))
-        width = min(width, img_width - x)
-        height = min(height, img_height - y)
-
-        # Crop (left, top, right, bottom)
-        cropped = img.crop((x, y, x + width, y + height))
-
-        # Save as new label
-        final_label = label_dir / "label.jpg"
-        cropped.save(final_label, "JPEG", quality=95)
-
-        logger.info(f"Manual crop complete: {final_label}")
-
-        return {
-            "status": "success",
-            "message": "Label cropped successfully"
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Manual crop failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/api/v1/management/labels/upload-manual")
-async def upload_manual_label(file: UploadFile, bottle: str = Form()):
-    """
-    Upload a manual label image file for a bottle.
-    Saves as label_download.jpg so it can use the existing download workflow.
-    """
-    from ..app import core_config
-    from ...core.models import BottleMetadata
-    import json
-
-    try:
-        # Parse bottle data from form
-        bottle_data = json.loads(bottle)
-        bottle_obj = BottleMetadata(**bottle_data)
-
-        if not bottle_obj.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
-
-        # Save uploaded file to /tmp (not vault)
-        temp_dir = get_temp_label_dir(bottle_obj.vault_path)
-
-        # Save uploaded file as label_download.jpg in /tmp
-        download_path = temp_dir / "label_download.jpg"
-
-        # Read and save file
-        content = await file.read()
-        with open(download_path, "wb") as f:
-            f.write(content)
-
-        logger.info(f"Manual label uploaded: {download_path}")
-
-        return {
-            "status": "success",
-            "message": "Label uploaded successfully",
-            "download_path": str(download_path)
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Manual upload failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/api/v1/management/labels/manual-crop-downloaded")
-async def manual_crop_downloaded_label(data: dict):
-    """
-    Crop downloaded label image using exact pixel coordinates from manual selection.
-    Crops label_download.jpg and saves as label_download_cropped.jpg.
-    """
-    from ..app import core_config
-    from ...core.models import BottleMetadata
-    from pathlib import Path
-    from PIL import Image
-
-    try:
-        bottle_data = data.get("bottle")
-        x = data.get("x")
-        y = data.get("y")
-        width = data.get("width")
-        height = data.get("height")
-
-        if not bottle_data or x is None or y is None or width is None or height is None:
-            raise HTTPException(status_code=400, detail="Missing data or coordinates")
-
-        bottle = BottleMetadata(**bottle_data)
-
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
-
-        # Use /tmp for intermediate files
-        temp_dir = get_temp_label_dir(bottle.vault_path)
-        downloaded_label = temp_dir / "label_download.jpg"
-
-        if not downloaded_label.exists():
-            raise HTTPException(status_code=404, detail="No downloaded label found")
-
-        logger.info(f"Manual crop downloaded: x={x}, y={y}, w={width}, h={height}")
-
-        # Crop using PIL
-        img = Image.open(downloaded_label)
-
-        # CRITICAL: Normalize EXIF orientation BEFORE cropping
-        # This fixes the bug where iPhone images have rotation metadata
-        # and Cropper.js shows rotated view but PIL crops unrotated pixels
-        from PIL import ImageOps
-        img = ImageOps.exif_transpose(img)
-        logger.info(f"Image size after EXIF normalization: {img.size}")
-
-        # Ensure coordinates are within image bounds
-        img_width, img_height = img.size
-        x = max(0, min(x, img_width))
-        y = max(0, min(y, img_height))
-        width = min(width, img_width - x)
-        height = min(height, img_height - y)
-
-        # Crop (left, top, right, bottom)
-        cropped = img.crop((x, y, x + width, y + height))
-
-        # Save as cropped version in /tmp
-        cropped_label = temp_dir / "label_download_cropped.jpg"
-        cropped.save(cropped_label, "JPEG", quality=95)
-
-        logger.info(f"Manual crop downloaded complete: {cropped_label}")
-
-        return {
-            "status": "success",
-            "message": "Downloaded label cropped successfully"
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Manual crop downloaded failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Legacy routes (keep for compatibility but may remove later)
-@router.post("/api/v1/management/labels/scan")
-async def scan_label_quality(
-    background_tasks: BackgroundTasks,
-    show_all: bool = False,
-    limit: Optional[int] = None
-):
-    """
-    Scan all bottle labels and categorize them.
-
-    Args:
-        show_all: If True, return all labels including good ones
-        limit: Optional limit on number of bottles to check
-
-    Returns:
-        dict: Prioritized list of label review candidates
-    """
-    from ..app import core_config
-    from ..services.label_review_service import LabelReviewService
-    from ...llm.gateway import LLMGateway
-
-    try:
-        # Create LLM gateway from config
-        llm_gateway = LLMGateway(core_config.llm)
-        service = LabelReviewService(llm_gateway, core_config.vault_path)
-
-        # Scan labels and categorize
-        candidates = await service.scan_all_labels(
-            show_all=show_all,
-            limit=limit
-        )
-
-        logger.info(f"Found {len(candidates)} labels in review queue")
-
-        # For labels needing replacement, search for new images
-        for candidate in candidates:
-            if candidate.status == "needs_replacement":
-                try:
-                    search_results = await service.search_replacement_images(candidate)
-                    candidate.search_results = search_results
-                except Exception as e:
-                    logger.error(f"Failed to search replacement images: {e}")
-                    continue
-
-        # Return candidates as JSON
-        return {
-            "candidates": [c.to_dict() for c in candidates],
-            "count": len(candidates),
-            "stats": {
-                "needs_replacement": sum(1 for c in candidates if c.status == "needs_replacement"),
-                "needs_cropping": sum(1 for c in candidates if c.status == "needs_cropping"),
-                "good": sum(1 for c in candidates if c.status == "good")
-            }
-        }
-
-    except Exception as e:
-        logger.error(f"Label scan failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/api/v1/management/labels/accept")
-async def accept_improved_label(data: dict):
-    """
-    Accept improved label crop and replace original.
-
-    Args:
-        data: dict with 'bottle' field containing bottle metadata
-
-    Returns:
-        dict: Success status
-    """
-    from ..app import core_config
-    from ..services.label_review_service import LabelReviewService
-    from ...llm.gateway import LLMGateway
-
-    try:
-        # Parse bottle from request
-        bottle_data = data.get("bottle")
-        if not bottle_data:
-            raise HTTPException(status_code=400, detail="Missing bottle data")
-
-        bottle = BottleMetadata(**bottle_data)
-
-        # Create LLM gateway from config
-        llm_gateway = LLMGateway(core_config.llm)
-        service = LabelReviewService(llm_gateway, core_config.vault_path)
-
-        success = await service.accept_improved_label(bottle)
-
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to accept improved label")
-
-        return {
-            "status": "success",
-            "message": "Improved label accepted"
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to accept improved label: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/api/v1/management/labels/keep")
-async def keep_original_label(data: dict):
-    """
-    Keep original label and discard improved version.
-
-    Args:
-        data: dict with 'bottle' field containing bottle metadata
-
-    Returns:
-        dict: Success status
-    """
-    from ..app import core_config
-    from ..services.label_review_service import LabelReviewService
-    from ...llm.gateway import LLMGateway
-
-    try:
-        # Parse bottle from request
-        bottle_data = data.get("bottle")
-        if not bottle_data:
-            raise HTTPException(status_code=400, detail="Missing bottle data")
-
-        bottle = BottleMetadata(**bottle_data)
-
-        # Create LLM gateway from config
-        llm_gateway = LLMGateway(core_config.llm)
-        service = LabelReviewService(llm_gateway, core_config.vault_path)
-
-        success = await service.keep_original_label(bottle)
-
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to keep original")
-
-        return {
-            "status": "success",
-            "message": "Original label kept"
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to keep original label: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/api/v1/labels/view")
-async def view_label_image(path: str):
-    """
-    Serve a label image for viewing.
-
-    Args:
-        path: Path to label image
-
-    Returns:
-        FileResponse: The image file
-    """
-    from pathlib import Path
-
-    try:
-        image_path = Path(path)
-
-        if not image_path.exists():
-            raise HTTPException(status_code=404, detail="Image not found")
-
-        # Security check - ensure path is within vault or temp directory
-        # (prevents directory traversal attacks)
-        from ..app import core_config
-        vault_path = core_config.vault_path
-        temp_path = Path("/tmp/reserve-automation")
-
-        resolved_path = image_path.resolve()
-        is_in_vault = False
-        is_in_temp = False
-
-        try:
-            resolved_path.relative_to(vault_path.resolve())
-            is_in_vault = True
-        except ValueError:
-            pass
-
-        try:
-            resolved_path.relative_to(temp_path.resolve())
-            is_in_temp = True
-        except ValueError:
-            pass
-
-        if not (is_in_vault or is_in_temp):
-            raise HTTPException(status_code=403, detail="Access denied")
-
-        return FileResponse(
-            image_path,
-            media_type="image/jpeg" if image_path.suffix.lower() == ".jpg" else "image/png"
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to serve label image: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))

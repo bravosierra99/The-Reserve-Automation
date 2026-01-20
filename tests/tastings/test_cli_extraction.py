@@ -12,12 +12,13 @@ Tests LLM extraction reliability:
 """
 
 import json
+import pytest
 import subprocess
 import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-FIXTURES_DIR = PROJECT_ROOT / "tests" / "fixtures" / "extraction"
+FIXTURES_DIR = PROJECT_ROOT / "tests" / "fixtures" / "tasting_cards"
 
 
 def run_extraction(image_path, template=None, dry_run=True):
@@ -33,6 +34,12 @@ def run_extraction(image_path, template=None, dry_run=True):
 
     print(f"   Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=PROJECT_ROOT)
+
+    # Debug output
+    if result.returncode != 0:
+        print(f"   ERROR: Exit code {result.returncode}")
+        print(f"   Stdout (last 1500 chars): {result.stdout[-1500:] if result.stdout else 'empty'}")
+        print(f"   Stderr: {result.stderr[-500:] if result.stderr else 'empty'}")
 
     return {
         "exit_code": result.returncode,

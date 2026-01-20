@@ -9,6 +9,7 @@ from PIL import Image
 
 from ..core.models import BottleMetadata
 from ..llm import LLMGateway
+from ..llm.response_parser import LLMResponseParser
 
 
 class ImageMetadataExtractor:
@@ -73,7 +74,7 @@ Return a JSON object with this exact structure:
   "producer": "brand or company name",
   "name": "product name",
   "year": "year if visible, otherwise null",
-  "type": "full product description from label",
+  "type": "specific beverage type (e.g., Bourbon, Red Wine, Single Malt Scotch, Reposado Tequila) - max 80 characters",
   "beverage_type": "wine OR whiskey OR vodka OR gin OR rum OR tequila OR brandy OR other",
   "alcohol": "alcohol content if shown",
   "region": "location if shown",
@@ -125,8 +126,11 @@ Return only the JSON, nothing else."""
             logger.debug(response.content)
             logger.debug("=" * 80)
 
-            # Parse JSON response
-            extracted_data = self._parse_extraction_response(response.content)
+            # Parse JSON response with robust error handling
+            extracted_data = LLMResponseParser.safe_parse_json(
+                response.content,
+                context="image extraction"
+            )
 
             if extracted_data:
                 logger.debug("=" * 80)
@@ -160,34 +164,6 @@ Return only the JSON, nothing else."""
             logger.error(f"Image extraction failed: {e}")
             return None, {"error": str(e)}
 
-    def _parse_extraction_response(self, response_text: str) -> Optional[dict]:
-        """
-        Parse vision LLM extraction response.
-
-        Args:
-            response_text: Raw LLM response
-
-        Returns:
-            Dictionary with extracted data, or None if parsing fails
-        """
-        try:
-            # Extract JSON from response
-            json_start = response_text.find("{")
-            json_end = response_text.rfind("}") + 1
-
-            if json_start < 0 or json_end <= json_start:
-                logger.error("No JSON found in extraction response")
-                return None
-
-            json_str = response_text[json_start:json_end]
-            data = json.loads(json_str)
-
-            return data
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse extraction JSON: {e}")
-            logger.debug(f"Response was: {response_text}")
-            return None
 
     async def _infer_beverage_type(self, extracted_data: dict) -> str:
         """
@@ -434,16 +410,41 @@ Return only the JSON, nothing else."""
 
                     logger.debug(f"Parsed alcohol '{alcohol_str}' -> ABV: {abv}%, Proof: {proof}")
 
-        # Build bottle metadata
+        # Build bottle metadata with robust field sanitization
         bottle_data = {
-            "producer": extracted_data.get("producer", "Unknown Producer"),
-            "name": extracted_data.get("name", "Unknown"),
+            "producer": LLMResponseParser.sanitize_string(
+                extracted_data.get("producer"),
+                max_length=200,
+                field_name="producer",
+                default="Unknown Producer"
+            ),
+            "name": LLMResponseParser.sanitize_string(
+                extracted_data.get("name"),
+                max_length=200,
+                field_name="name",
+                default="Unknown"
+            ),
             "year": year,
             "type": beverage_type,
-            "beverage_type": extracted_data.get("type"),
-            "country": extracted_data.get("country"),
-            "region": extracted_data.get("region"),
-            "variety": extracted_data.get("variety"),
+            "beverage_type": LLMResponseParser.sanitize_string(
+                extracted_data.get("type"),
+                max_length=100,
+                field_name="beverage_type"
+            ),
+            "country": LLMResponseParser.sanitize_string(
+                extracted_data.get("country"),
+                max_length=100,
+                field_name="country"
+            ),
+            "region": LLMResponseParser.sanitize_string(
+                extracted_data.get("region"),
+                max_length=200,
+                field_name="region"
+            ),
+            "variety": LLMResponseParser.sanitize_string(
+                extracted_data.get("variety"),
+                field_name="variety"
+            ),
             "abv": abv,
             "proof": proof,
             "price": 0.0,  # Will be enriched or set by user
@@ -457,13 +458,36 @@ Return only the JSON, nothing else."""
         logger.info(f"  type: '{bottle_data['type']}'")
 
         if not extracted_data.get("producer") or not extracted_data.get("name"):
-            logger.error("=" * 80)
-            logger.error("EXTRACTION PROBLEM: LLM returned empty producer or name!")
-            logger.error("This usually means:")
-            logger.error("  1. LM Studio is not running")
-            logger.error("  2. The vision model can't read text from images")
-            logger.error("  3. The model returned malformed JSON")
-            logger.error("Check the PARSED EXTRACTION DATA above to see what was extracted")
-            logger.error("=" * 80)
+            logger.warning("=" * 80)
+            logger.warning("EXTRACTION PROBLEM: LLM returned empty producer or name!")
+            logger.warning("This usually means:")
+            logger.warning("  1. LM Studio is not running")
+            logger.warning("  2. The vision model can't read text from images")
+            logger.warning("  3. The model returned malformed JSON")
+            logger.warning("Check the PARSED EXTRACTION DATA above to see what was extracted")
+            logger.warning("Using default values to continue...")
+            logger.warning("=" * 80)
 
-        return BottleMetadata(**bottle_data)
+        # Create bottle with robust error handling
+        bottle = LLMResponseParser.safe_model_create(
+            BottleMetadata,
+            bottle_data,
+            context="image extraction",
+            required_defaults={
+                "producer": "Unknown Producer",
+                "name": "Unknown",
+                "type": "other"
+            }
+        )
+
+        if not bottle:
+            logger.error("Failed to create BottleMetadata even with sanitized data")
+            # Return a minimal valid bottle as last resort
+            bottle = BottleMetadata(
+                producer="Unknown Producer",
+                name="Unknown",
+                type="other",
+                source=f"image:{image_path.name}"
+            )
+
+        return bottle

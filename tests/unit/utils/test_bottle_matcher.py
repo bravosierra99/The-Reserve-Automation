@@ -33,6 +33,8 @@ fileClass: Wine
 Winemaker: Caymus
 WineName: Cabernet Sauvignon
 Vintage: 2019
+Inventory: 1
+Buy: 0
 ---
 """)
     
@@ -44,6 +46,8 @@ fileClass: Wine
 Winemaker: Chateau Margaux
 WineName: Pavillon Rouge
 Vintage: 2015
+Inventory: 1
+Buy: 0
 ---
 """)
     
@@ -60,6 +64,8 @@ Distiller: Buffalo Trace
 WhiskeyName: George T Stagg
 Year: 2022
 Proof: 130.4
+Inventory: 1
+Buy: 0
 ---
 """)
     
@@ -71,6 +77,8 @@ fileClass: Whiskey
 Distiller: Buffalo Trace
 WhiskeyName: Bourbon
 Proof: 90
+Inventory: 1
+Buy: 0
 ---
 """)
     
@@ -348,6 +356,8 @@ fileClass: Wine
 Winemaker: Château Margaux
 WineName: Merlot
 Vintage: 2020
+Inventory: 1
+Buy: 0
 ---
 """)
         
@@ -371,6 +381,8 @@ fileClass: Wine
 Winemaker: Caymus
 WineName: Cabernet Sauvignon
 Vintage: 2020
+Inventory: 1
+Buy: 0
 ---
 """)
         

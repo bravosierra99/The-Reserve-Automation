@@ -55,6 +55,41 @@ class VaultReader:
         logger.info(f"Read {len(bottles)} bottles from vault")
         return bottles
 
+    def read_bottle(self, file_path: Path) -> Optional[BottleMetadata]:
+        """
+        Read a single bottle from a file path.
+
+        Args:
+            file_path: Absolute or relative path to bottle markdown file
+
+        Returns:
+            BottleMetadata or None if parsing fails
+        """
+        # Ensure absolute path
+        if not file_path.is_absolute():
+            file_path = self.vault_path / file_path
+
+        # Determine bottle type from path
+        bottle_type = None
+        try:
+            relative_path = file_path.relative_to(self.vault_path)
+            first_part = str(relative_path).split('/')[0]
+            if first_part == "1_Wines":
+                bottle_type = "wine"
+            elif first_part == "1_Whiskeys":
+                bottle_type = "whiskey"
+            else:
+                logger.error(f"Cannot determine bottle type from path: {file_path}")
+                return None
+        except ValueError:
+            logger.error(f"File path is not within vault: {file_path}")
+            return None
+
+        # Get bottle directory
+        bottle_dir = file_path.parent
+
+        return self._parse_bottle_file(file_path, bottle_type, bottle_dir)
+
     def _read_bottles_from_dir(self, directory: Path, bottle_type: str) -> list[BottleMetadata]:
         """
         Read bottles from a directory.
@@ -119,7 +154,7 @@ class VaultReader:
                     value = value.strip()
 
                     # Clean up values
-                    if value in ['', '""', "''", '--']:
+                    if value in ['', '""', "''", '--', 'None']:
                         value = None
                     elif value.startswith('"') and value.endswith('"'):
                         value = value[1:-1]
@@ -192,6 +227,23 @@ class VaultReader:
         # e.g., "1_Whiskeys/Rare character - American light whiskey - 2025"
         vault_path = str(bottle_dir.relative_to(self.vault_path))
 
+        # Parse numeric fields
+        def parse_float(value):
+            if value:
+                try:
+                    return float(value)
+                except (ValueError, TypeError):
+                    return None
+            return None
+
+        def parse_int(value):
+            if value:
+                try:
+                    return int(value)
+                except (ValueError, TypeError):
+                    return None
+            return None
+
         # Build BottleMetadata
         bottle_data = {
             "producer": producer or "Unknown",
@@ -204,40 +256,46 @@ class VaultReader:
             "price": price,
             "source": "vault",
             "vault_path": vault_path,
+            # Common fields
+            "purchase_source": metadata.get("PurchaseSource"),
+            "purchase_link": metadata.get("PurchaseLink"),
+            "inventory": parse_int(metadata.get("Inventory")),
+            "buy": parse_int(metadata.get("Buy")),
+            "stars": metadata.get("Stars"),
+            "value_for_money": parse_float(metadata.get("ValueForMoney")),
+            "points": metadata.get("Points"),
         }
 
         # Wine-specific fields
         if bottle_type == "wine":
             bottle_data["variety"] = metadata.get("Variety")
             bottle_data["vineyard"] = metadata.get("Vineyard")
-
-            # Parse ABV for wine
-            abv_str = metadata.get("ABV")
-            if abv_str:
-                try:
-                    bottle_data["abv"] = float(abv_str)
-                except (ValueError, TypeError):
-                    pass
+            bottle_data["style"] = metadata.get("Style")
+            bottle_data["abv"] = parse_float(metadata.get("ABV"))
 
         # Whiskey-specific fields
         elif bottle_type == "whiskey":
+            # Parse age statement - extract first number from strings like "6+ years", "15", "NAS"
+            age_str = metadata.get("AgeStatement")
+            age_statement = None
+            if age_str and age_str not in ["NAS", "N/A"]:
+                try:
+                    # Try to parse as int directly
+                    age_statement = int(age_str)
+                except ValueError:
+                    # Extract first number from strings like "6+ years"
+                    import re
+                    match = re.search(r'\d+', age_str)
+                    if match:
+                        age_statement = int(match.group())
+
+            bottle_data["age_statement"] = age_statement
             bottle_data["mash_bill"] = metadata.get("MashBill")
             bottle_data["barrel_type"] = metadata.get("BarrelType")
-
-            # Try to parse proof
-            proof_str = metadata.get("Proof")
-            if proof_str:
-                try:
-                    bottle_data["proof"] = float(proof_str)
-                except (ValueError, TypeError):
-                    pass
-
-            # Parse ABV for whiskey (in addition to proof)
-            abv_str = metadata.get("ABV")
-            if abv_str:
-                try:
-                    bottle_data["abv"] = float(abv_str)
-                except (ValueError, TypeError):
-                    pass
+            bottle_data["batch_number"] = metadata.get("BatchNumber")
+            bottle_data["bottle_number"] = metadata.get("BottleNumber")
+            bottle_data["bottle_opened_date"] = metadata.get("BottleOpenedDate")
+            bottle_data["proof"] = parse_float(metadata.get("Proof"))
+            bottle_data["abv"] = parse_float(metadata.get("ABV"))
 
         return BottleMetadata(**bottle_data)

@@ -3,6 +3,15 @@
 {% block title %}Upload - The Reserve{% endblock %}
 
 {% block content %}
+<!-- Cropper.js for manual label cropping -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+
+<!-- Include modal dependencies -->
+{% set cache_bust = range(1, 100000000) | random %}
+<script src="{{ url_for('static', path='/js/components/cropper-manager.js') }}?t={{ cache_bust }}"></script>
+<script src="{{ url_for('static', path='/js/components/bottle-editor-modal.js') }}?t={{ cache_bust }}"></script>
+
 <style>
     /* Prevent iOS scroll jump on dynamic content load */
     html {
@@ -220,12 +229,12 @@
         <!-- Uploading state -->
         <div x-show="uploading" class="text-center py-8">
             <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
-            <p class="text-gray-600 text-lg">Processing your tasting card...</p>
+            <p class="text-gray-600 text-lg" x-text="uploadType === 'tasting_card' ? 'Extracting tasting notes...' : (uploadType === 'manifest' ? 'Extracting bottle manifest...' : 'Extracting bottle data...')"></p>
             <p class="text-gray-500 text-sm mt-2">This may take 5-10 seconds</p>
         </div>
 
-        <!-- Success state -->
-        <div x-show="uploadComplete" class="text-center py-8">
+        <!-- Success state (tasting cards only - bottles open modal directly) -->
+        <div x-show="uploadComplete && uploadType === 'tasting_card'" class="text-center py-8">
             <div class="text-green-600 text-6xl mb-4">&#10003;</div>
             <h3 class="text-2xl font-bold text-gray-800 mb-2">Extraction Complete!</h3>
             <p class="text-gray-600 mb-4" x-text="uploadType === 'tasting_card' ? 'Found ' + tastingsCount + ' tasting(s)' : 'Found ' + bottlesCount + ' bottle(s)'"></p>
@@ -258,17 +267,24 @@
             </button>
         </div>
     </div>
+
+    <!-- Include Bottle Editor Modal (must be inside x-data context) -->
+    {% include 'components/bottle_editor_modal.html' %}
 </div>
 
 <script>
 function uploadForm() {
     return {
+        // Bottle editor will be initialized in init()
+        bottleEditor: null,
         uploadType: null,  // 'tasting_card' or 'bottle'
         selectedFile: null,
         previewUrl: null,
         uploading: false,
         uploadComplete: false,
         extractionId: null,
+        uploadId: null,  // For bottle uploads
+        bottles: [],  // Extracted bottles
         tastingsCount: 0,
         bottlesCount: 0,
         error: false,
@@ -279,6 +295,9 @@ function uploadForm() {
         imageLoadHandled: false,  // Flag to ensure we only auto-scroll once
 
         init() {
+            // Initialize bottle editor modal after all scripts have loaded
+            this.bottleEditor = window.bottleEditorModal ? window.bottleEditorModal() : {};
+
             // Prevent iOS scroll restoration on page load
             if ('scrollRestoration' in history) {
                 history.scrollRestoration = 'manual';
@@ -313,6 +332,9 @@ function uploadForm() {
             this.previewUrl = null;
             this.$refs.fileInput.value = '';
             this.imageLoadHandled = false;  // Reset flag
+            this.uploadComplete = false;  // Reset upload complete state
+            this.bottlesCount = 0;  // Reset bottle count
+            this.tastingsCount = 0;  // Reset tasting count
         },
 
         clearError() {
@@ -326,6 +348,8 @@ function uploadForm() {
 
             this.uploading = true;
             this.error = false;
+            this.uploadComplete = false;  // Reset state from previous uploads
+            this.bottlesCount = 0;
 
             const formData = new FormData();
             formData.append('file', this.selectedFile);
@@ -367,15 +391,50 @@ function uploadForm() {
 
                 const result = await response.json();
 
-                this.extractionId = result.extraction_id;
+                console.log('Full response from server:', JSON.stringify(result));
 
                 if (this.uploadType === 'tasting_card') {
+                    // Tasting card flow - redirect to review page
+                    this.extractionId = result.extraction_id;
                     this.tastingsCount = result.tastings_count || 0;
+                    this.uploadComplete = true;
                 } else {
-                    this.bottlesCount = result.bottles_count || 0;
-                }
+                    // Bottle upload - open modal immediately (no redirect)
+                    this.uploadId = result.upload_id;
+                    this.bottles = result.bottles || [];
+                    this.bottlesCount = this.bottles.length;
 
-                this.uploadComplete = true;
+                    console.log('Upload response:', JSON.stringify(result));
+                    console.log('upload_id:', result.upload_id);
+                    console.log('bottles array:', result.bottles);
+                    console.log('Bottles extracted:', this.bottles.length);
+                    console.log('bottleEditor exists:', !!this.bottleEditor);
+                    console.log('bottleEditor.openUpload exists:', !!this.bottleEditor?.openUpload);
+
+                    if (this.bottles.length === 0) {
+                        throw new Error('No bottles extracted from image');
+                    }
+
+                    if (!this.bottleEditor || !this.bottleEditor.openUpload) {
+                        throw new Error('Bottle editor not initialized. Please refresh the page.');
+                    }
+
+                    if (this.bottles.length === 1) {
+                        // Single bottle - open modal directly
+                        this.bottleEditor.openUpload(this.bottles[0], this.uploadId, null);
+                    } else if (this.bottles.length > 1) {
+                        // Multiple bottles - open modal with navigation
+                        this.bottleEditor.openUpload(
+                            this.bottles[0],
+                            this.uploadId,
+                            { bottles: this.bottles, currentIndex: 0 }
+                        );
+                    }
+
+                    // Don't show uploadComplete - modal is handling everything
+                    this.clearFile();
+                    this.uploadType = null;
+                }
             } catch (err) {
                 this.error = true;
                 this.errorMessage = err.message || 'Failed to upload file. Please try again.';

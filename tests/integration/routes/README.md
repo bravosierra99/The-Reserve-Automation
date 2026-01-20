@@ -4,12 +4,40 @@
 
 This directory contains API contract tests for web route handlers. These tests verify endpoint contracts, request/response schemas, error handling, and authentication requirements.
 
-**Status**: Week 3 Complete ✅  
-**Tests Created**: 21 tests (across 2 files)  
-**Tests Passing**: 21/21 (100%) ✅✅✅  
+**Status**: Week 3 Complete + Management Tests ✅
+**Tests Created**: 27 tests (across 3 files)
+**Tests Passing**: 27/27 (100%) ✅✅✅
 **Target**: 25 tests with >80% passing rate ✅ ACHIEVED
 
 ## Files
+
+### `test_management_routes.py` (6 tests) ⭐ NEW & CRITICAL
+
+Tests API contracts for bottle management workflow (load from vault → edit → save back to vault).
+
+**Test Categories**:
+- **Bottle Loading** (2 tests) - Load all bottles from vault, search bottles
+- **Bottle Updates** (3 tests) - Update bottle fields, verify metadata, rename directories
+- **Tasting Summaries** (1 test) - Get tasting statistics for bottles
+
+**Key Endpoints Tested**:
+- `GET /api/v1/management/bottles` - Load all bottles from vault
+- `GET /api/v1/management/bottles/search` - Search bottles by name/producer
+- `POST /api/v1/management/bottles/update-fields` - **Update bottle (WRITES TO VAULT)**
+- `POST /api/v1/management/bottles/{id}/verify` - Verify/enrich bottle metadata
+- `POST /api/v1/management/bottles/tastings-summary` - Get tasting statistics
+
+**WHY THIS IS CRITICAL:**
+After a refactor broke all management imports and template paths, we realized there were NO integration tests for the management update workflow. Only the search endpoint (read-only) was tested. This meant:
+- Import errors weren't caught (wrong number of `...` in relative imports)
+- Template path errors weren't caught (wrong number of `.parent` calls)
+- File writing failures weren't detected
+
+**These tests actually write to the vault and verify files changed.** They would have caught the issues immediately.
+
+**Status**: All 6 tests passing! ✅
+
+See `../../TESTING_GAP_ANALYSIS.md` for the full post-mortem.
 
 ### `test_tasting_routes.py` (11 tests)
 Tests API contracts for tasting upload and review workflows.
@@ -135,9 +163,10 @@ Tests use lightweight mocking:
 
 | File | Tests | Purpose |
 |------|-------|---------|
+| test_management_routes.py | 6 | **Management workflow (WRITES TO VAULT)** ⭐ |
 | test_tasting_routes.py | 11 | Tasting upload/review API contracts |
 | test_event_routes.py | 10 | Event system API contracts |
-| **Total** | **21** | **Complete API contract coverage** |
+| **Total** | **27** | **Complete API contract coverage** |
 
 ### Critical Validations
 
@@ -173,8 +202,36 @@ When adding new API endpoints:
 2. **Test authentication** if endpoint is protected
 3. **Test request validation** for required fields
 4. **Test error responses** (404, 422, 401)
-5. **Run tests** to verify all pass
-6. **Update documentation** if adding new test categories
+5. **CRITICAL: If endpoint writes to disk, test the side effect**
+   - Don't just check `status_code == 200`
+   - Verify the file was actually written/modified
+   - Verify directories were created/renamed
+   - Example:
+     ```python
+     # Bad: Only tests response
+     assert response.status_code == 200
+
+     # Good: Tests actual side effect
+     assert response.status_code == 200
+     vault_file = tmp_path / "vault" / bottle["vault_path"] / "bottle.md"
+     assert vault_file.exists()
+     assert "Price: 150" in vault_file.read_text()
+     ```
+6. **Run tests** to verify all pass
+7. **Update documentation** if adding new test categories
+
+### LESSON LEARNED: Test Write Operations
+
+The management route refactor taught us:
+- Testing read-only endpoints (like `/search`) doesn't catch import/path errors
+- Write operations require end-to-end tests that verify disk changes
+- "Endpoint returns 200" ≠ "Feature works correctly"
+
+**If users can modify data in the UI, you MUST have a test that:**
+1. Loads the data via API
+2. Modifies it via API
+3. Verifies the change on disk
+4. (Optionally) Reloads and verifies persistence
 
 ## Resources
 

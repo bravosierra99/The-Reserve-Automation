@@ -2,6 +2,10 @@
 
 {% block title %}Manual Tasting - The Reserve{% endblock %}
 
+{% block head %}
+<script src="/static/js/components/tasting-form-mixin.js"></script>
+{% endblock %}
+
 {% block content %}
 <div x-data="manualTastingWizard()" x-init="init()" class="max-w-4xl mx-auto px-4 py-6">
     <!-- Loading state -->
@@ -23,8 +27,16 @@
     <div x-show="!loading && !error" class="space-y-6">
         <!-- Header -->
         <div class="bg-white rounded-lg shadow-md p-6">
-            <h1 class="text-3xl font-bold text-gray-800 mb-2">Manual Tasting Entry</h1>
-            <p class="text-gray-600">Enter a tasting manually using the wizard below</p>
+            <div class="flex justify-between items-start">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-800 mb-2">Manual Tasting Entry</h1>
+                    <p class="text-gray-600">Enter a tasting manually using the wizard below</p>
+                </div>
+                <button @click="cancelWizard()"
+                        class="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 font-semibold rounded-lg transition-colors">
+                    Cancel
+                </button>
+            </div>
         </div>
 
         <!-- Progress indicator -->
@@ -275,306 +287,8 @@
                     </div>
                 </div>
 
-                <!-- Scoring Sliders - Wine -->
-                <div x-show="beverageType === 'wine'" class="space-y-4">
-                    <h3 class="text-lg font-bold text-gray-800 mb-3">AWS 20-Point Scoring</h3>
-
-                    <!-- Appearance -->
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <label class="text-sm font-semibold text-gray-700">Appearance (0-3)</label>
-                            <span class="text-lg font-bold text-blue-600" x-text="tastingData.wine_appearance?.toFixed(1) || '0.0'"></span>
-                        </div>
-                        <input type="range"
-                               x-model.number="tastingData.wine_appearance"
-                               min="0"
-                               max="3"
-                               step="0.5"
-                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                    </div>
-
-                    <!-- Aroma -->
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <label class="text-sm font-semibold text-gray-700">Aroma (0-6)</label>
-                            <span class="text-lg font-bold text-blue-600" x-text="tastingData.wine_aroma?.toFixed(1) || '0.0'"></span>
-                        </div>
-                        <input type="range"
-                               x-model.number="tastingData.wine_aroma"
-                               min="0"
-                               max="6"
-                               step="0.5"
-                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                    </div>
-
-                    <!-- Taste -->
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <label class="text-sm font-semibold text-gray-700">Taste (0-6)</label>
-                            <span class="text-lg font-bold text-blue-600" x-text="tastingData.wine_taste?.toFixed(1) || '0.0'"></span>
-                        </div>
-                        <input type="range"
-                               x-model.number="tastingData.wine_taste"
-                               min="0"
-                               max="6"
-                               step="0.5"
-                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                    </div>
-
-                    <!-- Aftertaste -->
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <label class="text-sm font-semibold text-gray-700">Aftertaste (0-3)</label>
-                            <span class="text-lg font-bold text-blue-600" x-text="tastingData.wine_aftertaste?.toFixed(1) || '0.0'"></span>
-                        </div>
-                        <input type="range"
-                               x-model.number="tastingData.wine_aftertaste"
-                               min="0"
-                               max="3"
-                               step="0.5"
-                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                    </div>
-
-                    <!-- Overall -->
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <label class="text-sm font-semibold text-gray-700">Overall (0-2)</label>
-                            <span class="text-lg font-bold text-blue-600" x-text="tastingData.wine_overall?.toFixed(1) || '0.0'"></span>
-                        </div>
-                        <input type="range"
-                               x-model.number="tastingData.wine_overall"
-                               min="0"
-                               max="2"
-                               step="0.5"
-                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                    </div>
-
-                    <!-- Total Score Display -->
-                    <div class="bg-blue-50 border border-blue-300 rounded-lg p-4">
-                        <p class="text-sm font-semibold text-gray-700">AWS Score: <span class="text-2xl font-bold text-blue-600" x-text="totalWineScore.toFixed(1)"></span> / 20</p>
-                        <p class="text-sm text-gray-600">100pt Scale: <span class="font-bold" x-text="wine100ptScore.toFixed(1)"></span></p>
-                    </div>
-                </div>
-
-                <!-- Scoring Sliders - Whiskey -->
-                <div x-show="beverageType === 'whiskey'" class="space-y-4">
-                    <h3 class="text-lg font-bold text-gray-800 mb-3">10-Point Scoring</h3>
-
-                    <!-- Nose -->
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <label class="text-sm font-semibold text-gray-700">Nose (0-3)</label>
-                            <span class="text-lg font-bold text-blue-600" x-text="tastingData.whiskey_nose?.toFixed(1) || '0.0'"></span>
-                        </div>
-                        <input type="range"
-                               x-model.number="tastingData.whiskey_nose"
-                               min="0"
-                               max="3"
-                               step="0.1"
-                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                    </div>
-
-                    <!-- Palate -->
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <label class="text-sm font-semibold text-gray-700">Palate (0-3)</label>
-                            <span class="text-lg font-bold text-blue-600" x-text="tastingData.whiskey_palate?.toFixed(1) || '0.0'"></span>
-                        </div>
-                        <input type="range"
-                               x-model.number="tastingData.whiskey_palate"
-                               min="0"
-                               max="3"
-                               step="0.1"
-                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                    </div>
-
-                    <!-- Finish -->
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <label class="text-sm font-semibold text-gray-700">Finish (0-3)</label>
-                            <span class="text-lg font-bold text-blue-600" x-text="tastingData.whiskey_finish?.toFixed(1) || '0.0'"></span>
-                        </div>
-                        <input type="range"
-                               x-model.number="tastingData.whiskey_finish"
-                               min="0"
-                               max="3"
-                               step="0.1"
-                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                    </div>
-
-                    <!-- Overall -->
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <label class="text-sm font-semibold text-gray-700">Overall (0-1)</label>
-                            <span class="text-lg font-bold text-blue-600" x-text="tastingData.whiskey_overall?.toFixed(1) || '0.0'"></span>
-                        </div>
-                        <input type="range"
-                               x-model.number="tastingData.whiskey_overall"
-                               min="0"
-                               max="1"
-                               step="0.1"
-                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-                    </div>
-
-                    <!-- Total Score Display -->
-                    <div class="bg-blue-50 border border-blue-300 rounded-lg p-4">
-                        <p class="text-sm font-semibold text-gray-700">Total Score: <span class="text-2xl font-bold text-blue-600" x-text="totalWhiskeyScore.toFixed(1)"></span> / 10</p>
-                    </div>
-                </div>
-
-                <!-- Wine Tasting Notes -->
-                <div x-show="beverageType === 'wine'" class="space-y-4">
-                    <h3 class="text-lg font-bold text-gray-800 mb-3">Tasting Notes</h3>
-
-                    <!-- Appearance Notes -->
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Appearance Notes</label>
-                        <input type="text"
-                               x-model="appearanceNotesInput"
-                               @keydown.enter="addAppearanceNote()"
-                               placeholder="Type a note and press Enter (e.g., ruby, clear, deep)"
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <div x-show="tastingData.appearance_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-                            <template x-for="(note, index) in tastingData.appearance_notes" :key="index">
-                                <span class="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-                                    <span x-text="note"></span>
-                                    <button @click="removeAppearanceNote(index)" class="ml-2 text-purple-600 hover:text-purple-800">&times;</button>
-                                </span>
-                            </template>
-                        </div>
-                    </div>
-
-                    <!-- Aroma Notes -->
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Aroma Notes</label>
-                        <input type="text"
-                               x-model="aromaNotesInput"
-                               @keydown.enter="addAromaNote()"
-                               placeholder="Type a note and press Enter (e.g., cherry, oak, vanilla)"
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <div x-show="tastingData.nose_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-                            <template x-for="(note, index) in tastingData.nose_notes" :key="index">
-                                <span class="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                                    <span x-text="note"></span>
-                                    <button @click="removeAromaNote(index)" class="ml-2 text-blue-600 hover:text-blue-800">&times;</button>
-                                </span>
-                            </template>
-                        </div>
-                    </div>
-
-                    <!-- Taste Notes -->
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Taste Notes</label>
-                        <input type="text"
-                               x-model="tasteNotesInput"
-                               @keydown.enter="addTasteNote()"
-                               placeholder="Type a note and press Enter"
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <div x-show="tastingData.palate_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-                            <template x-for="(note, index) in tastingData.palate_notes" :key="index">
-                                <span class="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                                    <span x-text="note"></span>
-                                    <button @click="removeTasteNote(index)" class="ml-2 text-green-600 hover:text-green-800">&times;</button>
-                                </span>
-                            </template>
-                        </div>
-                    </div>
-
-                    <!-- Aftertaste Notes -->
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Aftertaste Notes</label>
-                        <input type="text"
-                               x-model="aftertasteNotesInput"
-                               @keydown.enter="addAftertasteNote()"
-                               placeholder="Type a note and press Enter"
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <div x-show="tastingData.finish_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-                            <template x-for="(note, index) in tastingData.finish_notes" :key="index">
-                                <span class="inline-flex items-center px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">
-                                    <span x-text="note"></span>
-                                    <button @click="removeAftertasteNote(index)" class="ml-2 text-orange-600 hover:text-orange-800">&times;</button>
-                                </span>
-                            </template>
-                        </div>
-                    </div>
-
-                    <!-- Overall Impression -->
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Overall Impression</label>
-                        <textarea x-model="tastingData.overall_notes"
-                                  rows="4"
-                                  placeholder="Your overall thoughts about this wine..."
-                                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"></textarea>
-                    </div>
-                </div>
-
-                <!-- Whiskey Tasting Notes -->
-                <div x-show="beverageType === 'whiskey'" class="space-y-4">
-                    <h3 class="text-lg font-bold text-gray-800 mb-3">Tasting Notes</h3>
-
-                    <!-- Nose Notes -->
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Nose Notes</label>
-                        <input type="text"
-                               x-model="noseNotesInput"
-                               @keydown.enter="addNoseNote()"
-                               placeholder="Type a note and press Enter (e.g., vanilla, oak, cherry)"
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <div x-show="tastingData.nose_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-                            <template x-for="(note, index) in tastingData.nose_notes" :key="index">
-                                <span class="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                                    <span x-text="note"></span>
-                                    <button @click="removeNoseNote(index)" class="ml-2 text-blue-600 hover:text-blue-800">&times;</button>
-                                </span>
-                            </template>
-                        </div>
-                    </div>
-
-                    <!-- Palate Notes -->
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Palate Notes</label>
-                        <input type="text"
-                               x-model="palateNotesInput"
-                               @keydown.enter="addPalateNote()"
-                               placeholder="Type a note and press Enter"
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <div x-show="tastingData.palate_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-                            <template x-for="(note, index) in tastingData.palate_notes" :key="index">
-                                <span class="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                                    <span x-text="note"></span>
-                                    <button @click="removePalateNote(index)" class="ml-2 text-green-600 hover:text-green-800">&times;</button>
-                                </span>
-                            </template>
-                        </div>
-                    </div>
-
-                    <!-- Finish Notes -->
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Finish Notes</label>
-                        <input type="text"
-                               x-model="finishNotesInput"
-                               @keydown.enter="addFinishNote()"
-                               placeholder="Type a note and press Enter"
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <div x-show="tastingData.finish_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-                            <template x-for="(note, index) in tastingData.finish_notes" :key="index">
-                                <span class="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-                                    <span x-text="note"></span>
-                                    <button @click="removeFinishNote(index)" class="ml-2 text-purple-600 hover:text-purple-800">&times;</button>
-                                </span>
-                            </template>
-                        </div>
-                    </div>
-
-                    <!-- Overall Impression -->
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Overall Impression</label>
-                        <textarea x-model="tastingData.overall_notes"
-                                  rows="4"
-                                  placeholder="Your overall thoughts about this whiskey..."
-                                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"></textarea>
-                    </div>
-                </div>
+                <!-- Scores & Notes Section (Shared Component) -->
+                {% include 'components/tasting_scores_form.html' %}
             </div>
 
             <!-- Navigation -->
@@ -673,9 +387,15 @@
 
 <script>
 function manualTastingWizard() {
+    // Merge in the tasting form mixin for shared note management
+    const mixin = typeof tastingFormMixin === 'function' ? tastingFormMixin() : {};
+
     return {
-        // State
-        session: null,
+        // Include mixin properties
+        ...mixin,
+
+        // UI State (no server session - all state is local)
+        _currentStep: 'taster_info',
         loading: false,
         error: false,
         errorMessage: '',
@@ -685,7 +405,7 @@ function manualTastingWizard() {
         tasterName: '',
         tastingDate: new Date().toISOString().split('T')[0],
         beverageType: 'wine',
-        participantSession: null,  // Store event session info
+        participantSession: null,  // Store event session info (from cookie, not server session)
 
         // Step 2 data
         selectedBottle: null,
@@ -699,7 +419,7 @@ function manualTastingWizard() {
         eventRevealed: false,  // Whether event has been revealed
         eventData: null,  // Full event data (for checking tasted bottles)
 
-        // Step 3 data
+        // Step 3 data - internal storage
         tastingData: {
             place: '',
             theme: '',
@@ -724,18 +444,20 @@ function manualTastingWizard() {
             finish_notes: [],
             overall_notes: ''
         },
-        // Note input fields
-        appearanceNotesInput: '',  // Wine
-        aromaNotesInput: '',       // Wine (uses nose_notes backend)
-        tasteNotesInput: '',       // Wine (uses palate_notes backend)
-        aftertasteNotesInput: '',  // Wine (uses finish_notes backend)
-        noseNotesInput: '',        // Whiskey
-        palateNotesInput: '',      // Whiskey
-        finishNotesInput: '',      // Whiskey
 
-        // Computed
+        // Getter for shared component compatibility (component expects 'tasting')
+        get tasting() {
+            return this.tastingData;
+        },
+
+        // Required by shared component
+        get isWine() {
+            return this.beverageType === 'wine';
+        },
+
+        // Computed - all local, no server session
         get currentStep() {
-            return this.session?.current_step || 'taster_info';
+            return this._currentStep;
         },
 
         get currentStepNumber() {
@@ -757,34 +479,15 @@ function manualTastingWizard() {
             return this.participantSession !== null && this.participantSession.event_id !== undefined;
         },
 
-        get totalWineScore() {
-            return (this.tastingData.wine_appearance || 0) +
-                   (this.tastingData.wine_aroma || 0) +
-                   (this.tastingData.wine_taste || 0) +
-                   (this.tastingData.wine_aftertaste || 0) +
-                   (this.tastingData.wine_overall || 0);
-        },
-
-        get wine100ptScore() {
-            return 50 + (this.totalWineScore / 20) * 50;
-        },
-
-        get totalWhiskeyScore() {
-            return (this.tastingData.whiskey_nose || 0) +
-                   (this.tastingData.whiskey_palate || 0) +
-                   (this.tastingData.whiskey_finish || 0) +
-                   (this.tastingData.whiskey_overall || 0);
-        },
-
         // Actions
         async init() {
+            // Sessionless wizard - all state is local, no server session needed
             // Check URL parameters to determine if we're in event mode
             const urlParams = new URLSearchParams(window.location.search);
             const isEventMode = urlParams.get('event_mode') === 'true';
             const eventId = urlParams.get('event_id');
 
-            // CRITICAL: Always explicitly set participantSession based on mode
-            // This ensures Obsidian mode always has null participantSession
+            // Set participantSession based on URL mode (not server session)
             if (isEventMode && eventId) {
                 this.participantSession = this.getParticipantSession(eventId);
                 if (!this.participantSession) {
@@ -792,7 +495,7 @@ function manualTastingWizard() {
                     this.participantSession = null;
                 }
             } else {
-                // Standalone/Obsidian mode - ALWAYS null, even if cookie exists
+                // Standalone/Obsidian mode
                 this.participantSession = null;
             }
 
@@ -806,19 +509,14 @@ function manualTastingWizard() {
                         const eventResponse = await fetch(`/api/v1/events/${this.participantSession.event_id}`);
                         if (eventResponse.ok) {
                             const eventData = await eventResponse.json();
-                            this.eventData = eventData;  // Store full event data
+                            this.eventData = eventData;
                             this.beverageType = eventData.beverage_type;
                             this.eventIsBlind = eventData.is_blind;
                             this.eventRevealed = eventData.status === 'revealed';
 
                             // Transform event bottles for display
                             this.eventBottles = eventData.bottles.map(bottle => {
-                                // Build thumbnail URL
-                                let thumbnail_url = null;
-                                const label_path = `/api/v1/bottle-label/${bottle.bottle_path}`;
-                                thumbnail_url = label_path;  // Let browser handle 404
-
-                                // Display name depends on blind mode and reveal status
+                                let thumbnail_url = `/api/v1/bottle-label/${bottle.bottle_path}`;
                                 let display_name = bottle.bottle_name;
                                 if (eventData.is_blind && eventData.status === 'open' && bottle.blind_number) {
                                     display_name = `Bottle #${bottle.blind_number}`;
@@ -835,7 +533,6 @@ function manualTastingWizard() {
                                 };
                             });
 
-                            // Sort by blind number for blind events (Bottle 1, 2, 3...)
                             if (eventData.is_blind) {
                                 this.eventBottles.sort((a, b) => (a.blind_number || 0) - (b.blind_number || 0));
                             }
@@ -846,23 +543,8 @@ function manualTastingWizard() {
                 }
             }
 
-            // Try to load existing session or start new
-            // If we're in event mode, always start a fresh session
-            if (this.participantSession) {
-                await this.startSession();
-            } else {
-                try {
-                    const response = await fetch('/api/v1/manual-tasting/session');
-                    if (response.ok) {
-                        this.session = await response.json();
-                        this.loadSessionData();
-                    } else {
-                        await this.startSession();
-                    }
-                } catch (e) {
-                    await this.startSession();
-                }
-            }
+            // No server session to load - we start fresh each time
+            // All state is managed locally in this component
         },
 
         getParticipantSession(eventId) {
@@ -875,8 +557,6 @@ function manualTastingWizard() {
             if (cookies.participant_sessions) {
                 try {
                     const allSessions = JSON.parse(decodeURIComponent(cookies.participant_sessions));
-
-                    // Extract the session for this specific event
                     if (allSessions[eventId]) {
                         return {
                             event_id: eventId,
@@ -892,99 +572,38 @@ function manualTastingWizard() {
             return null;
         },
 
-        async startSession() {
-            try {
-                const body = {
-                    beverage_type: this.beverageType
-                };
-
-                // If we have a participant session, use event mode
-                if (this.participantSession) {
-                    body.mode = 'event';
-                    body.event_id = this.participantSession.event_id;
-                } else {
-                    body.mode = 'obsidian';
-                }
-
-                const response = await fetch('/api/v1/manual-tasting/start', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to start session');
-                }
-
-                this.session = await response.json();
-            } catch (e) {
-                this.error = true;
-                this.errorMessage = e.message || 'Failed to start wizard';
-            }
-        },
-
-        loadSessionData() {
-            if (!this.session) return;
-
-            // Load step 1 data - BUT don't overwrite if we have participant session
-            if (this.session.taster_name && !this.participantSession) {
-                this.tasterName = this.session.taster_name;
-            }
-            if (this.session.tasting_date) this.tastingDate = this.session.tasting_date;
-            if (this.session.beverage_type && !this.participantSession) {
-                this.beverageType = this.session.beverage_type;
-            }
-
-            // Load step 2 data
-            if (this.session.selected_bottle_path) {
-                // TODO: Fetch bottle details from path
-            }
-
-            // Load step 3 data
-            if (this.session.tasting_data) {
-                this.tastingData = { ...this.tastingData, ...this.session.tasting_data };
-            }
-        },
-
-        async nextStep() {
+        // Step navigation - all local, no server calls
+        nextStep() {
             if (!this.canProceed) return;
 
-            try {
-                const data = {};
-
-                if (this.currentStep === 'taster_info') {
-                    data.taster_name = this.tasterName;
-                    data.tasting_date = this.tastingDate;
-                    data.beverage_type = this.beverageType;
-                } else if (this.currentStep === 'bottle_selection') {
-                    data.selected_bottle_path = this.selectedBottle.bottle_path;
-                }
-
-                const response = await fetch('/api/v1/manual-tasting/session/step', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        step: this.currentStep,
-                        data: data
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to update session');
-                }
-
-                this.session = await response.json();
-            } catch (e) {
-                this.error = true;
-                this.errorMessage = e.message || 'Failed to proceed';
+            if (this._currentStep === 'taster_info') {
+                this._currentStep = 'bottle_selection';
+            } else if (this._currentStep === 'bottle_selection') {
+                this._currentStep = 'tasting_form';
             }
         },
 
-        async previousStep() {
-            if (this.currentStep === 'bottle_selection') {
-                this.session.current_step = 'taster_info';
-            } else if (this.currentStep === 'tasting_form') {
-                this.session.current_step = 'bottle_selection';
+        previousStep() {
+            if (this._currentStep === 'bottle_selection') {
+                this._currentStep = 'taster_info';
+            } else if (this._currentStep === 'tasting_form') {
+                this._currentStep = 'bottle_selection';
+                // Clear selection when going back to force re-selection
+                this.selectedBottle = null;
+                this.resetTastingData();
+            }
+        },
+
+        cancelWizard() {
+            if (!confirm('Are you sure you want to cancel? All entered data will be lost.')) {
+                return;
+            }
+
+            // Just redirect - no server session to clear
+            if (this.participantSession && this.participantSession.event_id) {
+                window.location.href = `/events/${this.participantSession.event_id}`;
+            } else {
+                window.location.href = '/upload';
             }
         },
 
@@ -992,19 +611,27 @@ function manualTastingWizard() {
             this.saving = true;
 
             try {
-                // First update session with tasting data
-                await fetch('/api/v1/manual-tasting/session/step', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        step: 'tasting_form',
-                        data: { tasting_data: this.tastingData }
-                    })
-                });
+                // Build the complete save request - no session needed
+                const saveRequest = {
+                    mode: this.isEventMode ? 'event' : 'obsidian',
+                    beverage_type: this.beverageType,
+                    taster_name: this.tasterName,
+                    tasting_date: this.tastingDate,
+                    selected_bottle_path: this.selectedBottle.bottle_path,
+                    tasting_data: this.tastingData
+                };
 
-                // Then save to Obsidian
+                // Add event-specific fields if in event mode
+                if (this.isEventMode && this.participantSession) {
+                    saveRequest.event_id = this.participantSession.event_id;
+                    saveRequest.participant_id = this.participantSession.participant_id;
+                }
+
+                // Single POST with all data
                 const response = await fetch('/api/v1/manual-tasting/save', {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(saveRequest)
                 });
 
                 if (!response.ok) {
@@ -1063,6 +690,11 @@ function manualTastingWizard() {
         },
 
         selectBottle(bottle) {
+            // Clear tasting data when selecting a NEW bottle
+            // This prevents data from a previous bottle being saved to the new one
+            if (this.selectedBottle && this.selectedBottle.bottle_path !== bottle.bottle_path) {
+                this.resetTastingData();
+            }
             this.selectedBottle = bottle;
             this.showSearchModal = false;
             this.searchQuery = '';
@@ -1070,9 +702,42 @@ function manualTastingWizard() {
         },
 
         async selectBottleAndContinue(bottle) {
+            // Clear tasting data when selecting a NEW bottle
+            if (this.selectedBottle && this.selectedBottle.bottle_path !== bottle.bottle_path) {
+                this.resetTastingData();
+            }
             this.selectedBottle = bottle;
             // Automatically proceed to next step (tasting form)
             await this.nextStep();
+        },
+
+        resetTastingData() {
+            // Reset tasting data to defaults (preserves place/theme)
+            this.tastingData = {
+                place: '',
+                theme: '',
+                days_from_crack: null,
+                fill_level: null,
+                color: '',
+                wine_appearance: 0,
+                wine_aroma: 0,
+                wine_taste: 0,
+                wine_aftertaste: 0,
+                wine_overall: 0,
+                whiskey_nose: 0,
+                whiskey_palate: 0,
+                whiskey_finish: 0,
+                whiskey_overall: 0,
+                appearance_notes: [],
+                nose_notes: [],
+                palate_notes: [],
+                finish_notes: [],
+                overall_notes: ''
+            };
+            // Clear note input fields
+            if (typeof this.clearNoteInputs === 'function') {
+                this.clearNoteInputs();
+            }
         },
 
         hasBottleBeenTasted(bottle) {
@@ -1104,128 +769,47 @@ function manualTastingWizard() {
             if (tastingData && tastingData.tasting_data) {
                 tastingData = tastingData.tasting_data;
             }
-            this.tastingData = { ...tastingData };
 
-            // Convert notes arrays if needed
-            if (this.tastingData.wine_nose_notes) {
-                this.noseNotes = [...this.tastingData.wine_nose_notes];
+            // Merge with defaults to ensure all fields exist, especially note arrays
+            this.tastingData = {
+                place: '',
+                theme: '',
+                days_from_crack: null,
+                fill_level: null,
+                color: '',
+                wine_appearance: 0,
+                wine_aroma: 0,
+                wine_taste: 0,
+                wine_aftertaste: 0,
+                wine_overall: 0,
+                whiskey_nose: 0,
+                whiskey_palate: 0,
+                whiskey_finish: 0,
+                whiskey_overall: 0,
+                appearance_notes: [],
+                nose_notes: [],
+                palate_notes: [],
+                finish_notes: [],
+                overall_notes: '',
+                ...tastingData  // Overlay existing data
+            };
+
+            // Ensure note arrays are arrays (not null/undefined)
+            this.tastingData.appearance_notes = this.tastingData.appearance_notes || [];
+            this.tastingData.nose_notes = this.tastingData.nose_notes || [];
+            this.tastingData.palate_notes = this.tastingData.palate_notes || [];
+            this.tastingData.finish_notes = this.tastingData.finish_notes || [];
+
+            // Clear note input fields
+            if (typeof this.clearNoteInputs === 'function') {
+                this.clearNoteInputs();
             }
-            if (this.tastingData.wine_palate_notes) {
-                this.palateNotes = [...this.tastingData.wine_palate_notes];
-            }
 
-            // Update session on backend to include bottle selection and existing data
-            try {
-                const response = await fetch('/api/v1/manual-tasting/session/step', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        step: 'bottle_selection',
-                        data: {
-                            selected_bottle_path: bottle.bottle_path
-                        }
-                    })
-                });
-
-                if (response.ok) {
-                    this.session = await response.json();
-                    // Now update with tasting data
-                    const response2 = await fetch('/api/v1/manual-tasting/session/step', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            step: 'tasting_form',
-                            data: this.tastingData
-                        })
-                    });
-
-                    if (response2.ok) {
-                        this.session = await response2.json();
-                    }
-                }
-            } catch (e) {
-                console.error('Failed to update session for editing:', e);
-            }
-        },
-
-        // Note management
-        addNoseNote() {
-            if (this.noseNotesInput.trim()) {
-                this.tastingData.nose_notes.push(this.noseNotesInput.trim());
-                this.noseNotesInput = '';
-            }
-        },
-
-        removeNoseNote(index) {
-            this.tastingData.nose_notes.splice(index, 1);
-        },
-
-        addPalateNote() {
-            if (this.palateNotesInput.trim()) {
-                this.tastingData.palate_notes.push(this.palateNotesInput.trim());
-                this.palateNotesInput = '';
-            }
-        },
-
-        removePalateNote(index) {
-            this.tastingData.palate_notes.splice(index, 1);
-        },
-
-        addFinishNote() {
-            if (this.finishNotesInput.trim()) {
-                this.tastingData.finish_notes.push(this.finishNotesInput.trim());
-                this.finishNotesInput = '';
-            }
-        },
-
-        removeFinishNote(index) {
-            this.tastingData.finish_notes.splice(index, 1);
-        },
-
-        // Wine note management
-        addAppearanceNote() {
-            if (this.appearanceNotesInput.trim()) {
-                this.tastingData.appearance_notes.push(this.appearanceNotesInput.trim());
-                this.appearanceNotesInput = '';
-            }
-        },
-
-        removeAppearanceNote(index) {
-            this.tastingData.appearance_notes.splice(index, 1);
-        },
-
-        addAromaNote() {
-            if (this.aromaNotesInput.trim()) {
-                this.tastingData.nose_notes.push(this.aromaNotesInput.trim());
-                this.aromaNotesInput = '';
-            }
-        },
-
-        removeAromaNote(index) {
-            this.tastingData.nose_notes.splice(index, 1);
-        },
-
-        addTasteNote() {
-            if (this.tasteNotesInput.trim()) {
-                this.tastingData.palate_notes.push(this.tasteNotesInput.trim());
-                this.tasteNotesInput = '';
-            }
-        },
-
-        removeTasteNote(index) {
-            this.tastingData.palate_notes.splice(index, 1);
-        },
-
-        addAftertasteNote() {
-            if (this.aftertasteNotesInput.trim()) {
-                this.tastingData.finish_notes.push(this.aftertasteNotesInput.trim());
-                this.aftertasteNotesInput = '';
-            }
-        },
-
-        removeAftertasteNote(index) {
-            this.tastingData.finish_notes.splice(index, 1);
+            // Navigate directly to tasting form - no server session needed
+            this._currentStep = 'tasting_form';
         }
+
+        // Note management functions are provided by tastingFormMixin
     };
 }
 </script>

@@ -8,7 +8,7 @@ from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import BaseModel
 
-from ..sessions import SessionManager
+from ..sessions import SessionManager  # Still used for extraction workflow
 from ..services.extraction_service import ExtractionService
 from ..services.tasting_service import TastingService
 from ..schemas.tasting import (
@@ -20,10 +20,6 @@ from ..schemas.tasting import (
     SearchBottlesRequest,
     MatchCandidate,
     ManualTastingMode,
-    ManualTastingWizardStep,
-    ManualTastingSession,
-    CreateManualTastingRequest,
-    UpdateWizardStepRequest,
     SaveManualTastingRequest,
 )
 
@@ -681,7 +677,7 @@ async def refresh_matches(
 
 
 # ============================================================================
-# Manual Tasting Wizard
+# Manual Tasting (Sessionless - frontend manages wizard state)
 # ============================================================================
 
 
@@ -693,298 +689,96 @@ async def manual_tasting_page(request: Request):
     })
 
 
-@router.post("/api/v1/manual-tasting/start")
-async def start_manual_tasting(
-    request_data: CreateManualTastingRequest,
-    request: Request,
-    response: Response
-):
-    """Start new manual tasting wizard session."""
-    import uuid
-    import json
-    from urllib.parse import unquote
-    from ..app import web_config
-
-    if not web_config:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-
-    # Generate session ID
-    session_id = str(uuid.uuid4())
-
-    # Always start at taster info (need to collect date even for events)
-    initial_step = ManualTastingWizardStep.TASTER_INFO
-
-    # Check for participant_sessions cookie to get participant_id for this event
-    participant_id = None
-    participant_sessions_cookie = request.cookies.get("participant_sessions")
-    if participant_sessions_cookie and request_data.event_id:
-        try:
-            all_sessions = json.loads(unquote(participant_sessions_cookie))
-            # Extract participant_id for this specific event
-            if request_data.event_id in all_sessions:
-                participant_id = all_sessions[request_data.event_id].get("participant_id")
-        except Exception as e:
-            logger.warning(f"Failed to parse participant_sessions cookie: {e}")
-
-    # Create manual tasting session
-    manual_session = ManualTastingSession(
-        session_id=session_id,
-        mode=request_data.mode,
-        beverage_type=request_data.beverage_type,
-        current_step=initial_step,
-        event_id=request_data.event_id,
-        participant_id=participant_id
-    )
-
-    # Store in session cookie
-    session_manager = SessionManager(
-        secret_key=web_config.sessions.secret_key,
-        max_age_hours=web_config.sessions.max_age_hours
-    )
-
-    session_token = session_manager.create_session({
-        "manual_tasting": manual_session.model_dump(mode='json')
-    })
-
-    response.set_cookie(
-        key="session",
-        value=session_token,
-        max_age=web_config.sessions.max_age_hours * 3600,
-        httponly=True,
-        samesite="lax"
-    )
-
-    logger.info(f"Started manual tasting session: {session_id}, mode={request_data.mode}")
-    return manual_session.model_dump()
-
-
-@router.get("/api/v1/manual-tasting/session")
-async def get_manual_tasting_session(
-    request: Request,
-    session_token: Optional[str] = Cookie(None, alias="session")
-):
-    """Get current wizard state from session."""
-    from ..app import web_config
-
-    if not web_config:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-
-    if not session_token:
-        raise HTTPException(status_code=401, detail="No active session")
-
-    session_manager = SessionManager(
-        secret_key=web_config.sessions.secret_key,
-        max_age_hours=web_config.sessions.max_age_hours
-    )
-
-    session_data = session_manager.read_session(session_token)
-    if not session_data:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-
-    manual_tasting = session_data.get("manual_tasting")
-    if not manual_tasting:
-        raise HTTPException(status_code=404, detail="No manual tasting session found")
-
-    return manual_tasting
-
-
-@router.put("/api/v1/manual-tasting/session/step")
-async def update_wizard_step(
-    request_data: UpdateWizardStepRequest,
-    request: Request,
-    response: Response,
-    session_token: Optional[str] = Cookie(None, alias="session")
-):
-    """Update wizard step data and advance."""
-    from ..app import web_config
-
-    if not web_config:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-
-    if not session_token:
-        raise HTTPException(status_code=401, detail="No active session")
-
-    session_manager = SessionManager(
-        secret_key=web_config.sessions.secret_key,
-        max_age_hours=web_config.sessions.max_age_hours
-    )
-
-    session_data = session_manager.read_session(session_token)
-    if not session_data:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-
-    manual_tasting = session_data.get("manual_tasting")
-    if not manual_tasting:
-        raise HTTPException(status_code=404, detail="No manual tasting session")
-
-    # Get current step and mode
-    current_step = ManualTastingWizardStep(manual_tasting.get("current_step"))
-    mode = ManualTastingMode(manual_tasting.get("mode"))
-
-    # Update session with step data
-    if current_step == ManualTastingWizardStep.TASTING_FORM:
-        # For tasting form, unwrap tasting_data from the request
-        # Frontend sends { tasting_data: {...} }, we want just {...}
-        if "tasting_data" in request_data.data:
-            manual_tasting["tasting_data"] = request_data.data["tasting_data"]
-        else:
-            # Fallback: store entire data object if not wrapped
-            manual_tasting["tasting_data"] = request_data.data
-    else:
-        # For other steps, copy fields directly
-        for key, value in request_data.data.items():
-            manual_tasting[key] = value
-
-    # Advance to next step
-    if current_step == ManualTastingWizardStep.TASTER_INFO:
-        manual_tasting["current_step"] = ManualTastingWizardStep.BOTTLE_SELECTION.value
-    elif current_step == ManualTastingWizardStep.BOTTLE_SELECTION:
-        manual_tasting["current_step"] = ManualTastingWizardStep.TASTING_FORM.value
-    # TASTING_FORM is the final step, no advancement needed
-
-    # Save back to session
-    new_token = session_manager.update_session(
-        token=session_token,
-        updates={"manual_tasting": manual_tasting}
-    )
-
-    if not new_token:
-        raise HTTPException(status_code=500, detail="Failed to update session")
-
-    response.set_cookie(
-        key="session",
-        value=new_token,
-        max_age=web_config.sessions.max_age_hours * 3600,
-        httponly=True,
-        samesite="lax"
-    )
-
-    logger.info(f"Updated wizard step for {manual_tasting.get('session_id')}: {current_step} -> {manual_tasting['current_step']}")
-    return manual_tasting
-
-
 @router.post("/api/v1/manual-tasting/save")
 async def save_manual_tasting(
+    request_data: SaveManualTastingRequest,
     request: Request,
-    response: Response,
-    session_token: Optional[str] = Cookie(None, alias="session")
 ):
-    """Finalize and save tasting."""
-    from ..app import core_config, web_config
+    """
+    Save a manual tasting.
+
+    All wizard state is managed in the frontend (Alpine.js).
+    This endpoint just receives the complete data and saves it.
+    No server-side session needed.
+    """
+    from ..app import core_config, event_store
 
     try:
-        if not core_config or not web_config:
+        if not core_config:
             raise HTTPException(status_code=500, detail="Service not initialized")
 
-        if not session_token:
-            raise HTTPException(status_code=401, detail="No active session")
-
-        session_manager = SessionManager(
-            secret_key=web_config.sessions.secret_key,
-            max_age_hours=web_config.sessions.max_age_hours
-        )
-
-        session_data = session_manager.read_session(session_token)
-        if not session_data:
-            raise HTTPException(status_code=401, detail="Invalid or expired session")
-
-        manual_tasting = session_data.get("manual_tasting")
-        if not manual_tasting:
-            raise HTTPException(status_code=404, detail="No manual tasting session")
-
-        # Convert dict to ManualTastingSession
-        manual_session = ManualTastingSession(**manual_tasting)
+        # Validate required fields
+        if not request_data.taster_name:
+            raise HTTPException(status_code=400, detail="Taster name is required")
+        if not request_data.tasting_date:
+            raise HTTPException(status_code=400, detail="Tasting date is required")
+        if not request_data.selected_bottle_path:
+            raise HTTPException(status_code=400, detail="Bottle selection is required")
 
         # Save based on mode
-        if manual_session.mode == ManualTastingMode.OBSIDIAN:
+        if request_data.mode == ManualTastingMode.OBSIDIAN:
             tasting_service = TastingService(core_config)
-            success, file_path, error = await tasting_service.save_manual_tasting_to_obsidian(manual_session)
+            success, file_path, error = await tasting_service.save_manual_tasting_direct(
+                taster_name=request_data.taster_name,
+                tasting_date=request_data.tasting_date,
+                beverage_type=request_data.beverage_type,
+                selected_bottle_path=request_data.selected_bottle_path,
+                tasting_data=request_data.tasting_data,
+            )
 
             if not success:
                 raise HTTPException(status_code=500, detail=f"Failed to save tasting: {error}")
 
-            # Clear session cookie
-            response.delete_cookie(key="session")
-
             logger.info(f"Saved manual tasting to Obsidian: {file_path}")
             return {"status": "saved", "file_path": str(file_path)}
-        elif manual_session.mode == ManualTastingMode.EVENT:
-            # Save to event_store
-            from ..app import event_store
+
+        elif request_data.mode == ManualTastingMode.EVENT:
+            # Validate event mode requirements
+            if not request_data.event_id:
+                raise HTTPException(status_code=400, detail="Event ID required for event mode")
+            if not request_data.participant_id:
+                raise HTTPException(status_code=400, detail="Participant ID required for event mode")
 
             if event_store is None:
                 raise HTTPException(status_code=500, detail="Event store not initialized")
 
-            if not manual_session.event_id:
-                raise HTTPException(status_code=400, detail="Event ID required for event mode")
-
-            if not manual_session.participant_id:
-                raise HTTPException(status_code=400, detail="Participant ID required for event mode")
-
-            if manual_session.event_id not in event_store:
+            if request_data.event_id not in event_store:
                 raise HTTPException(status_code=404, detail="Event not found")
 
-            event = event_store[manual_session.event_id]
+            event = event_store[request_data.event_id]
 
-            # Check if participant exists
-            if manual_session.participant_id not in event["participants"]:
+            if request_data.participant_id not in event["participants"]:
                 raise HTTPException(status_code=404, detail="Participant not found in event")
 
-            participant = event["participants"][manual_session.participant_id]
+            participant = event["participants"][request_data.participant_id]
 
             # Check if tasting already exists (for editing)
             existing_index = None
             for i, t in enumerate(participant["tastings"]):
-                if t["bottle_path"] == manual_session.selected_bottle_path:
+                if t["bottle_path"] == request_data.selected_bottle_path:
                     existing_index = i
                     break
 
-            # Unwrap tasting_data if it was double-nested (bug fix migration)
-            tasting_data = manual_session.tasting_data
-            if tasting_data and isinstance(tasting_data, dict) and "tasting_data" in tasting_data:
-                # Double-nested, unwrap it
-                tasting_data = tasting_data["tasting_data"]
-
             tasting_entry = {
-                "bottle_path": manual_session.selected_bottle_path,
-                "tasting_data": tasting_data
+                "bottle_path": request_data.selected_bottle_path,
+                "tasting_data": request_data.tasting_data
             }
 
             if existing_index is not None:
-                # Update existing tasting
                 participant["tastings"][existing_index] = tasting_entry
-                logger.info(f"Updated tasting for bottle {manual_session.selected_bottle_path}")
+                logger.info(f"Updated tasting for bottle {request_data.selected_bottle_path}")
             else:
-                # Add new tasting
                 participant["tastings"].append(tasting_entry)
-                logger.info(f"Added new tasting for bottle {manual_session.selected_bottle_path}")
+                logger.info(f"Added new tasting for bottle {request_data.selected_bottle_path}")
 
-            # Clear session cookie
-            response.delete_cookie(key="session")
+            logger.info(f"Saved manual tasting to event {request_data.event_id}")
+            return {"status": "saved", "event_id": request_data.event_id}
 
-            logger.info(f"Saved manual tasting to event {manual_session.event_id} for participant {manual_session.participant_id}")
-            return {"status": "saved", "event_id": manual_session.event_id}
         else:
-            raise HTTPException(status_code=400, detail=f"Unknown mode: {manual_session.mode}")
+            raise HTTPException(status_code=400, detail=f"Unknown mode: {request_data.mode}")
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Failed to save manual tasting", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.delete("/api/v1/manual-tasting/session")
-async def cancel_manual_tasting(
-    request: Request,
-    response: Response,
-    session_token: Optional[str] = Cookie(None, alias="session")
-):
-    """Cancel wizard and clear session."""
-    if not session_token:
-        raise HTTPException(status_code=401, detail="No active session")
-
-    # Clear session cookie
-    response.delete_cookie(key="session")
-
-    logger.info("Cancelled manual tasting session")
-    return {"status": "cancelled"}

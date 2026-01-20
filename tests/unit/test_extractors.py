@@ -147,9 +147,9 @@ class TestBottleExtractor:
 
     @pytest.mark.asyncio
     async def test_extract_non_array_json(self, extractor, mock_llm, sample_parser_result):
-        """Test extraction with non-array JSON."""
+        """Test extraction with non-array JSON (should gracefully wrap in array)."""
         mock_llm.complete.return_value = LLMResponse(
-            content='{"producer": "Test", "name": "Wine"}',
+            content='{"producer": "Test", "name": "Wine", "type": "wine"}',
             tokens_used=50,
             cost=0.003,
             model="test-model",
@@ -157,13 +157,16 @@ class TestBottleExtractor:
             latency_ms=100.0,
         )
 
-        with pytest.raises(ExtractionError, match="JSON array"):
-            await extractor.extract(sample_parser_result, beverage_type="wine")
+        # New robust behavior: gracefully wraps non-array in list
+        bottles = await extractor.extract(sample_parser_result, beverage_type="wine")
+        assert len(bottles) == 1
+        assert bottles[0].producer == "Test"
+        assert bottles[0].name == "Wine"
 
     @pytest.mark.asyncio
     async def test_extract_with_invalid_bottle_data(self, extractor, mock_llm, sample_parser_result):
-        """Test extraction with invalid bottle data (should skip invalid entries)."""
-        # One valid, one invalid (missing required fields)
+        """Test extraction with invalid bottle data (should use defaults for missing fields)."""
+        # One valid, one with missing producer (should get default)
         mock_llm.complete.return_value = LLMResponse(
             content='[{"producer": "Valid", "name": "Wine", "type": "wine"}, {"name": "Invalid"}]',
             tokens_used=100,
@@ -175,9 +178,12 @@ class TestBottleExtractor:
 
         bottles = await extractor.extract(sample_parser_result, beverage_type="wine")
 
-        # Should only get the valid bottle
-        assert len(bottles) == 1
+        # New robust behavior: creates bottles with defaults for missing fields
+        assert len(bottles) == 2
         assert bottles[0].producer == "Valid"
+        assert bottles[0].name == "Wine"
+        assert bottles[1].producer == "Unknown_2"  # Default value
+        assert bottles[1].name == "Invalid"
 
     @pytest.mark.asyncio
     async def test_extract_llm_failure(self, extractor, mock_llm, sample_parser_result):

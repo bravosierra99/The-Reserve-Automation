@@ -57,53 +57,52 @@ class LMStudioProvider(BaseLLMProvider):
             True if model is loaded, False otherwise
         """
         try:
+            # Ensure client is using the current event loop
+            self._ensure_client()
+
+            logger.debug(f"Checking if model {self.model} is loaded at {self.base_url}/models")
             response = await self.client.get("/models", timeout=10.0)
+            logger.debug(f"Got response: {response.status_code}")
+
             if response.status_code == 200:
                 data = response.json()
                 loaded_models = data.get("data", [])
+                logger.debug(f"Loaded models: {[m.get('id') for m in loaded_models]}")
 
                 # Check if our model is in the list of loaded models
                 for model_info in loaded_models:
                     model_id = model_info.get("id", "")
                     if self.model in model_id or model_id in self.model:
-                        logger.debug(f"Model {self.model} is loaded")
+                        logger.info(f"✓ Model {self.model} is loaded in LM Studio")
                         return True
 
-                logger.debug(f"Model {self.model} not in loaded models: {[m.get('id') for m in loaded_models]}")
+                logger.warning(f"Model {self.model} not in loaded models: {[m.get('id') for m in loaded_models]}")
                 return False
 
+            logger.warning(f"Failed to get models list: HTTP {response.status_code}")
             return False
         except Exception as e:
-            logger.debug(f"Could not check loaded models: {e}")
+            logger.error(f"Could not check loaded models: {type(e).__name__}: {e}")
+            import traceback
+            logger.debug(f"Traceback: {traceback.format_exc()}")
             return False
 
     async def _load_model(self) -> bool:
         """
         Attempt to load the configured model in LM Studio.
 
+        Note: LM Studio doesn't support auto-loading models via API.
+        Models must be manually loaded in the LM Studio UI.
+
         Returns:
-            True if load succeeded, False otherwise
+            False - auto-loading not supported
         """
-        try:
-            logger.info(f"Attempting to load model: {self.model}")
-
-            # LM Studio load endpoint
-            response = await self.client.post(
-                "/models/load",
-                json={"path": self.model},
-                timeout=60.0  # Model loading can take a while
-            )
-
-            if response.status_code == 200:
-                logger.info(f"Successfully loaded model: {self.model}")
-                return True
-            else:
-                logger.warning(f"Failed to load model: {response.status_code} - {response.text}")
-                return False
-
-        except Exception as e:
-            logger.error(f"Error loading model: {e}")
-            return False
+        logger.warning(
+            f"Model {self.model} is not loaded. "
+            f"LM Studio does not support auto-loading models via API. "
+            f"Please load the model manually in the LM Studio application."
+        )
+        return False
 
     async def _ensure_model_loaded(self) -> None:
         """
@@ -199,6 +198,12 @@ class LMStudioProvider(BaseLLMProvider):
                 "frequency_penalty": 0.5,  # Reduce repetition (OpenAI-compatible param)
                 "presence_penalty": 0.5,   # Encourage diversity
             }
+
+            # Request larger context if configured (some backends support this)
+            context_length = self.config.get("context_length")
+            if context_length:
+                payload["num_ctx"] = context_length  # Ollama-style
+                payload["n_ctx"] = context_length    # llama.cpp-style
 
             # Add tools if provided
             if hasattr(request, 'tools') and request.tools:

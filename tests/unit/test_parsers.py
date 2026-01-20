@@ -58,12 +58,12 @@ class TestImageParser:
         assert parser.can_parse(pdf_path) is False
 
     @pytest.mark.asyncio
-    @patch("pytesseract.image_to_string")
+    @patch("reserve_automation.parsers.image.pytesseract.image_to_string")
     async def test_parse_image(self, mock_ocr, sample_image_file):
         """Test parsing an image file."""
         mock_ocr.return_value = "Extracted text from image"
 
-        parser = ImageParser(preprocess=False)  # Disable preprocessing for speed
+        parser = ImageParser(preprocess=False, ocr_method="tesseract")  # Use tesseract explicitly
         result = await parser.parse(sample_image_file)
 
         assert result.raw_text == "Extracted text from image"
@@ -145,10 +145,11 @@ class TestParserDetector:
     """Tests for ParserDetector."""
 
     @pytest.mark.asyncio
-    @patch("pytesseract.image_to_string")
+    @patch("reserve_automation.parsers.image.pytesseract.image_to_string")
     async def test_auto_detect_image(self, mock_ocr, sample_image_file):
         """Test auto-detection of image files."""
-        mock_ocr.return_value = "Test text"
+        # Mock tesseract to return enough text to pass quality check
+        mock_ocr.return_value = "Test text with enough characters to pass quality threshold for good OCR output"
 
         detector = ParserDetector()
         result = await detector.parse(sample_image_file)

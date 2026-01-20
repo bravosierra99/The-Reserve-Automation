@@ -6,20 +6,46 @@
 <!-- Cropper.js for manual label cropping -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+<!-- Management modules (loaded before Alpine) -->
+<script src="{{ url_for('static', path='/js/components/cropper-manager.js') }}"></script>
+<script src="{{ url_for('static', path='/js/components/bottle-editor-modal.js') }}"></script>
+<script src="{{ url_for('static', path='/js/management/label-review.js') }}"></script>
 {% endblock %}
 
 {% block content %}
 <div x-data="managementApp()" class="max-w-6xl mx-auto">
+    <!-- Toast Container -->
+    <div class="fixed top-4 right-4 z-50 space-y-2">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div x-show="true"
+                 x-transition:enter="transition ease-out duration-300"
+                 x-transition:enter-start="opacity-0 transform translate-x-8"
+                 x-transition:enter-end="opacity-100 transform translate-x-0"
+                 x-transition:leave="transition ease-in duration-200"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 :class="{
+                     'bg-green-500': toast.type === 'success',
+                     'bg-red-500': toast.type === 'error',
+                     'bg-yellow-500': toast.type === 'warning',
+                     'bg-blue-500': toast.type === 'info'
+                 }"
+                 class="px-6 py-3 rounded-lg shadow-lg text-white font-medium min-w-[300px] max-w-md">
+                <span x-text="toast.message"></span>
+            </div>
+        </template>
+    </div>
+
     <!-- Mode Selection -->
     <div x-show="!mode" class="bg-white rounded-lg shadow-md p-6 mb-6">
         <h2 class="text-2xl font-bold mb-6 text-gray-800">Metadata Management</h2>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <button @click="selectMode('search')"
-                    class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-blue-50 hover:bg-blue-100">
-                <div class="text-4xl mb-2">🔍</div>
-                <h3 class="font-bold text-lg mb-2">Search & Update Single Bottle</h3>
-                <p class="text-sm text-gray-600">Find a specific bottle and verify its metadata</p>
+            <button @click="selectMode('review-labels')"
+                    class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-orange-50 hover:bg-orange-100">
+                <div class="text-4xl mb-2">📊</div>
+                <h3 class="font-bold text-lg mb-2">Bottle Grid View</h3>
+                <p class="text-sm text-gray-600">Browse, search, and edit your entire collection</p>
             </button>
 
             <button @click="selectMode('batch')"
@@ -42,178 +68,10 @@
                 <h3 class="font-bold text-lg mb-2">Manage Events</h3>
                 <p class="text-sm text-gray-600">View and manage your tasting events</p>
             </button>
-
-            <button @click="selectMode('review-labels')"
-                    class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-orange-50 hover:bg-orange-100">
-                <div class="text-4xl mb-2">📊</div>
-                <h3 class="font-bold text-lg mb-2">Bottle Grid View</h3>
-                <p class="text-sm text-gray-600">Browse, search, and edit your entire collection</p>
-            </button>
         </div>
 
         <div class="mt-6">
             <a href="/upload" class="text-blue-600 hover:text-blue-800 font-semibold">← Back to Upload</a>
-        </div>
-    </div>
-
-    <!-- Search Mode -->
-    <div x-show="mode === 'search'">
-        <!-- Search Interface -->
-        <div x-show="!selectedBottle" class="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 class="text-2xl font-bold mb-4 text-gray-800">Search for Bottle</h2>
-
-            <div class="mb-4">
-                <input type="text"
-                       x-model="searchQuery"
-                       @keyup.enter="searchBottles()"
-                       placeholder="Enter producer, name, or year..."
-                       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-            </div>
-
-            <button @click="searchBottles()"
-                    :disabled="searching || !searchQuery"
-                    class="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold rounded-lg transition-colors">
-                <span x-show="!searching">🔍 Search</span>
-                <span x-show="searching">Searching...</span>
-            </button>
-
-            <!-- Search Results -->
-            <div x-show="searchResults.length > 0" class="mt-6">
-                <h3 class="font-bold text-gray-800 mb-3"><span x-text="searchResults.length"></span> Results</h3>
-                <div class="space-y-2">
-                    <template x-for="bottle in searchResults" :key="bottle._index">
-                        <button @click="selectBottle(bottle)"
-                                class="w-full text-left p-4 border border-gray-300 rounded-lg hover:bg-blue-50 transition-colors">
-                            <div class="font-bold text-gray-800">
-                                <span x-text="bottle.producer"></span> - <span x-text="bottle.name"></span>
-                                <span x-show="bottle.year" class="text-gray-600">(<span x-text="bottle.year"></span>)</span>
-                            </div>
-                            <div class="text-sm text-gray-600">
-                                <span x-text="bottle.type"></span>
-                                <span x-show="bottle.region"> • <span x-text="bottle.region"></span></span>
-                                <span x-show="bottle.country"> • <span x-text="bottle.country"></span></span>
-                            </div>
-                        </button>
-                    </template>
-                </div>
-            </div>
-
-            <div class="mt-4">
-                <button @click="mode = null" class="text-blue-600 hover:text-blue-800 font-semibold">← Back to Mode Selection</button>
-            </div>
-        </div>
-
-        <!-- Selected Bottle Review (includes verification UI) -->
-        <div x-show="selectedBottle">
-            <template x-if="selectedBottle">
-                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <!-- Collapsed View -->
-                    <div x-show="bottleCollapsed" @click="bottleCollapsed = false" class="cursor-pointer hover:bg-gray-50 p-4 rounded-lg">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <h3 class="text-xl font-bold text-gray-800">
-                                    <span x-text="selectedBottle.producer"></span> - <span x-text="selectedBottle.name"></span>
-                                    <span x-show="selectedBottle.year" class="text-gray-600">(<span x-text="selectedBottle.year"></span>)</span>
-                                </h3>
-                                <p class="text-green-600 font-semibold mt-1">✓ Changes Applied</p>
-                            </div>
-                            <button class="text-blue-600 hover:text-blue-800 font-semibold">
-                                ▼ Expand
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Expanded View -->
-                    <div x-show="!bottleCollapsed">
-                        <div class="flex justify-between items-start mb-4">
-                            <h3 class="text-xl font-bold text-gray-800">
-                                <span x-text="selectedBottle.producer"></span> - <span x-text="selectedBottle.name"></span>
-                                <span x-show="selectedBottle.year" class="text-gray-600">(<span x-text="selectedBottle.year"></span>)</span>
-                            </h3>
-                            <button @click="bottleCollapsed = true" x-show="verificationResult && Object.keys(verificationResult.changes || {}).length > 0 && appliedSuccessfully"
-                                    class="text-gray-600 hover:text-gray-800 font-semibold">
-                                ▲ Collapse
-                            </button>
-                        </div>
-
-                            <!-- Success Message -->
-                            <div x-show="appliedSuccessfully" class="mb-4 bg-green-50 border-2 border-green-400 rounded-lg p-4">
-                                <p class="text-green-800 font-bold">✓ Changes Applied Successfully!</p>
-                            </div>
-
-                            <!-- Verify Button -->
-                            <div x-show="!verificationResult && !verifying">
-                                <button @click="verifyBottle(selectedBottle)"
-                                        class="mb-4 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg">
-                                    🔍 Search for Metadata Updates
-                                </button>
-                            </div>
-
-                            <!-- Verifying State -->
-                            <div x-show="verifying" class="mb-6 text-center py-8">
-                                <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-purple-600 mx-auto mb-4"></div>
-                                <p class="text-gray-600">Searching the web for metadata updates...</p>
-                            </div>
-
-                            <!-- Metadata Fields Inline -->
-                            <div x-show="selectedBottle" x-html="buildInlineMetadataSection(selectedBottle, verificationResult)"></div>
-
-                            <!-- No Changes Found -->
-                            <div x-show="verificationResult && (!verificationResult.changes || Object.keys(verificationResult.changes).length === 0)" class="mt-6">
-                                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                                    <h4 class="text-green-800 font-bold mb-2">✓ Metadata Verified</h4>
-                                    <p class="text-green-700">No changes needed - all metadata is accurate!</p>
-                                </div>
-                                <div class="mt-4">
-                                    <button @click="selectedBottle = null; verificationResult = null"
-                                            class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
-                                        Back to Search →
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Changes Found - Show Actions -->
-                            <div x-show="verificationResult && verificationResult.changes && Object.keys(verificationResult.changes).length > 0">
-                                <!-- Reasoning -->
-                                <div x-show="verificationResult?.metadata?.reasoning" class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                    <h5 class="font-bold text-blue-800 mb-2">Sources & Reasoning:</h5>
-                                    <p class="text-blue-700 text-sm" x-text="verificationResult?.metadata?.reasoning"></p>
-                                    <p class="text-blue-600 text-xs mt-2">
-                                        Confidence: <span class="font-semibold" x-text="verificationResult?.metadata?.confidence"></span>
-                                    </p>
-                                </div>
-
-                                <!-- Action Buttons -->
-                                <div x-show="!appliedSuccessfully" class="mt-6 flex gap-3">
-                                    <button @click="applySelectedUpdates(selectedBottle, false, null)"
-                                            :disabled="applying"
-                                            class="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                                        <span x-show="!applying">✓ Apply Selected Changes</span>
-                                        <span x-show="applying">Applying...</span>
-                                    </button>
-                                    <button @click="selectedBottle = null; verificationResult = null; appliedSuccessfully = false; bottleCollapsed = false"
-                                            :disabled="applying"
-                                            class="px-6 py-3 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                                        Skip →
-                                    </button>
-                                </div>
-
-                                <div x-show="appliedSuccessfully" class="mt-6">
-                                    <button @click="selectedBottle = null; verificationResult = null; appliedSuccessfully = false"
-                                            class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
-                                        Back to Search →
-                                    </button>
-                                </div>
-                            </div>
-
-                        <!-- Back Button -->
-                        <div x-show="!verificationResult" class="mt-4">
-                            <button @click="selectedBottle = null"
-                                    class="text-blue-600 hover:text-blue-800 font-semibold">← Back to Search</button>
-                        </div>
-                    </div>
-                </div>
-            </template>
         </div>
     </div>
 
@@ -760,7 +618,7 @@
 
                     <div class="grid grid-cols-3 md:grid-cols-4 gap-4">
                         <template x-for="bottle in filteredBottles" :key="bottle.vault_path">
-                            <div @click="selectLabelBottle(bottle)"
+                            <div @click="bottleEditor.openManagement(bottle)"
                                  class="cursor-pointer border-2 border-gray-200 hover:border-blue-500 rounded-lg p-3 transition-all hover:shadow-lg">
                                 <div class="bg-gray-100 rounded-lg mb-2 h-48 flex items-center justify-center overflow-hidden">
                                     <img x-show="bottle.vault_path"
@@ -781,421 +639,28 @@
             </div>
         </div>
 
-        <!-- Selected Bottle Detail -->
-        <div x-show="selectedLabelBottle">
-            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                <button @click="selectedLabelBottle = null; labelSearchResults = []; labelCropPreview = null"
-                        class="mb-4 text-blue-600 hover:text-blue-800 font-semibold">
-                    ← Back to Grid
-                </button>
+        <!-- Include Bottle Editor Modal Component -->
+        {% include 'components/bottle_editor_modal.html' %}
 
-                <h3 class="text-2xl font-bold text-gray-800 mb-2">
-                    <span x-text="selectedLabelBottle?.producer"></span> - <span x-text="selectedLabelBottle?.name"></span>
-                </h3>
-                <div class="mb-6 text-gray-700">
-                    <div class="grid grid-cols-2 gap-2 text-sm">
-                        <div><span class="font-semibold">Type:</span> <span x-text="selectedLabelBottle?.beverage_type || selectedLabelBottle?.type"></span></div>
-                        <div><span class="font-semibold">Year:</span> <span x-text="selectedLabelBottle?.year || 'N/A'"></span></div>
-                        <div x-show="selectedLabelBottle?.variety && selectedLabelBottle?.variety !== 'MISSING'">
-                            <span class="font-semibold">Variety:</span> <span x-text="selectedLabelBottle?.variety"></span>
-                        </div>
-                        <div x-show="selectedLabelBottle?.mash_bill && selectedLabelBottle?.mash_bill !== 'MISSING'">
-                            <span class="font-semibold">Mash Bill:</span> <span x-text="selectedLabelBottle?.mash_bill"></span>
-                        </div>
-                        <div x-show="selectedLabelBottle?.region && selectedLabelBottle?.region !== 'MISSING'" class="col-span-2">
-                            <span class="font-semibold">Region:</span> <span x-text="selectedLabelBottle?.region"></span>
-                        </div>
-                        <div x-show="selectedLabelBottle?.vineyard && selectedLabelBottle?.vineyard !== 'MISSING'">
-                            <span class="font-semibold">Vineyard:</span> <span x-text="selectedLabelBottle?.vineyard"></span>
-                        </div>
-                        <div x-show="selectedLabelBottle?.age_statement && selectedLabelBottle?.age_statement !== 'MISSING'">
-                            <span class="font-semibold">Age:</span> <span x-text="selectedLabelBottle?.age_statement"></span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Metadata Section -->
-                <div class="mb-6 bg-white rounded-lg p-4 border-2 border-gray-300">
-                    <div class="flex justify-between items-center mb-4">
-                        <h4 class="font-bold text-gray-800">Bottle Metadata</h4>
-                        <button @click="verifyGridBottle()"
-                                :disabled="gridVerifying"
-                                class="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition-colors">
-                            <span x-show="!gridVerifying">🔍 Search for Updates</span>
-                            <span x-show="gridVerifying">Searching...</span>
-                        </button>
-                    </div>
-
-                    <!-- Verifying State -->
-                    <div x-show="gridVerifying" class="text-center py-8">
-                        <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-purple-600 mx-auto mb-4"></div>
-                        <p class="text-gray-600">Searching the web for metadata updates...</p>
-                    </div>
-
-                    <!-- Success Message -->
-                    <div x-show="gridAppliedSuccessfully" class="mb-4 bg-green-50 border-2 border-green-400 rounded-lg p-4">
-                        <p class="text-green-800 font-bold">✓ Changes Applied Successfully!</p>
-                    </div>
-
-                    <!-- Metadata Fields -->
-                    <div x-show="!gridVerifying && selectedLabelBottle" class="space-y-3">
-                        <template x-for="field in getMetadataFields(selectedLabelBottle)" :key="field.key">
-                            <div>
-                                <!-- Field with changes (if verification result exists) -->
-                                <template x-if="gridVerificationResult && gridVerificationResult.changes && gridVerificationResult.changes[field.key]">
-                                    <div class="border-2 border-yellow-300 rounded-lg p-3 bg-yellow-50">
-                                        <div class="flex items-start gap-3">
-                                            <input type="checkbox"
-                                                   x-model="gridApprovedFields[field.key]"
-                                                   class="mt-1 w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500">
-                                            <div class="flex-1">
-                                                <label class="block text-sm font-bold text-gray-800 mb-2" x-text="field.label"></label>
-                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                    <div>
-                                                        <span class="text-xs text-gray-600 block mb-1">Current:</span>
-                                                        <div class="px-3 py-2 bg-red-50 border-2 border-red-300 rounded text-gray-800 line-through text-sm"
-                                                             x-text="selectedLabelBottle[field.key] || '(empty)'"></div>
-                                                    </div>
-                                                    <div>
-                                                        <span class="text-xs text-green-700 font-semibold block mb-1">Proposed:</span>
-                                                        <div class="px-3 py-2 bg-green-50 border-2 border-green-400 rounded text-gray-900 font-semibold text-sm"
-                                                             x-text="gridVerificationResult.changes[field.key].new"></div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </template>
-
-                                <!-- Field without changes -->
-                                <template x-if="!gridVerificationResult || !gridVerificationResult.changes || !gridVerificationResult.changes[field.key]">
-                                    <div class="flex justify-between items-center py-2 px-3 border border-gray-200 rounded bg-white">
-                                        <span class="text-sm font-semibold text-gray-700" x-text="field.label"></span>
-                                        <span class="text-sm text-gray-900" x-text="selectedLabelBottle[field.key] || '(empty)'"></span>
-                                    </div>
-                                </template>
-                            </div>
-                        </template>
-                    </div>
-
-                    <!-- Verification Results Actions -->
-                    <div x-show="gridVerificationResult && !gridVerifying">
-                        <!-- No Changes -->
-                        <div x-show="!gridVerificationResult.changes || Object.keys(gridVerificationResult.changes).length === 0" class="mt-4 bg-green-50 border border-green-200 rounded-lg p-4">
-                            <h5 class="text-green-800 font-bold mb-2">✓ Metadata Verified</h5>
-                            <p class="text-green-700 text-sm">No changes needed - all metadata is accurate!</p>
-                        </div>
-
-                        <!-- Has Changes -->
-                        <div x-show="gridVerificationResult.changes && Object.keys(gridVerificationResult.changes).length > 0">
-                            <!-- Reasoning -->
-                            <div x-show="gridVerificationResult.metadata?.reasoning" class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                <h5 class="font-bold text-blue-800 mb-2">Sources & Reasoning:</h5>
-                                <p class="text-blue-700 text-sm" x-text="gridVerificationResult.metadata.reasoning"></p>
-                                <p class="text-blue-600 text-xs mt-2">
-                                    Confidence: <span class="font-semibold" x-text="gridVerificationResult.metadata.confidence"></span>
-                                </p>
-                            </div>
-
-                            <!-- Apply Button -->
-                            <div x-show="!gridAppliedSuccessfully" class="mt-4">
-                                <button @click="applyGridMetadataChanges()"
-                                        :disabled="gridApplying"
-                                        class="w-full px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                                    <span x-show="!gridApplying">✓ Apply Selected Changes</span>
-                                    <span x-show="gridApplying">Applying...</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tasting Summary -->
-                <div class="mb-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <h4 class="font-bold text-gray-800 mb-3">Tasting Summary</h4>
-
-                    <!-- Loading State -->
-                    <div x-show="tastingSummaryLoading" class="text-center py-4">
-                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                    </div>
-
-                    <!-- No Tastings -->
-                    <div x-show="!tastingSummaryLoading && tastingSummary && tastingSummary.tasting_count === 0" class="text-gray-600 text-sm">
-                        No tastings recorded yet.
-                    </div>
-
-                    <!-- Tasting Stats -->
-                    <div x-show="!tastingSummaryLoading && tastingSummary && tastingSummary.tasting_count > 0" class="text-sm space-y-2">
-                        <div class="flex justify-between">
-                            <span class="font-semibold text-gray-700">Total Tastings:</span>
-                            <span x-text="tastingSummary.tasting_count"></span>
-                        </div>
-                        <div x-show="tastingSummary.avg_score !== null" class="flex justify-between">
-                            <span class="font-semibold text-gray-700">Average Score:</span>
-                            <span><span x-text="tastingSummary.avg_score"></span> / <span x-text="tastingSummary.max_score"></span></span>
-                        </div>
-                        <div x-show="tastingSummary.earliest_date" class="flex justify-between">
-                            <span class="font-semibold text-gray-700">First Tasting:</span>
-                            <span x-text="tastingSummary.earliest_date"></span>
-                        </div>
-                        <div x-show="tastingSummary.latest_date" class="flex justify-between">
-                            <span class="font-semibold text-gray-700">Latest Tasting:</span>
-                            <span x-text="tastingSummary.latest_date"></span>
-                        </div>
-                        <div x-show="tastingSummary.tasters && tastingSummary.tasters.length > 0" class="flex justify-between">
-                            <span class="font-semibold text-gray-700">Tasters:</span>
-                            <span x-text="tastingSummary.tasters.join(', ')"></span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Current Label -->
-                <div class="mb-6">
-                    <h4 class="font-bold text-gray-800 mb-3">Current Label</h4>
-                    <div class="max-w-md bg-gray-100 rounded-lg p-4">
-                        <img x-show="selectedLabelBottle?.vault_path"
-                             :src="`/api/v1/labels/view?path=${encodeURIComponent('/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' + (selectedLabelBottle?.vault_path || '') + '/labels/label.jpg')}&t=${currentLabelTimestamp}`"
-                             alt="Current label"
-                             onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
-                             class="w-full h-auto rounded shadow-sm">
-                        <div class="text-gray-400 text-6xl text-center py-12" style="display: none;">📷</div>
-                    </div>
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    <button @click="searchForLabelReplacement()"
-                            :disabled="labelActionInProgress"
-                            class="px-6 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                        🔍 Search for Better Label
-                    </button>
-                    <button @click="document.getElementById('manualUploadInput').click()"
-                            :disabled="labelActionInProgress"
-                            class="px-6 py-4 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                        📁 Upload Your Own
-                    </button>
-                    <button @click="cropExistingLabel()"
-                            :disabled="labelActionInProgress"
-                            class="px-6 py-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                        ✂️ Auto Crop (OCR)
-                    </button>
-                    <button @click="startManualCrop()"
-                            :disabled="labelActionInProgress"
-                            class="px-6 py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                        ✋ Manual Crop
-                    </button>
-                </div>
-
-                <!-- Hidden File Input -->
-                <input
-                    id="manualUploadInput"
-                    type="file"
-                    accept="image/*"
-                    @change="handleManualLabelUpload($event)"
-                    style="display: none;"
-                >
-
-                <!-- Manual Upload Preview -->
-                <div x-show="manualUploadPreview && !labelDownloadedOriginal" class="mb-6">
-                    <div class="bg-orange-50 border-2 border-orange-200 rounded-lg p-6">
-                        <h4 class="font-bold text-gray-800 mb-3">Uploaded Image Preview</h4>
-                        <img :src="manualUploadPreview" alt="Upload preview" class="max-h-64 mx-auto border-2 border-gray-300 rounded-lg mb-4">
-                        <div class="flex gap-3 justify-center">
-                            <button @click="uploadManualLabelImage()"
-                                    :disabled="!manualUploadFile || labelActionInProgress"
-                                    class="px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                                <span x-show="!labelActionInProgress">✓ Use This Image</span>
-                                <span x-show="labelActionInProgress">Uploading...</span>
-                            </button>
-                            <button @click="cancelManualUpload()"
-                                    class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Search Results -->
-                <div x-show="labelSearchResults.length > 0" class="mb-6">
-                    <h4 class="font-bold text-gray-800 mb-3">Search Results - Click to Select</h4>
-                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-                        <template x-for="(result, idx) in labelSearchResults" :key="idx">
-                            <div @click="selectedSearchImage = result"
-                                 :class="selectedSearchImage === result ? 'ring-4 ring-blue-500' : 'hover:ring-2 hover:ring-gray-300'"
-                                 class="cursor-pointer border-2 border-gray-200 rounded-lg p-2 transition-all">
-                                <img :src="result.url"
-                                     alt="Label option"
-                                     class="w-full h-48 object-contain rounded mb-2">
-                                <div class="text-xs text-gray-600 text-center" x-text="result.source || 'Web'"></div>
-                            </div>
-                        </template>
-                    </div>
-                    <button @click="useSelectedSearchImage()"
-                            :disabled="!selectedSearchImage || labelActionInProgress"
-                            class="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                        <span x-show="!labelActionInProgress">Download & Use Selected</span>
-                        <span x-show="labelActionInProgress">Processing...</span>
-                    </button>
-                </div>
-
-                <!-- Crop Preview (for "Crop Current Label") -->
-                <div x-show="labelCropPreview && !labelDownloadedOriginal" class="mb-6">
-                    <h4 class="font-bold text-gray-800 mb-3">Cropped Preview</h4>
-                    <div class="max-w-md bg-gray-100 rounded-lg p-4">
-                        <img :src="labelCropPreview"
-                             alt="Cropped preview"
-                             class="w-full h-auto rounded shadow-sm">
-                    </div>
-                    <div class="flex gap-3 mt-4">
-                        <button @click="acceptLabelCrop()"
-                                :disabled="labelActionInProgress"
-                                class="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                            ✓ Accept This Crop
-                        </button>
-                        <button @click="labelCropPreview = null"
-                                class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Downloaded Image Review -->
-                <div x-show="labelDownloadedOriginal" class="mb-6">
-                    <h4 class="font-bold text-gray-800 mb-4">Downloaded Image - Choose Version</h4>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <!-- Original Downloaded -->
-                        <div class="border-2 border-gray-300 rounded-lg p-4">
-                            <h5 class="font-semibold text-gray-700 mb-2">Original Downloaded</h5>
-                            <div class="bg-gray-100 rounded-lg p-4 mb-3">
-                                <img :src="labelDownloadedOriginal"
-                                     alt="Downloaded original"
-                                     class="w-full h-auto rounded shadow-sm">
-                            </div>
-                            <button @click="useDownloadedLabel(false)"
-                                    :disabled="labelActionInProgress"
-                                    class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                                Use This (Original)
-                            </button>
-                        </div>
-
-                        <!-- Cropped Version -->
-                        <div class="border-2 border-gray-300 rounded-lg p-4">
-                            <h5 class="font-semibold text-gray-700 mb-2">Cropped to Label</h5>
-                            <div class="bg-gray-100 rounded-lg p-4 mb-3">
-                                <div x-show="!labelDownloadedCropped" class="text-center py-12">
-                                    <p class="text-gray-500 mb-4">Not cropped yet</p>
-                                    <div class="flex flex-col gap-2">
-                                        <button @click="cropDownloadedImage()"
-                                                :disabled="labelActionInProgress"
-                                                class="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                                            ✂️ Auto Crop (OCR)
-                                        </button>
-                                        <button @click="startManualCropDownloaded()"
-                                                :disabled="labelActionInProgress"
-                                                class="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                                            ✋ Manual Crop
-                                        </button>
-                                    </div>
-                                </div>
-                                <div x-show="labelDownloadedCropped">
-                                    <img :src="labelDownloadedCropped"
-                                         alt="Cropped version"
-                                         class="w-full h-auto rounded shadow-sm mb-3">
-                                    <button @click="recropDownloaded()"
-                                            class="w-full px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white text-sm font-semibold rounded">
-                                        🔄 Re-crop (try different method)
-                                    </button>
-                                </div>
-                            </div>
-                            <button x-show="labelDownloadedCropped"
-                                    @click="useDownloadedLabel(true)"
-                                    :disabled="labelActionInProgress"
-                                    class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                                Use This (Cropped)
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="flex justify-center">
-                        <button @click="cancelDownload()"
-                                class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
-                            Cancel / Keep Current Label
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Manual Crop Interface for Downloaded Image -->
-                <div x-show="manualCropDownloadedActive" class="mb-6">
-                    <h4 class="font-bold text-gray-800 mb-4">Manual Crop Downloaded - Drag to Select Area</h4>
-
-                    <div class="bg-gray-100 rounded-lg p-4 mb-4">
-                        <div class="max-w-4xl mx-auto">
-                            <img id="manualCropDownloadedImage"
-                                 :src="manualCropDownloadedSrc"
-                                 alt="Downloaded image to crop"
-                                 style="max-width: 100%; display: block;">
-                        </div>
-                    </div>
-
-                    <div class="flex gap-3 justify-center">
-                        <button @click="acceptManualCropDownloaded()"
-                                :disabled="labelActionInProgress"
-                                class="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                            ✓ Crop to Selected Area
-                        </button>
-                        <button @click="cancelManualCropDownloaded()"
-                                class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Manual Crop Interface -->
-                <div x-show="manualCropActive" class="mb-6">
-                    <h4 class="font-bold text-gray-800 mb-4">Manual Crop - Drag to Select Area</h4>
-
-                    <div class="bg-gray-100 rounded-lg p-4 mb-4">
-                        <div class="max-w-4xl mx-auto">
-                            <img id="manualCropImage"
-                                 :src="manualCropImageSrc"
-                                 alt="Image to crop"
-                                 style="max-width: 100%; display: block;">
-                        </div>
-                    </div>
-
-                    <div class="flex gap-3 justify-center">
-                        <button @click="acceptManualCrop()"
-                                :disabled="labelActionInProgress"
-                                class="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                            ✓ Crop to Selected Area
-                        </button>
-                        <button @click="cancelManualCrop()"
-                                class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
+        <!-- OLD inline detail view removed - now using modal component above -->
 <script>
 function managementApp() {
+    // Import label review module (if available)
+    const labelReview = window.labelReviewModule ? window.labelReviewModule() : {};
+    const labelReviewState = labelReview.initState ? labelReview.initState() : {};
+
+    // Initialize bottle editor modal
+    const bottleEditor = window.bottleEditorModal ? window.bottleEditorModal() : {};
+
     return {
         mode: null,
 
-        // Search mode
-        searchQuery: '',
-        searching: false,
-        searchResults: [],
-        selectedBottle: null,
+        // Shared verification state
         verifying: false,
         verificationResult: null,
         approvedFields: {},
         applying: false,
         appliedSuccessfully: false,
-        bottleCollapsed: false,
 
         // Batch mode
         batchStarting: false,
@@ -1226,41 +691,15 @@ function managementApp() {
         manageEventsLoading: false,
         peekingBottles: {},  // Track which events are showing bottle mapping
 
-        // Label review mode
-        labelsLoading: false,
-        labelBottles: [],
-        selectedLabelBottle: null,
-        labelSearchResults: [],
-        selectedSearchImage: null,
-        labelCropPreview: null,
-        labelActionInProgress: false,
-        labelDownloadedOriginal: null,
-        labelDownloadedCropped: null,
-        labelGridTimestamp: Date.now(),
-        currentLabelTimestamp: Date.now(),  // Cache buster for current label display
-        manualCropActive: false,
-        manualCropImageSrc: null,
-        cropperInstance: null,
-        manualCropDownloadedActive: false,
-        manualCropDownloadedSrc: null,
-        cropperDownloadedInstance: null,
-        manualUploadFile: null,
-        manualUploadPreview: null,
+        // Toast notifications
+        toasts: [],
+        toastIdCounter: 0,
 
-        // Grid filters
-        gridFilterType: 'all',  // 'all', 'wine', 'whiskey'
-        gridSearchQuery: '',
+        // Bottle editor modal
+        bottleEditor: bottleEditor,
 
-        // Tasting summary
-        tastingSummary: null,
-        tastingSummaryLoading: false,
-
-        // Grid metadata verification
-        gridVerifying: false,
-        gridVerificationResult: null,
-        gridApprovedFields: {},
-        gridApplying: false,
-        gridAppliedSuccessfully: false,
+        // Label review mode state (from external module)
+        ...labelReviewState,
 
         // Computed property for filtered bottles
         get filteredBottles() {
@@ -1293,37 +732,25 @@ function managementApp() {
             }
         },
 
-        // Reset operations on CURRENT label (auto-crop, manual-crop)
-        // Call this before starting a new operation on current label
-        resetCurrentLabelOperations() {
-            // Clear auto-crop preview
-            this.labelCropPreview = null;
+        // Toast notification system
+        showToast(message, type = 'success', duration = 2000) {
+            const id = ++this.toastIdCounter;
+            const toast = { id, message, type };
+            this.toasts.push(toast);
 
-            // Clear manual crop state
-            if (this.cropperInstance) {
-                this.cropperInstance.destroy();
-                this.cropperInstance = null;
-            }
-            this.manualCropActive = false;
-            this.manualCropImageSrc = null;
+            // Auto-dismiss after duration
+            setTimeout(() => {
+                this.toasts = this.toasts.filter(t => t.id !== id);
+            }, duration);
         },
 
-        // Reset downloaded/uploaded image operations
-        // Call this when going back to current label operations
-        resetDownloadedOperations() {
-            this.labelDownloadedOriginal = null;
-            this.labelDownloadedCropped = null;
-            if (this.cropperDownloadedInstance) {
-                this.cropperDownloadedInstance.destroy();
-                this.cropperDownloadedInstance = null;
-            }
-            this.manualCropDownloadedActive = false;
-            this.manualCropDownloadedSrc = null;
-            this.manualUploadFile = null;
-            this.manualUploadPreview = null;
-            const fileInputs = document.querySelectorAll('input[type="file"]');
-            fileInputs.forEach(input => input.value = '');
-        },
+        // Label review functions (from external module - see /static/js/management/label-review.js)
+        ...labelReview,
+
+        // ============================================================================
+        // Single Bottle Search, Batch Verification, and Event Management Functions
+        // (Label review functions are loaded from label-review.js module above)
+        // ============================================================================
 
         initBatchResult(result) {
             // Initialize all change checkboxes as checked
@@ -1371,29 +798,6 @@ function managementApp() {
             fields.push({ key: 'inventory', label: 'Inventory Count' });
 
             return fields;
-        },
-
-        async searchBottles() {
-            if (!this.searchQuery) return;
-
-            this.searching = true;
-            try {
-                const response = await fetch(`/api/v1/management/bottles/search?q=${encodeURIComponent(this.searchQuery)}`);
-                const data = await response.json();
-                this.searchResults = data.bottles;
-            } catch (error) {
-                console.error('Search failed:', error);
-                alert('Search failed: ' + error.message);
-            } finally {
-                this.searching = false;
-            }
-        },
-
-        selectBottle(bottle) {
-            this.selectedBottle = bottle;
-            this.verificationResult = null;
-            this.approvedFields = {};
-            this.appliedSuccessfully = false;
         },
 
         async verifyBottle(bottle) {
@@ -1486,7 +890,7 @@ function managementApp() {
             }
         },
 
-        async applySelectedUpdates(bottle, isFromBatch = false, batchResultIdx = null) {
+        async applySelectedUpdates(bottle, batchResultIdx = null) {
             // Get only approved fields
             const updates = {};
             for (const field in this.approvedFields) {
@@ -1529,13 +933,8 @@ function managementApp() {
                     this.applying = false;
                     this.appliedSuccessfully = true;
 
-                    if (isFromBatch && batchResultIdx !== null) {
+                    if (batchResultIdx !== null) {
                         this.pendingReviews[batchResultIdx].reviewed = true;
-                    } else {
-                        // Auto-collapse after showing success message briefly
-                        setTimeout(() => {
-                            this.bottleCollapsed = true;
-                        }, 1500);
                     }
                 } else {
                     throw new Error(responseData.detail || 'Update failed');
@@ -1547,13 +946,9 @@ function managementApp() {
             }
         },
 
-        skipBottle(isFromBatch = false, batchResultIdx = null) {
-            if (isFromBatch && batchResultIdx !== null) {
+        skipBottle(batchResultIdx) {
+            if (batchResultIdx !== null) {
                 this.pendingReviews[batchResultIdx].reviewed = true;
-            } else {
-                this.selectedBottle = null;
-                this.verificationResult = null;
-                this.appliedSuccessfully = false;
             }
         },
 
@@ -1769,7 +1164,7 @@ function managementApp() {
                 }
 
                 await this.loadManagedEvents();
-                alert('Bottles revealed successfully!');
+                this.showToast('Bottles revealed successfully!');
             } catch (error) {
                 console.error('Failed to reveal bottles:', error);
                 alert('Failed to reveal bottles: ' + error.message);
@@ -1789,7 +1184,7 @@ function managementApp() {
                 }
 
                 await this.loadManagedEvents();
-                alert('Event closed successfully!');
+                this.showToast('Event closed successfully!');
             } catch (error) {
                 console.error('Failed to close event:', error);
                 alert('Failed to close event: ' + error.message);
@@ -1809,27 +1204,18 @@ function managementApp() {
                 }
 
                 await this.loadManagedEvents();
-                alert('Event deleted successfully!');
+                this.showToast('Event deleted successfully!');
             } catch (error) {
                 console.error('Failed to delete event:', error);
                 alert('Failed to delete event: ' + error.message);
             }
         },
 
-        renderBottleReview() {
-            if (!this.selectedBottle) return '';
-
-            const bottle = this.selectedBottle;
-            const result = this.verificationResult;
-
-            return this.buildReviewUI(bottle, result, false, null);
-        },
-
         renderBatchBottleReview(result, idx) {
-            return this.buildReviewUI(result.original, result, true, idx);
+            return this.buildBatchReviewUI(result.original, result, idx);
         },
 
-        buildReviewUI(bottle, result, isFromBatch, batchIdx) {
+        buildBatchReviewUI(bottle, result, batchIdx) {
             const hasResult = !!result;
             const hasChanges = hasResult && result.changes && Object.keys(result.changes).length > 0;
 
@@ -1862,9 +1248,9 @@ function managementApp() {
                         <p class="text-green-700">No changes needed - all metadata is accurate!</p>
                     </div>
                     <div class="mt-4">
-                        <button onclick="Alpine.store('app').skipBottle(${isFromBatch}, ${batchIdx})"
+                        <button onclick="Alpine.store('app').skipBottle(${batchIdx})"
                                 class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
-                            ${isFromBatch ? 'Mark as Reviewed' : 'Back to Search'} →
+                            Mark as Reviewed →
                         </button>
                     </div>
                 `;
@@ -1884,23 +1270,14 @@ function managementApp() {
 
                 html += `
                     <div class="mt-6 flex gap-3">
-                        <button onclick="Alpine.store('app').applySelectedUpdates(${JSON.stringify(bottle).replace(/"/g, '&quot;')}, ${isFromBatch}, ${batchIdx})"
+                        <button onclick="Alpine.store('app').applySelectedUpdates(${JSON.stringify(bottle).replace(/"/g, '&quot;')}, ${batchIdx})"
                                 class="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
                             ✓ Apply Selected Changes
                         </button>
-                        <button onclick="Alpine.store('app').skipBottle(${isFromBatch}, ${batchIdx})"
+                        <button onclick="Alpine.store('app').skipBottle(${batchIdx})"
                                 class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-lg">
                             Skip →
                         </button>
-                    </div>
-                `;
-            }
-
-            if (!isFromBatch && !hasResult) {
-                html += `
-                    <div class="mt-4">
-                        <button onclick="Alpine.store('app').selectedBottle = null"
-                                class="text-blue-600 hover:text-blue-800 font-semibold">← Back to Search</button>
                     </div>
                 `;
             }
@@ -2001,637 +1378,8 @@ function managementApp() {
             return html;
         },
 
-        // Label Review Functions
-        async loadLabelsForReview() {
-            this.labelsLoading = true;
-            try {
-                // Load all bottles from vault
-                const response = await fetch('/api/v1/management/bottles');
-                const data = await response.json();
-
-                // Each bottle already has vault_path from the backend
-                // We need to construct the full path to the label image
-                this.labelBottles = data.bottles;
-
-                // Update timestamp to bust browser cache
-                this.labelGridTimestamp = Date.now();
-
-                console.log(`Loaded ${this.labelBottles.length} bottles for label review`);
-            } catch (error) {
-                console.error('Failed to load bottles:', error);
-                alert('Failed to load bottles: ' + error.message);
-            } finally {
-                this.labelsLoading = false;
-            }
-        },
-
-        selectLabelBottle(bottle) {
-            this.selectedLabelBottle = bottle;
-            this.labelSearchResults = [];
-            this.selectedSearchImage = null;
-            this.labelCropPreview = null;
-            this.labelDownloadedOriginal = null;
-            this.labelDownloadedCropped = null;
-
-            // Reset metadata verification
-            this.gridVerificationResult = null;
-            this.gridApprovedFields = {};
-            this.gridAppliedSuccessfully = false;
-
-            // Load tasting summary
-            this.loadTastingSummary();
-        },
-
-        async verifyGridBottle() {
-            if (!this.selectedLabelBottle) return;
-
-            this.gridVerifying = true;
-            this.gridAppliedSuccessfully = false;
-
-            try {
-                const response = await fetch(`/api/v1/management/bottles/${this.selectedLabelBottle._index || 0}/verify`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ bottle: this.selectedLabelBottle })
-                });
-
-                const data = await response.json();
-                this.gridVerificationResult = data;
-
-                // Initialize approved fields (all checked by default)
-                this.gridApprovedFields = {};
-                if (data.changes) {
-                    for (const field in data.changes) {
-                        this.gridApprovedFields[field] = true;
-                    }
-                }
-            } catch (error) {
-                console.error('Verification failed:', error);
-                alert('Verification failed: ' + error.message);
-            } finally {
-                this.gridVerifying = false;
-            }
-        },
-
-        async applyGridMetadataChanges() {
-            if (!this.selectedLabelBottle || !this.gridVerificationResult) return;
-
-            // Get only approved fields
-            const updates = {};
-            for (const field in this.gridVerificationResult.changes) {
-                if (this.gridApprovedFields[field] === true) {
-                    updates[field] = this.gridVerificationResult.changes[field].new;
-                }
-            }
-
-            if (Object.keys(updates).length === 0) {
-                alert('No changes selected to apply');
-                return;
-            }
-
-            this.gridApplying = true;
-
-            try {
-                const response = await fetch('/api/v1/management/bottles/update-fields', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        bottle: this.selectedLabelBottle,
-                        updates: updates
-                    })
-                });
-
-                if (!response.ok) throw new Error('Failed to update fields');
-
-                this.gridAppliedSuccessfully = true;
-
-                // Refresh the bottle data
-                await this.loadLabelsForReview();
-
-                // Find and update the selected bottle
-                const updatedBottle = this.labelBottles.find(b => b.vault_path === this.selectedLabelBottle.vault_path);
-                if (updatedBottle) {
-                    this.selectedLabelBottle = updatedBottle;
-                }
-            } catch (error) {
-                console.error('Apply failed:', error);
-                alert('Failed to apply changes: ' + error.message);
-            } finally {
-                this.gridApplying = false;
-            }
-        },
-
-        async loadTastingSummary() {
-            if (!this.selectedLabelBottle) return;
-
-            this.tastingSummaryLoading = true;
-            try {
-                const response = await fetch('/api/v1/management/bottles/tastings-summary', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ bottle: this.selectedLabelBottle })
-                });
-
-                if (!response.ok) throw new Error('Failed to load tasting summary');
-
-                this.tastingSummary = await response.json();
-            } catch (error) {
-                console.error('Failed to load tasting summary:', error);
-                this.tastingSummary = null;
-            } finally {
-                this.tastingSummaryLoading = false;
-            }
-        },
-
-        async searchForLabelReplacement() {
-            if (!this.selectedLabelBottle) return;
-
-            // Reset current label operations (keep downloaded state for workflow continuity)
-            this.resetCurrentLabelOperations();
-
-            this.labelActionInProgress = true;
-            try {
-                // Use existing label search endpoint (from upload flow)
-                const response = await fetch('/api/v1/bottles/search-labels', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(this.selectedLabelBottle)
-                });
-
-                const data = await response.json();
-                this.labelSearchResults = data.images || [];
-                console.log(`Found ${this.labelSearchResults.length} label candidates`);
-            } catch (error) {
-                console.error('Label search failed:', error);
-                alert('Label search failed: ' + error.message);
-            } finally {
-                this.labelActionInProgress = false;
-            }
-        },
-
-        async cropExistingLabel() {
-            if (!this.selectedLabelBottle) return;
-
-            // Reset conflicting operations first
-            this.resetCurrentLabelOperations();
-            this.resetDownloadedOperations();
-
-            this.labelActionInProgress = true;
-            try {
-                // Call backend to crop current label using improved detection
-                const response = await fetch('/api/v1/management/labels/crop-current', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        bottle: this.selectedLabelBottle
-                    })
-                });
-
-                const data = await response.json();
-                // Show preview of cropped version
-                this.labelCropPreview = `/api/v1/labels/view?path=${encodeURIComponent(data.preview_path)}&t=${Date.now()}`;
-            } catch (error) {
-                console.error('Crop failed:', error);
-                alert('Crop failed: ' + error.message);
-            } finally {
-                this.labelActionInProgress = false;
-            }
-        },
-
-        async useSelectedSearchImage() {
-            if (!this.selectedSearchImage || !this.selectedLabelBottle) return;
-
-            this.labelActionInProgress = true;
-            try {
-                console.log('Download request - selected image:', this.selectedSearchImage);
-                console.log('Download request - URL:', this.selectedSearchImage.url);
-
-                // Download selected image (no cropping yet)
-                const response = await fetch('/api/v1/management/labels/download-image', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        bottle: this.selectedLabelBottle,
-                        image_url: this.selectedSearchImage.url
-                    })
-                });
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Download failed:', errorText);
-                    throw new Error('Failed to download image');
-                }
-
-                const data = await response.json();
-                // Show downloaded original with aggressive cache busting
-                const cacheBuster = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                this.labelDownloadedOriginal = `/api/v1/labels/view?path=${encodeURIComponent(data.download_path)}&t=${cacheBuster}`;
-                this.labelDownloadedCropped = null;
-                // Clear search results since we now have downloaded image
-                this.labelSearchResults = [];
-                this.selectedSearchImage = null;
-            } catch (error) {
-                console.error('Failed to download image:', error);
-                alert('Failed to download image: ' + error.message);
-            } finally {
-                this.labelActionInProgress = false;
-            }
-        },
-
-        async cropDownloadedImage() {
-            if (!this.selectedLabelBottle) return;
-
-            // Clear any existing cropped preview first to force fresh load
-            this.labelDownloadedCropped = null;
-
-            this.labelActionInProgress = true;
-            try {
-                const response = await fetch('/api/v1/management/labels/crop-download', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        bottle: this.selectedLabelBottle
-                    })
-                });
-
-                if (!response.ok) throw new Error('Failed to crop');
-
-                const data = await response.json();
-
-                // Use nextTick to ensure DOM clears before loading new image
-                this.$nextTick(() => {
-                    // Add random component to guarantee uniqueness and bust cache
-                    const cacheBuster = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                    this.labelDownloadedCropped = `/api/v1/labels/view?path=${encodeURIComponent(data.cropped_path)}&t=${cacheBuster}`;
-                });
-            } catch (error) {
-                console.error('Failed to crop:', error);
-                alert('Failed to crop: ' + error.message);
-            } finally {
-                this.labelActionInProgress = false;
-            }
-        },
-
-        async useDownloadedLabel(useCropped) {
-            if (!this.selectedLabelBottle) return;
-
-            this.labelActionInProgress = true;
-            try {
-                const response = await fetch('/api/v1/management/labels/use-downloaded', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        bottle: this.selectedLabelBottle,
-                        use_cropped: useCropped
-                    })
-                });
-
-                if (!response.ok) throw new Error('Failed to replace label');
-
-                // Update timestamp to force reload of current label
-                this.currentLabelTimestamp = Date.now();
-
-                alert('✅ Label replaced successfully!');
-                // Go back to grid
-                this.selectedLabelBottle = null;
-                this.labelDownloadedOriginal = null;
-                this.labelDownloadedCropped = null;
-                // Reload bottles to show new label
-                await this.loadLabelsForReview();
-            } catch (error) {
-                console.error('Failed to replace label:', error);
-                alert('Failed to replace label: ' + error.message);
-            } finally {
-                this.labelActionInProgress = false;
-            }
-        },
-
-        cancelDownload() {
-            this.labelDownloadedOriginal = null;
-            this.labelDownloadedCropped = null;
-        },
-
-        startManualCrop() {
-            if (!this.selectedLabelBottle) return;
-
-            // Reset ALL conflicting operations first
-            this.resetCurrentLabelOperations();
-            this.resetDownloadedOperations();
-
-            // Set the image source from current label
-            const labelPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
-                              this.selectedLabelBottle.vault_path + '/labels/label.jpg';
-            this.manualCropImageSrc = `/api/v1/labels/view?path=${encodeURIComponent(labelPath)}&t=${Date.now()}`;
-            this.manualCropActive = true;
-
-            // Initialize Cropper.js after image loads
-            this.$nextTick(() => {
-                const image = document.getElementById('manualCropImage');
-                if (image && typeof Cropper !== 'undefined') {
-                    // Wait for image to load before initializing Cropper
-                    const initCropper = () => {
-                        this.cropperInstance = new Cropper(image, {
-                            viewMode: 1,
-                            dragMode: 'crop',           // 'crop' mode = drag to adjust box, not move image
-                            aspectRatio: NaN,           // Free aspect ratio
-                            autoCropArea: 0.8,
-                            restore: false,
-                            guides: true,
-                            center: true,
-                            highlight: true,
-                            movable: false,             // Prevent moving the underlying image
-                            cropBoxMovable: true,       // Allow moving the crop box
-                            cropBoxResizable: true,     // Allow resizing the crop box
-                            toggleDragModeOnDblclick: false,
-                        });
-                    };
-
-                    // If image is already loaded, init immediately
-                    if (image.complete && image.naturalHeight !== 0) {
-                        initCropper();
-                    } else {
-                        // Otherwise wait for load event
-                        image.onload = initCropper;
-                        image.onerror = () => {
-                            console.error('Failed to load image for manual crop');
-                            alert('Failed to load image. Please try again.');
-                            this.cancelManualCrop();
-                        };
-                    }
-                }
-            });
-        },
-
-        async acceptManualCrop() {
-            if (!this.cropperInstance || !this.selectedLabelBottle) return;
-
-            this.labelActionInProgress = true;
-            try {
-                // Get crop box data
-                const cropData = this.cropperInstance.getData(true); // true = rounded pixels
-
-                // Send to backend for cropping
-                const response = await fetch('/api/v1/management/labels/manual-crop', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        bottle: this.selectedLabelBottle,
-                        x: Math.round(cropData.x),
-                        y: Math.round(cropData.y),
-                        width: Math.round(cropData.width),
-                        height: Math.round(cropData.height)
-                    })
-                });
-
-                if (!response.ok) throw new Error('Failed to crop');
-
-                // Update timestamp to force reload of current label
-                this.currentLabelTimestamp = Date.now();
-
-                alert('✅ Label cropped successfully!');
-
-                // Cleanup
-                this.cancelManualCrop();
-
-                // Go back to grid
-                this.selectedLabelBottle = null;
-
-                // Reload bottles to show new label
-                await this.loadLabelsForReview();
-            } catch (error) {
-                console.error('Manual crop failed:', error);
-                alert('Manual crop failed: ' + error.message);
-            } finally {
-                this.labelActionInProgress = false;
-            }
-        },
-
-        cancelManualCrop() {
-            if (this.cropperInstance) {
-                this.cropperInstance.destroy();
-                this.cropperInstance = null;
-            }
-            this.manualCropActive = false;
-            this.manualCropImageSrc = null;
-        },
-
-        // Manual crop for downloaded images
-        startManualCropDownloaded() {
-            if (!this.selectedLabelBottle || !this.labelDownloadedOriginal) return;
-
-            // Clean up any existing cropper first
-            if (this.cropperDownloadedInstance) {
-                this.cropperDownloadedInstance.destroy();
-                this.cropperDownloadedInstance = null;
-            }
-
-            // Set the image source from downloaded file
-            const labelPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
-                              this.selectedLabelBottle.vault_path + '/labels/label_download.jpg';
-            this.manualCropDownloadedSrc = `/api/v1/labels/view?path=${encodeURIComponent(labelPath)}&t=${Date.now()}`;
-            this.manualCropDownloadedActive = true;
-
-            // Initialize Cropper.js after image loads
-            this.$nextTick(() => {
-                const image = document.getElementById('manualCropDownloadedImage');
-                if (image && typeof Cropper !== 'undefined') {
-                    // Wait for image to load before initializing Cropper
-                    const initCropper = () => {
-                        this.cropperDownloadedInstance = new Cropper(image, {
-                            viewMode: 1,
-                            dragMode: 'crop',           // 'crop' mode = drag to adjust box, not move image
-                            aspectRatio: NaN,           // Free aspect ratio
-                            autoCropArea: 0.8,
-                            restore: false,
-                            guides: true,
-                            center: true,
-                            highlight: true,
-                            movable: false,             // Prevent moving the underlying image
-                            cropBoxMovable: true,       // Allow moving the crop box
-                            cropBoxResizable: true,     // Allow resizing the crop box
-                            toggleDragModeOnDblclick: false,
-                        });
-                    };
-
-                    // If image is already loaded, init immediately
-                    if (image.complete && image.naturalHeight !== 0) {
-                        initCropper();
-                    } else {
-                        // Otherwise wait for load event
-                        image.onload = initCropper;
-                        image.onerror = () => {
-                            console.error('Failed to load downloaded image for manual crop');
-                            alert('Failed to load image. Please try again.');
-                            this.cancelManualCropDownloaded();
-                        };
-                    }
-                }
-            });
-        },
-
-        async acceptManualCropDownloaded() {
-            if (!this.cropperDownloadedInstance || !this.selectedLabelBottle) return;
-
-            this.labelActionInProgress = true;
-            try {
-                // Get crop box data
-                const cropData = this.cropperDownloadedInstance.getData(true); // true = rounded pixels
-
-                // Send to backend for cropping
-                const response = await fetch('/api/v1/management/labels/manual-crop-downloaded', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        bottle: this.selectedLabelBottle,
-                        x: Math.round(cropData.x),
-                        y: Math.round(cropData.y),
-                        width: Math.round(cropData.width),
-                        height: Math.round(cropData.height)
-                    })
-                });
-
-                if (!response.ok) throw new Error('Failed to crop downloaded image');
-
-                // Cleanup cropper
-                this.cancelManualCropDownloaded();
-
-                // Force cache clear by nulling first, then setting with new timestamp
-                this.labelDownloadedCropped = null;
-
-                // Use nextTick to ensure DOM updates before setting new URL
-                this.$nextTick(() => {
-                    const croppedPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
-                                        this.selectedLabelBottle.vault_path + '/labels/label_download_cropped.jpg';
-                    // Add random component to guarantee uniqueness and bust cache
-                    const cacheBuster = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                    this.labelDownloadedCropped = `/api/v1/labels/view?path=${encodeURIComponent(croppedPath)}&t=${cacheBuster}`;
-                });
-
-                alert('✅ Downloaded image cropped successfully!');
-            } catch (error) {
-                console.error('Manual crop of downloaded failed:', error);
-                alert('Manual crop failed: ' + error.message);
-            } finally {
-                this.labelActionInProgress = false;
-            }
-        },
-
-        cancelManualCropDownloaded() {
-            if (this.cropperDownloadedInstance) {
-                this.cropperDownloadedInstance.destroy();
-                this.cropperDownloadedInstance = null;
-            }
-            this.manualCropDownloadedActive = false;
-            this.manualCropDownloadedSrc = null;
-        },
-
-        recropDownloaded() {
-            // Clear the cropped version so user can try again
-            this.labelDownloadedCropped = null;
-            // Also destroy any active manual crop instance for downloaded
-            if (this.cropperDownloadedInstance) {
-                this.cropperDownloadedInstance.destroy();
-                this.cropperDownloadedInstance = null;
-            }
-            this.manualCropDownloadedActive = false;
-        },
-
-        handleManualLabelUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            // Reset current label operations when uploading new image
-            this.resetCurrentLabelOperations();
-
-            this.manualUploadFile = file;
-
-            // Show preview
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                this.manualUploadPreview = e.target.result;
-            };
-            reader.readAsDataURL(file);
-        },
-
-        async uploadManualLabelImage() {
-            if (!this.manualUploadFile || !this.selectedLabelBottle) return;
-
-            this.labelActionInProgress = true;
-            try {
-                // Create FormData to upload file
-                const formData = new FormData();
-                formData.append('file', this.manualUploadFile);
-                formData.append('bottle', JSON.stringify(this.selectedLabelBottle));
-
-                const response = await fetch('/api/v1/management/labels/upload-manual', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) throw new Error('Failed to upload image');
-
-                const result = await response.json();
-
-                // Clear manual upload state
-                this.cancelManualUpload();
-
-                // Now show as downloaded image (reuse download workflow)
-                const downloadPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
-                                      this.selectedLabelBottle.vault_path + '/labels/label_download.jpg';
-                const cacheBuster = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                this.labelDownloadedOriginal = `/api/v1/labels/view?path=${encodeURIComponent(downloadPath)}&t=${cacheBuster}`;
-                this.labelDownloadedCropped = null;
-
-                alert('✅ Image uploaded! You can now crop it or use as-is.');
-            } catch (error) {
-                console.error('Manual upload failed:', error);
-                alert('Upload failed: ' + error.message);
-            } finally {
-                this.labelActionInProgress = false;
-            }
-        },
-
-        cancelManualUpload() {
-            this.manualUploadFile = null;
-            this.manualUploadPreview = null;
-            // Reset file input
-            const fileInputs = document.querySelectorAll('input[type="file"]');
-            fileInputs.forEach(input => input.value = '');
-        },
-
-        async acceptLabelCrop() {
-            if (!this.selectedLabelBottle) return;
-
-            this.labelActionInProgress = true;
-            try {
-                // Accept the cropped version
-                const response = await fetch('/api/v1/management/labels/accept-crop', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        bottle: this.selectedLabelBottle
-                    })
-                });
-
-                if (!response.ok) throw new Error('Failed to accept crop');
-
-                // Update timestamp to force reload of current label
-                this.currentLabelTimestamp = Date.now();
-
-                alert('✅ Cropped label accepted!');
-                // Clear preview state
-                this.labelCropPreview = null;
-                // Go back to grid
-                this.selectedLabelBottle = null;
-                // Reload bottles
-                await this.loadLabelsForReview();
-            } catch (error) {
-                console.error('Failed to accept crop:', error);
-                alert('Failed to accept crop: ' + error.message);
-            } finally {
-                this.labelActionInProgress = false;
-            }
-        },
+        // NOTE: Label Review Functions have been moved to /static/js/management/label-review.js
+        // and are loaded via spread operator at the top of this return block
 
     }
 }

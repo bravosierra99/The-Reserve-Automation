@@ -7,6 +7,7 @@ from loguru import logger
 
 from ..core.models import BottleMetadata
 from ..llm import LLMGateway
+from ..llm.response_parser import LLMResponseParser
 from ..llm.tools import get_tools_for_task
 
 
@@ -119,11 +120,11 @@ class MetadataEnricher:
             "beverage_type": bottle.beverage_type,
             "country": bottle.country,
             "region": bottle.region,
-            "abv": bottle.abv,
         }
 
         # Add type-specific fields
         if bottle.type == "wine":
+            enrichable["abv"] = bottle.abv
             enrichable["variety"] = bottle.variety
             enrichable["vineyard"] = bottle.vineyard
         elif bottle.type == "whiskey":
@@ -283,7 +284,7 @@ Only include fields that were requested. Use web search to find real data - don'
 
     def _parse_llm_response(self, response_text: str) -> dict:
         """
-        Parse LLM response to extract metadata.
+        Parse LLM response to extract metadata with robust error handling.
 
         Args:
             response_text: Raw LLM response
@@ -294,23 +295,15 @@ Only include fields that were requested. Use web search to find real data - don'
         Raises:
             ValueError: If response cannot be parsed
         """
-        try:
-            # Try to extract JSON from response (might be wrapped in markdown)
-            json_start = response_text.find("{")
-            json_end = response_text.rfind("}") + 1
+        data = LLMResponseParser.safe_parse_json(
+            response_text,
+            context="metadata enrichment"
+        )
 
-            if json_start < 0 or json_end <= json_start:
-                raise ValueError("No JSON found in response")
+        if not data:
+            raise ValueError("Failed to parse enrichment response")
 
-            json_str = response_text[json_start:json_end]
-            data = json.loads(json_str)
-
-            return data
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON from LLM response: {e}")
-            logger.debug(f"Response was: {response_text}")
-            raise ValueError(f"Invalid JSON in response: {e}")
+        return data
 
     def _apply_enrichment(
         self, bottle: BottleMetadata, enriched_data: dict, missing_fields: list[str]
@@ -329,16 +322,166 @@ Only include fields that were requested. Use web search to find real data - don'
         # Create dict from bottle
         bottle_dict = bottle.model_dump()
 
-        # Update only the missing fields
+        # Field sanitization rules
+        string_fields_with_limits = {
+            "beverage_type": 100,
+            "country": 100,
+            "region": 200,
+            "style": 100,
+        }
+
+        int_fields_with_ranges = {
+            "age_statement": (0, 150),
+        }
+
+        float_fields_with_ranges = {
+            "abv": (0.0, 100.0),
+            "proof": (0.0, 200.0),
+        }
+
+        # Update only the missing fields with robust sanitization
         for field in missing_fields:
             if field in enriched_data and enriched_data[field]:
-                bottle_dict[field] = enriched_data[field]
+                value = enriched_data[field]
+
+                # Sanitize based on field type
+                if field in string_fields_with_limits:
+                    value = LLMResponseParser.sanitize_string(
+                        value,
+                        max_length=string_fields_with_limits[field],
+                        field_name=field
+                    )
+                elif field in int_fields_with_ranges:
+                    min_val, max_val = int_fields_with_ranges[field]
+                    value = LLMResponseParser.sanitize_int(
+                        value,
+                        min_value=min_val,
+                        max_value=max_val,
+                        field_name=field
+                    )
+                elif field in float_fields_with_ranges:
+                    min_val, max_val = float_fields_with_ranges[field]
+                    value = LLMResponseParser.sanitize_float(
+                        value,
+                        min_value=min_val,
+                        max_value=max_val,
+                        field_name=field
+                    )
+                elif isinstance(value, str):
+                    # Generic string sanitization (no specific limit)
+                    value = LLMResponseParser.sanitize_string(value, field_name=field)
+
+                bottle_dict[field] = value
 
         # Mark as enriched
         bottle_dict["enriched"] = True
 
-        # Create new bottle instance
-        return BottleMetadata(**bottle_dict)
+        # Create new bottle instance with robust error handling
+        enriched_bottle = LLMResponseParser.safe_model_create(
+            BottleMetadata,
+            bottle_dict,
+            context="metadata enrichment application",
+            required_defaults={
+                "producer": bottle.producer,
+                "name": bottle.name,
+                "type": bottle.type
+            }
+        )
+
+        if not enriched_bottle:
+            logger.error("Failed to create enriched bottle, returning original")
+            return bottle
+
+        return enriched_bottle
+
+    def _sanitize_verified_data(self, verified_data: dict) -> dict:
+        """
+        Sanitize LLM-returned verification data to handle format issues.
+
+        Converts 'MISSING' strings to None, validates types, handles edge cases.
+
+        Args:
+            verified_data: Raw data from LLM
+
+        Returns:
+            Sanitized data safe for Pydantic validation
+        """
+        sanitized = {}
+
+        # Field type definitions for sanitization
+        string_fields_with_limits = {
+            "producer": 200,
+            "name": 200,
+            "beverage_type": 100,
+            "country": 100,
+            "region": 200,
+            "style": 100,
+            "variety": 200,
+            "vineyard": 200,
+            "mash_bill": 200,
+            "barrel_type": 100,
+        }
+
+        int_fields_with_ranges = {
+            "age_statement": (0, 150),
+        }
+
+        float_fields_with_ranges = {
+            "abv": (0.0, 100.0),
+            "proof": (0.0, 200.0),
+        }
+
+        for field, value in verified_data.items():
+            # Skip None values
+            if value is None:
+                continue
+
+            # Handle 'MISSING' or empty strings -> convert to None
+            if isinstance(value, str) and (value.upper() == 'MISSING' or value.strip() == ''):
+                continue
+
+            # Sanitize based on field type
+            if field in string_fields_with_limits:
+                sanitized[field] = LLMResponseParser.sanitize_string(
+                    value,
+                    max_length=string_fields_with_limits[field],
+                    field_name=field
+                )
+            elif field in int_fields_with_ranges:
+                min_val, max_val = int_fields_with_ranges[field]
+                sanitized_value = LLMResponseParser.sanitize_int(
+                    value,
+                    min_value=min_val,
+                    max_value=max_val,
+                    field_name=field,
+                    default=None
+                )
+                # Only include if we got a valid value (not None)
+                if sanitized_value is not None:
+                    sanitized[field] = sanitized_value
+            elif field in float_fields_with_ranges:
+                min_val, max_val = float_fields_with_ranges[field]
+                sanitized_value = LLMResponseParser.sanitize_float(
+                    value,
+                    min_value=min_val,
+                    max_value=max_val,
+                    field_name=field,
+                    default=None
+                )
+                # Only include if we got a valid value (not None)
+                if sanitized_value is not None:
+                    sanitized[field] = sanitized_value
+            elif isinstance(value, str):
+                # Generic string sanitization (no specific limit)
+                sanitized[field] = LLMResponseParser.sanitize_string(
+                    value,
+                    field_name=field
+                )
+            else:
+                # Pass through other types as-is (dicts, lists, etc.)
+                sanitized[field] = value
+
+        return sanitized
 
     async def verify_bottle(
         self, bottle: BottleMetadata
@@ -358,11 +501,11 @@ Only include fields that were requested. Use web search to find real data - don'
         # Determine which fields to verify based on beverage type
         # Common fields for all beverages
         # Note: year is NOT verified - it's user-provided and used as context
-        verify_fields = ["producer", "name", "beverage_type", "country", "region", "abv"]
+        verify_fields = ["producer", "name", "beverage_type", "country", "region"]
 
         # Type-specific fields
         if bottle.type == "wine":
-            verify_fields.extend(["variety", "vineyard"])
+            verify_fields.extend(["abv", "variety", "vineyard"])
         else:  # whiskey and other spirits
             verify_fields.extend(["age_statement", "proof", "mash_bill", "barrel_type"])
 
@@ -459,11 +602,14 @@ Use web search to find accurate, current data - don't guess."""
             # Parse response
             verified_data = self._parse_llm_response(response.content)
 
+            # Sanitize LLM output to handle any format issues (e.g., 'MISSING' strings)
+            sanitized_data = self._sanitize_verified_data(verified_data)
+
             # Check what changed
             changes = {}
             for field in verify_fields:
                 old_value = getattr(bottle, field, None)
-                new_value = verified_data.get(field)
+                new_value = sanitized_data.get(field)
 
                 if new_value and new_value != old_value:
                     changes[field] = {"old": old_value, "new": new_value}
@@ -471,10 +617,28 @@ Use web search to find accurate, current data - don't guess."""
             # Create updated bottle
             bottle_dict = bottle.model_dump()
             for field in verify_fields:
-                if field in verified_data and verified_data[field]:
-                    bottle_dict[field] = verified_data[field]
+                if field in sanitized_data and sanitized_data[field]:
+                    bottle_dict[field] = sanitized_data[field]
 
-            updated_bottle = BottleMetadata(**bottle_dict)
+            # Use safe model creation to handle any remaining validation issues
+            updated_bottle = LLMResponseParser.safe_model_create(
+                BottleMetadata,
+                bottle_dict,
+                context="bottle verification",
+                required_defaults={
+                    "producer": bottle.producer,
+                    "name": bottle.name,
+                    "type": bottle.type
+                }
+            )
+
+            if not updated_bottle:
+                logger.error("Failed to create verified bottle, returning original")
+                return bottle, {
+                    "verified": False,
+                    "error": "Validation failed after sanitization",
+                    "changes": {}
+                }
 
             metadata = {
                 "verified": True,

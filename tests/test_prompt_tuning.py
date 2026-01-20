@@ -15,6 +15,9 @@ Usage:
     python tests/test_prompt_tuning.py interactive --fixture aws_wine_test_001
 """
 
+import pytest
+pytest.skip("This is an interactive prompt tuning script, not a test suite", allow_module_level=True)
+
 import argparse
 import asyncio
 import json

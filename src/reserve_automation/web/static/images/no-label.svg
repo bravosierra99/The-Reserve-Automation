@@ -1,0 +1,6 @@
+<svg width="400" height="600" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="600" fill="#f0f0f0"/>
+  <rect x="10" y="10" width="380" height="580" fill="none" stroke="#cccccc" stroke-width="2"/>
+  <text x="200" y="280" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" fill="#999999">No Label</text>
+  <text x="200" y="320" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" fill="#999999">Available</text>
+</svg>

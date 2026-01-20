@@ -815,7 +815,11 @@ def extract_tasting(ctx, image_file, template, dry_run, auto_match_threshold):
         if len(matches) == 0:
             console.print("\n[red]No bottles matched. Cannot generate tasting files.[/red]")
             console.print("\n[yellow]Hint:[/yellow] Check bottle names or adjust --auto-match-threshold")
-            ctx.exit(1)
+            if not dry_run:
+                ctx.exit(1)
+            else:
+                # In dry-run mode, show what was extracted even if no matches
+                console.print("\n[dim]Dry-run mode: Continuing to show extracted data...[/dim]")
 
         console.print(f"\n[green]✓ Matched {len(matches)}/{len(result.tastings)} tastings[/green]")
 

@@ -2,6 +2,10 @@
 
 {% block title %}Review Tastings - The Reserve{% endblock %}
 
+{% block head %}
+<script src="/static/js/components/tasting-form-mixin.js"></script>
+{% endblock %}
+
 {% block content %}
 <div x-data="tastingReview()" x-init="loadSession()" class="max-w-4xl mx-auto">
     <!-- Loading state -->
@@ -249,115 +253,9 @@
                 </div>
             </div>
 
-            <!-- Scores section -->
-            <template x-if="session?.template_type === 'aws_wine'">
-                <div class="mb-6">
-                    <h4 class="font-semibold text-gray-800 mb-3">Wine Scores</h4>
-                    <div class="grid grid-cols-5 gap-3">
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Appearance (0-3)</label>
-                            <input type="number" step="0.5" min="0" max="3" x-model.number="currentTasting.tasting_data.wine_appearance"
-                                   @change="saveTastingData()"
-                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Aroma (0-6)</label>
-                            <input type="number" step="0.5" min="0" max="6" x-model.number="currentTasting.tasting_data.wine_aroma"
-                                   @change="saveTastingData()"
-                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Taste (0-6)</label>
-                            <input type="number" step="0.5" min="0" max="6" x-model.number="currentTasting.tasting_data.wine_taste"
-                                   @change="saveTastingData()"
-                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Aftertaste (0-3)</label>
-                            <input type="number" step="0.5" min="0" max="3" x-model.number="currentTasting.tasting_data.wine_aftertaste"
-                                   @change="saveTastingData()"
-                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Overall (0-2)</label>
-                            <input type="number" step="0.5" min="0" max="2" x-model.number="currentTasting.tasting_data.wine_overall"
-                                   @change="saveTastingData()"
-                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                        </div>
-                    </div>
-                </div>
-            </template>
-
-            <template x-if="session?.template_type === 'bourbon'">
-                <div class="mb-6">
-                    <h4 class="font-semibold text-gray-800 mb-3">Whiskey Scores (10-point scale)</h4>
-                    <div class="grid grid-cols-4 gap-3">
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Nose (0-3)</label>
-                            <input type="number" step="0.1" min="0" max="3" x-model.number="currentTasting.tasting_data.whiskey_nose"
-                                   @change="saveTastingData()"
-                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Palate (0-3)</label>
-                            <input type="number" step="0.1" min="0" max="3" x-model.number="currentTasting.tasting_data.whiskey_palate"
-                                   @change="saveTastingData()"
-                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Finish (0-3)</label>
-                            <input type="number" step="0.1" min="0" max="3" x-model.number="currentTasting.tasting_data.whiskey_finish"
-                                   @change="saveTastingData()"
-                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs text-gray-600 mb-1">Overall (0-1)</label>
-                            <input type="number" step="0.05" min="0" max="1" x-model.number="currentTasting.tasting_data.whiskey_overall"
-                                   @change="saveTastingData()"
-                                   class="w-full px-2 py-1 border border-gray-300 rounded text-sm">
-                        </div>
-                    </div>
-                </div>
-            </template>
-
-            <!-- Flavor Notes Section -->
+            <!-- Scores & Notes Section (Shared Component) -->
             <div class="mb-6">
-                <h4 class="font-semibold text-gray-800 mb-3">Flavor Notes</h4>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                        <label class="block text-xs text-gray-600 mb-1">Nose/Aroma</label>
-                        <input type="text" x-model="noseNotesText"
-                               @change="updateNoseNotes()"
-                               placeholder="Comma-separated notes"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
-                        <p class="text-xs text-gray-400 mt-1">e.g., vanilla, caramel, oak</p>
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-600 mb-1">Palate/Taste</label>
-                        <input type="text" x-model="palateNotesText"
-                               @change="updatePalateNotes()"
-                               placeholder="Comma-separated notes"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
-                        <p class="text-xs text-gray-400 mt-1">e.g., cherry, spice, leather</p>
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-600 mb-1">Finish</label>
-                        <input type="text" x-model="finishNotesText"
-                               @change="updateFinishNotes()"
-                               placeholder="Comma-separated notes"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
-                        <p class="text-xs text-gray-400 mt-1">e.g., long, warm, oaky</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Overall Notes -->
-            <div class="mb-6">
-                <label class="block text-sm font-semibold text-gray-700 mb-1">Overall Impression</label>
-                <textarea x-model="currentTasting.tasting_data.overall_notes" rows="3"
-                          @change="saveTastingData()"
-                          placeholder="Your overall thoughts, impressions, and notes"
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"></textarea>
+                {% include 'components/tasting_scores_form.html' %}
             </div>
         </div>
 
@@ -498,7 +396,13 @@
 function tastingReview() {
     const extractionId = '{{ extraction_id }}';
 
+    // Merge in the tasting form mixin for shared note management
+    const mixin = typeof tastingFormMixin === 'function' ? tastingFormMixin() : {};
+
     return {
+        // Include mixin properties
+        ...mixin,
+
         extractionId,
         loading: true,
         error: false,
@@ -514,56 +418,25 @@ function tastingReview() {
         approving: false,
         skipping: false,
         participantSession: null,  // Store event session info
-        // Flavor notes as comma-separated strings for editing
-        noseNotesText: '',
-        palateNotesText: '',
-        finishNotesText: '',
 
         get currentTasting() {
             if (!this.session?.tastings) return null;
             return this.session.tastings[this.currentIndex];
         },
 
-        // Convert array to comma-separated string
-        arrayToText(arr) {
-            if (!arr || !Array.isArray(arr)) return '';
-            return arr.join(', ');
+        // Getter for shared component compatibility (component expects 'tasting')
+        get tasting() {
+            return this.currentTasting?.tasting_data || {};
         },
 
-        // Convert comma-separated string to array
-        textToArray(text) {
-            if (!text) return [];
-            return text.split(',').map(s => s.trim()).filter(s => s.length > 0);
+        // Required by shared component
+        get isWine() {
+            return this.session?.template_type === 'aws_wine';
         },
 
-        // Update flavor notes text when tasting changes
-        syncFlavorNotesText() {
-            if (this.currentTasting?.tasting_data) {
-                this.noseNotesText = this.arrayToText(this.currentTasting.tasting_data.nose_notes);
-                this.palateNotesText = this.arrayToText(this.currentTasting.tasting_data.palate_notes);
-                this.finishNotesText = this.arrayToText(this.currentTasting.tasting_data.finish_notes);
-            }
-        },
-
-        updateNoseNotes() {
-            if (this.currentTasting?.tasting_data) {
-                this.currentTasting.tasting_data.nose_notes = this.textToArray(this.noseNotesText);
-                this.saveTastingData();
-            }
-        },
-
-        updatePalateNotes() {
-            if (this.currentTasting?.tasting_data) {
-                this.currentTasting.tasting_data.palate_notes = this.textToArray(this.palateNotesText);
-                this.saveTastingData();
-            }
-        },
-
-        updateFinishNotes() {
-            if (this.currentTasting?.tasting_data) {
-                this.currentTasting.tasting_data.finish_notes = this.textToArray(this.finishNotesText);
-                this.saveTastingData();
-            }
+        // Called by shared component when tasting data changes
+        onTastingChange() {
+            this.saveTastingData();
         },
 
         async loadSession() {
@@ -589,7 +462,10 @@ function tastingReview() {
                     });
                 }
 
-                this.syncFlavorNotesText();
+                // Clear note inputs when loading
+                if (typeof this.clearNoteInputs === 'function') {
+                    this.clearNoteInputs();
+                }
                 this.loading = false;
             } catch (err) {
                 this.error = true;
@@ -634,7 +510,7 @@ function tastingReview() {
                 this.currentIndex--;
                 this.searchResults = [];
                 this.searchQuery = '';
-                this.syncFlavorNotesText();
+                if (typeof this.clearNoteInputs === 'function') this.clearNoteInputs();
             }
         },
 
@@ -643,7 +519,7 @@ function tastingReview() {
                 this.currentIndex++;
                 this.searchResults = [];
                 this.searchQuery = '';
-                this.syncFlavorNotesText();
+                if (typeof this.clearNoteInputs === 'function') this.clearNoteInputs();
             }
         },
 
@@ -651,7 +527,7 @@ function tastingReview() {
             this.currentIndex = index;
             this.searchResults = [];
             this.searchQuery = '';
-            this.syncFlavorNotesText();
+            if (typeof this.clearNoteInputs === 'function') this.clearNoteInputs();
         },
 
         async saveTastingData() {
@@ -879,4 +755,27 @@ function tastingReview() {
     };
 }
 </script>
+
+<style>
+[x-cloak] { display: none !important; }
+
+/* Slider styling */
+input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: #2563eb;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: #2563eb;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+}
+</style>
 {% endblock %}

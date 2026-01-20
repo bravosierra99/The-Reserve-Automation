@@ -1,19 +1,21 @@
 {# #CLAUDE_REQ: This template MUST stay synchronized with the-reserve/Cellar/9_Templates/Tasting Note.md #}
 {# #CLAUDE_REQ: When modifying this template, check that both templates have identical frontmatter structure #}
+{# NOTE: Use inline conditionals {{ x if x else '' }} not block tags {% if %}{% endif %} #}
+{# Block tags with trim_blocks=True cause newlines to be stripped, breaking frontmatter #}
 ---
 fileClass: Wine
 Name: {{ name }}
 Winemaker: {{ producer }}
 WineName: {{ wine_name }}
-Vintage: {% if year %}"{{ year }}"{% endif %}
-Type: {% if beverage_type %}{{ beverage_type }}{% endif %}
-Variety: {% if variety %}{{ variety }}{% endif %}
-Country-Region: {% if country %}{% if region %}{{ country }} - {{ region }}{% else %}{{ country }}{% endif %}{% else %}{% if region %}{{ region }}{% endif %}{% endif %}
-Vineyard: {% if vineyard %}{{ vineyard }}{% endif %}
-ABV: {% if abv %}{{ abv }}{% endif %}
+Vintage: {{ '"%s"' % year if year else '' }}
+Type: {{ beverage_type if beverage_type else '' }}
+Variety: {{ variety if variety else '' }}
+Country-Region: {{ '%s - %s' % (country, region) if country and region else (country if country else (region if region else '')) }}
+Vineyard: {{ vineyard if vineyard else '' }}
+ABV: {{ abv if abv else '' }}
 Style:
-Price: {% if price %}"{{ price }}"{% endif %}
-PurchaseSource: {% if purchase_source %}{{ purchase_source }}{% endif %}
+Price: {{ '"%s"' % price if price else '' }}
+PurchaseSource: {{ purchase_source if purchase_source else '' }}
 PurchaseLink:
 Stars: --
 ValueForMoney:

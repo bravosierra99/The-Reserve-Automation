@@ -666,6 +666,131 @@ class TastingService:
             logger.error(f"Failed to generate tasting file: {e}", exc_info=True)
             return False, None, str(e)
 
+    async def save_manual_tasting_direct(
+        self,
+        taster_name: str,
+        tasting_date: str,
+        beverage_type: str,
+        selected_bottle_path: str,
+        tasting_data: dict,
+    ) -> tuple[bool, Optional[str], Optional[str]]:
+        """
+        Save a manual tasting directly (no session required).
+
+        This is the sessionless version - all data is passed directly.
+
+        Args:
+            taster_name: Name of the taster
+            tasting_date: Date of tasting (YYYY-MM-DD)
+            beverage_type: "wine" or "whiskey"
+            selected_bottle_path: Relative path to bottle folder in vault
+            tasting_data: Dict containing scores and notes
+
+        Returns:
+            Tuple of (success, file_path, error_message)
+        """
+        from ..schemas.tasting import TastingData
+
+        # Validate required fields
+        if not taster_name:
+            return False, None, "Missing taster name"
+        if not tasting_date:
+            return False, None, "Missing tasting date"
+        if not selected_bottle_path:
+            return False, None, "No bottle selected"
+
+        # Find bottle folder
+        full_bottle_path = self.vault_path / selected_bottle_path
+        if not full_bottle_path.exists():
+            return False, None, f"Bottle folder not found: {selected_bottle_path}"
+
+        # Get bottle name from path
+        bottle_name = full_bottle_path.name
+
+        # Build TastingData
+        tasting_data_dict = {
+            'bottle_name': bottle_name,
+            'taster_name': taster_name,
+            'tasting_date': tasting_date,
+            'beverage_type': beverage_type,
+            **(tasting_data or {})
+        }
+        tasting_data_obj = TastingData(**tasting_data_dict)
+
+        # Parse date
+        tasting_date_parsed = datetime.fromisoformat(tasting_date)
+
+        # Create TastingNote
+        tasting_note = TastingNote(
+            bottle_name=bottle_name,
+            taster_name=taster_name,
+            tasting_date=tasting_date_parsed,
+            beverage_type=beverage_type,
+            wine_appearance=tasting_data_obj.wine_appearance,
+            wine_aroma=tasting_data_obj.wine_aroma,
+            wine_taste=tasting_data_obj.wine_taste,
+            wine_aftertaste=tasting_data_obj.wine_aftertaste,
+            wine_overall=tasting_data_obj.wine_overall,
+            whiskey_nose=tasting_data_obj.whiskey_nose,
+            whiskey_palate=tasting_data_obj.whiskey_palate,
+            whiskey_finish=tasting_data_obj.whiskey_finish,
+            whiskey_overall=tasting_data_obj.whiskey_overall,
+            days_from_crack=tasting_data_obj.days_from_crack,
+            fill_level=tasting_data_obj.fill_level,
+            color=tasting_data_obj.color,
+            place=tasting_data_obj.place,
+            theme=tasting_data_obj.theme,
+            appearance_notes=tasting_data_obj.appearance_notes or [],
+            nose_notes=tasting_data_obj.nose_notes or [],
+            palate_notes=tasting_data_obj.palate_notes or [],
+            finish_notes=tasting_data_obj.finish_notes or [],
+            overall_notes=tasting_data_obj.overall_notes
+        )
+
+        # Create bottle match for file generation
+        from reserve_automation.core.models import BottleMetadata
+        from reserve_automation.utils.bottle_matcher import BottleMatch
+
+        # Try to find existing match for metadata
+        matches = self.bottle_matcher.find_matches(
+            bottle_name=bottle_name,
+            beverage_type=beverage_type,
+            top_n=1,
+            min_score=0.0
+        )
+
+        if matches and len(matches) > 0:
+            match = matches[0]
+            match.folder_path = full_bottle_path
+        else:
+            # Create synthetic match if bottle not found in cache
+            bottle_meta = BottleMetadata(
+                producer="",
+                name=bottle_name,
+                type=beverage_type,
+                source="manual_tasting"
+            )
+            match = BottleMatch(bottle_meta, 1.0, full_bottle_path)
+
+        # Generate and save tasting file
+        try:
+            file_path = self.tasting_generator.generate_tasting_file(
+                tasting=tasting_note,
+                bottle_match=match,
+                dry_run=False
+            )
+
+            rel_path = str(file_path.relative_to(self.vault_path))
+            logger.info(f"Saved manual tasting to: {rel_path}")
+
+            # Invalidate bottle cache after saving
+            self.invalidate_bottle_cache(beverage_type)
+
+            return True, rel_path, None
+        except Exception as e:
+            logger.error(f"Failed to generate tasting file: {e}", exc_info=True)
+            return False, None, str(e)
+
     def _manual_session_to_tasting_note(self, manual_session) -> TastingNote:
         """
         Convert ManualTastingSession to TastingNote.

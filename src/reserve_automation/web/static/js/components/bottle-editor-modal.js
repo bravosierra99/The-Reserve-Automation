@@ -1,0 +1,1168 @@
+/**
+ * Unified Bottle Editor Modal Component
+ *
+ * Works in two modes:
+ * - Management mode: Loads bottle from vault, saves immediately
+ * - Upload mode: Works with client-side data, saves with duplicate detection
+ */
+
+window.bottleEditorModal = function() {
+    return {
+        // Modal state
+        isOpen: false,
+        mode: null,           // 'management' or 'upload'
+
+        // Bottle data
+        bottle: null,         // Reactive bottle data
+        originalBottle: null, // For reset functionality
+
+        // Context-specific state
+        vaultPath: null,         // For management mode
+        uploadId: null,          // For upload mode
+        manifestContext: null,   // { bottles: [...], currentIndex: 0 }
+
+        // Label operations
+        tempLabelPath: null,
+        labelSearchResults: [],
+        labelDownloadedOriginal: null,
+        labelDownloadedCropped: null,
+        labelCropPreview: null,
+
+        // Cropper instances
+        cropperInstance: null,
+        cropperDownloadedInstance: null,
+        manualCropActive: false,
+        manualCropImageSrc: null,
+        manualCropDownloadedActive: false,
+        manualCropDownloadedSrc: null,
+
+        // Metadata editing
+        editableBottle: {},
+
+        // Enrichment/verification
+        searchResult: null,
+        verifying: false,
+        approvedChanges: {},
+        hasChanges: false,  // Simple boolean for x-show reactivity
+
+        // Duplicate detection (upload mode)
+        duplicates: [],
+        duplicateAction: null,  // Radio button value: 'save_new', 'replace', or 'skip' (set after duplicate dialog shown)
+        selectedDuplicate: null,  // Which duplicate is selected (vault_path)
+        showDuplicateDialog: false,
+        selectedDuplicateAction: null, // 'new', 'replace', 'skip'
+
+        // Tasting summary (management mode)
+        tastingSummary: null,
+
+        // Tasting list/detail view (management mode)
+        tastingsList: [],           // Full list of tastings
+        showTastingsList: false,    // Whether list is expanded
+        selectedTasting: null,      // Currently selected tasting for detail view
+        loadingTastings: false,     // Loading state
+
+        // UI state
+        saving: false,
+        saveSuccess: false,
+        labelActionInProgress: false,
+        currentLabelTimestamp: Date.now(),
+
+        /**
+         * Open modal in management mode (existing bottle from vault)
+         */
+        async openManagement(bottle) {
+            console.log('Opening management modal with bottle:', bottle);
+            this.mode = 'management';
+            this.bottle = { ...bottle };
+            this.originalBottle = { ...bottle };
+            this.vaultPath = bottle.vault_path;
+            console.log('Set vaultPath to:', this.vaultPath);
+            this.uploadId = null;
+            this.manifestContext = null;
+
+            // Initialize editable bottle data
+            this.initializeEditableBottle();
+
+            // Load tasting summary
+            await this.loadTastingSummary();
+
+            // Open modal
+            this.isOpen = true;
+
+            // Reset state
+            this.resetState();
+        },
+
+        /**
+         * Open modal in upload mode (new bottle, client-side data)
+         */
+        async openUpload(bottle, uploadId, manifestContext = null) {
+            console.log('openUpload called with uploadId:', uploadId);
+            this.mode = 'upload';
+            this.bottle = { ...bottle };
+            this.originalBottle = { ...bottle };
+            this.uploadId = uploadId;
+            console.log('Set this.uploadId to:', this.uploadId);
+            this.manifestContext = manifestContext;
+            this.vaultPath = null;
+
+            // Initialize editable bottle data
+            this.initializeEditableBottle();
+
+            // Open modal
+            this.isOpen = true;
+
+            // Reset state
+            this.resetState();
+
+            console.log('After opening, mode:', this.mode, 'uploadId:', this.uploadId);
+
+            // AUTOMATICALLY check for duplicates in upload mode (don't await to avoid blocking modal)
+            this.manualCheckDuplicates().catch(err => {
+                console.error('Auto duplicate check failed:', err);
+            });
+        },
+
+        /**
+         * Initialize editable bottle fields from bottle data
+         */
+        initializeEditableBottle() {
+            const b = this.bottle;
+            const isWine = b.type === 'wine';
+
+            this.editableBottle = {
+                producer: b.producer || '',
+                name: b.name || '',
+                year: b.year || '',
+                beverage_type: b.beverage_type || '',
+
+                // Common fields
+                price: b.price || '',
+                inventory: b.inventory || '',
+                purchase_source: b.purchase_source || '',
+                purchase_link: b.purchase_link || '',
+
+                // Wine-specific
+                ...(isWine ? {
+                    country: b.country || '',
+                    region: b.region || '',
+                    variety: b.variety || '',
+                    vineyard: b.vineyard || '',
+                    abv: b.abv || '',
+                    style: b.style || '',
+                    points: b.points || '',
+                    stars: b.stars || '',
+                    buy: b.buy || '',
+                    value_for_money: b.value_for_money || ''
+                } : {}),
+
+                // Whiskey-specific
+                ...(!isWine ? {
+                    region: b.region || '',
+                    age_statement: b.age_statement || '',
+                    proof: b.proof || '',
+                    mash_bill: b.mash_bill || '',
+                    barrel_type: b.barrel_type || '',
+                    batch_number: b.batch_number || '',
+                    bottle_number: b.bottle_number || '',
+                    bottle_opened_date: b.bottle_opened_date || ''
+                } : {})
+            };
+        },
+
+        /**
+         * Reset transient state (errors, search results, etc.)
+         */
+        resetState() {
+            this.searchResult = null;
+            this.verifying = false;
+            this.approvedChanges = {};
+            this.saving = false;
+            this.saveSuccess = false;
+            this.labelActionInProgress = false;
+            this.labelSearchResults = [];
+            this.duplicates = [];
+            this.duplicateAction = null;  // Reset to null so first save attempt checks for duplicates
+            this.selectedDuplicate = null;
+            this.showDuplicateDialog = false;
+            // Reset tasting list state
+            this.tastingsList = [];
+            this.showTastingsList = false;
+            this.selectedTasting = null;
+            this.loadingTastings = false;
+            this.cancelManualCrop();
+            this.cancelManualCropDownloaded();
+        },
+
+        /**
+         * Close modal
+         */
+        close() {
+            // Cleanup cropper instances
+            this.cancelManualCrop();
+            this.cancelManualCropDownloaded();
+
+            this.isOpen = false;
+
+            // Clear state after animation
+            setTimeout(() => {
+                this.mode = null;
+                this.bottle = null;
+                this.originalBottle = null;
+                this.vaultPath = null;
+                this.uploadId = null;
+                this.manifestContext = null;
+                this.editableBottle = {};
+                this.resetState();
+            }, 300);
+        },
+
+        /**
+         * Save bottle (context-aware)
+         */
+        async save() {
+            if (this.mode === 'upload') {
+                await this.saveUpload();
+            } else {
+                await this.saveManagement();
+            }
+        },
+
+        /**
+         * Save for management mode (direct to vault)
+         */
+        async saveManagement() {
+            this.saving = true;
+            this.saveSuccess = false;
+
+            try {
+                // Update bottle object with editable fields
+                Object.assign(this.bottle, this.editableBottle);
+
+                // Clean bottle data - convert empty strings to null for numeric fields
+                const cleanBottle = { ...this.bottle };
+                if (cleanBottle.year === '') cleanBottle.year = null;
+                if (cleanBottle.price === '') cleanBottle.price = null;
+                if (cleanBottle.inventory === '') cleanBottle.inventory = null;
+                if (cleanBottle.abv === '') cleanBottle.abv = null;
+                if (cleanBottle.proof === '') cleanBottle.proof = null;
+
+                const response = await fetch('/api/v1/management/bottles/update-fields', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bottle: cleanBottle,
+                        changes: this.approvedChanges
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to save bottle');
+                }
+
+                this.saveSuccess = true;
+
+                // Show success toast
+                this.showToast('✓ Bottle saved successfully!', 'success');
+
+                // Wait briefly for user to see the success state, then close
+                setTimeout(() => {
+                    this.close();
+
+                    // Reload the page to show updated bottle in grid
+                    window.location.reload();
+                }, 800);
+
+            } catch (error) {
+                console.error('Save failed:', error);
+                this.showToast('✗ Save failed: ' + error.message, 'error');
+            } finally {
+                this.saving = false;
+            }
+        },
+
+        /**
+         * Save for upload mode (with duplicate detection)
+         */
+        async saveUpload() {
+            // Check duplicate action if duplicates exist
+            if (this.duplicates && this.duplicates.length > 0) {
+                if (this.duplicateAction === 'skip') {
+                    // Skip this bottle
+                    if (this.manifestContext) {
+                        await this.nextBottle();
+                    } else {
+                        this.close();
+                    }
+                    return;
+                }
+            }
+
+            this.saving = true;
+
+            try {
+                // Update bottle object with editable fields
+                Object.assign(this.bottle, this.editableBottle);
+
+                // Clean bottle data - convert empty strings to null for numeric fields
+                const cleanBottle = { ...this.bottle };
+                if (cleanBottle.year === '') cleanBottle.year = null;
+                if (cleanBottle.price === '') cleanBottle.price = null;
+                if (cleanBottle.inventory === '') cleanBottle.inventory = null;
+                if (cleanBottle.abv === '') cleanBottle.abv = null;
+                if (cleanBottle.proof === '') cleanBottle.proof = null;
+
+                // CRITICAL: Ensure type field is present for duplicate detection
+                // The type field (wine/whiskey/etc) determines which vault directory to search
+                if (!cleanBottle.type) {
+                    console.error('Missing type field in bottle data! Cannot save without type.');
+                    console.error('Bottle data:', cleanBottle);
+                    throw new Error('Missing bottle type field');
+                }
+
+                console.log('Saving bottle with type:', cleanBottle.type);
+                console.log('Duplicate action:', this.duplicateAction);
+                console.log('Selected duplicate:', this.selectedDuplicate);
+
+                // Determine force_save and replace_vault_path based on radio button selection
+                let force_save = false;
+                let replace_vault_path = null;
+
+                if (this.duplicateAction === 'save_new') {
+                    force_save = true;
+                } else if (this.duplicateAction === 'replace' && this.selectedDuplicate) {
+                    replace_vault_path = this.selectedDuplicate;
+                }
+
+                const response = await fetch('/api/v1/bottles/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bottle: cleanBottle,
+                        upload_id: this.uploadId,
+                        temp_label_path: this.tempLabelPath,
+                        force_save: force_save,
+                        replace_vault_path: replace_vault_path
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'duplicate_found') {
+                    // Show duplicate dialog
+                    this.duplicates = result.duplicates;
+                    this.showDuplicateDialog = true;
+                    this.saving = false;
+                    return;
+                }
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to save bottle');
+                }
+
+                // Success!
+                this.showToast('✓ Bottle saved to vault!', 'success');
+
+                // Handle manifest navigation
+                if (this.manifestContext) {
+                    await this.nextBottle();
+                } else {
+                    // Wait briefly for user to see success, then close
+                    setTimeout(() => this.close(), 800);
+                }
+
+            } catch (error) {
+                console.error('Save failed:', error);
+                this.showToast('✗ Save failed: ' + error.message, 'error');
+            } finally {
+                this.saving = false;
+            }
+        },
+
+        /**
+         * Handle duplicate resolution
+         */
+        async handleDuplicateResolution(action, duplicateVaultPath = null) {
+            console.log('🔧 handleDuplicateResolution called:', { action, duplicateVaultPath });
+            this.selectedDuplicateAction = action;
+
+            if (action === 'skip') {
+                console.log('🔧 Skip action - closing dialog');
+                this.showDuplicateDialog = false;
+                if (this.manifestContext) {
+                    await this.nextBottle();
+                } else {
+                    this.close();
+                }
+                return;
+            }
+
+            console.log('🔧 Setting saving = true');
+            this.saving = true;
+
+            try {
+                // Update bottle object with editable fields (same as saveUpload/saveManagement)
+                Object.assign(this.bottle, this.editableBottle);
+
+                // Clean bottle data - convert empty strings to null for numeric fields
+                const cleanBottle = { ...this.bottle };
+                if (cleanBottle.year === '') cleanBottle.year = null;
+                if (cleanBottle.price === '') cleanBottle.price = null;
+                if (cleanBottle.inventory === '') cleanBottle.inventory = null;
+                if (cleanBottle.abv === '') cleanBottle.abv = null;
+                if (cleanBottle.proof === '') cleanBottle.proof = null;
+
+                const requestBody = {
+                    bottle: cleanBottle,
+                    upload_id: this.uploadId,
+                    temp_label_path: this.tempLabelPath,
+                    force_save: action === 'new',
+                    replace_vault_path: action === 'replace' ? duplicateVaultPath : null
+                };
+
+                console.log('🔧 Sending save request with:', {
+                    action,
+                    force_save: requestBody.force_save,
+                    replace_vault_path: requestBody.replace_vault_path,
+                    upload_id: requestBody.upload_id
+                });
+
+                const response = await fetch('/api/v1/bottles/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to save bottle');
+                }
+
+                this.showToast(action === 'replace' ? 'Bottle replaced successfully!' : 'Bottle saved as new!');
+                this.showDuplicateDialog = false;
+
+                // Handle manifest navigation
+                if (this.manifestContext) {
+                    await this.nextBottle();
+                } else {
+                    this.close();
+                }
+
+            } catch (error) {
+                console.error('Save failed:', error);
+                alert('Save failed: ' + error.message);
+            } finally {
+                this.saving = false;
+            }
+        },
+
+        /**
+         * Manually check for duplicates
+         */
+        async manualCheckDuplicates() {
+            console.log('Manual duplicate check triggered');
+            this.saving = true;
+
+            try {
+                // Update bottle object with current editable fields
+                Object.assign(this.bottle, this.editableBottle);
+
+                // Clean bottle data
+                const cleanBottle = { ...this.bottle };
+                if (cleanBottle.year === '') cleanBottle.year = null;
+                if (cleanBottle.price === '') cleanBottle.price = null;
+                if (cleanBottle.inventory === '') cleanBottle.inventory = null;
+                if (cleanBottle.abv === '') cleanBottle.abv = null;
+                if (cleanBottle.proof === '') cleanBottle.proof = null;
+
+                // Ensure type field is present
+                if (!cleanBottle.type) {
+                    console.error('Missing type field in bottle data!');
+                    throw new Error('Missing bottle type field');
+                }
+
+                console.log('Checking for duplicates with bottle:', cleanBottle);
+
+                const response = await fetch('/api/v1/bottles/check-duplicates', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(cleanBottle)
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to check duplicates');
+                }
+
+                const result = await response.json();
+
+                console.log('Duplicate check result:', result);
+
+                // Store duplicates for inline display (not as dialog)
+                this.duplicates = result.duplicates || [];
+
+                if (this.duplicates.length > 0) {
+                    console.log(`Found ${this.duplicates.length} potential duplicates`);
+                } else {
+                    console.log('No duplicates found');
+                }
+
+            } catch (error) {
+                console.error('Duplicate check failed:', error);
+                this.duplicates = [];
+            } finally {
+                this.saving = false;
+            }
+        },
+
+        /**
+         * Navigate to next bottle (manifest upload only)
+         */
+        async nextBottle() {
+            if (!this.manifestContext) return;
+
+            const ctx = this.manifestContext;
+            if (ctx.currentIndex < ctx.bottles.length - 1) {
+                ctx.currentIndex++;
+                const nextBottle = ctx.bottles[ctx.currentIndex];
+                this.openUpload(nextBottle, this.uploadId, ctx);
+            } else {
+                // All bottles processed
+                this.showToast('All bottles processed!');
+                this.close();
+            }
+        },
+
+        /**
+         * Navigate to previous bottle (manifest upload only)
+         */
+        async previousBottle() {
+            if (!this.manifestContext) return;
+
+            const ctx = this.manifestContext;
+            if (ctx.currentIndex > 0) {
+                ctx.currentIndex--;
+                const prevBottle = ctx.bottles[ctx.currentIndex];
+                this.openUpload(prevBottle, this.uploadId, ctx);
+            }
+        },
+
+        /**
+         * Skip current bottle (manifest upload only)
+         */
+        async skipBottle() {
+            if (!this.manifestContext) {
+                this.close();
+                return;
+            }
+
+            // Just move to next bottle
+            await this.nextBottle();
+        },
+
+        /**
+         * Enrich metadata via web search
+         */
+        async enrichMetadata() {
+            this.verifying = true;
+            this.searchResult = null;
+            this.hasChanges = false;
+
+            try {
+                // Update bottle object with current editable fields before verification
+                Object.assign(this.bottle, this.editableBottle);
+
+                // Clean bottle data
+                const cleanBottle = { ...this.bottle };
+                if (cleanBottle.year === '') cleanBottle.year = null;
+                if (cleanBottle.price === '') cleanBottle.price = null;
+                if (cleanBottle.inventory === '') cleanBottle.inventory = null;
+                if (cleanBottle.abv === '') cleanBottle.abv = null;
+                if (cleanBottle.proof === '') cleanBottle.proof = null;
+
+                console.log('Enriching metadata for bottle:', cleanBottle);
+
+                const response = await fetch('/api/v1/management/bottles/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bottle: cleanBottle })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Search failed');
+                }
+
+                // Check if enrichment actually succeeded
+                if (result.metadata && result.metadata.verified === false) {
+                    throw new Error(result.metadata.error || 'Enrichment verification failed');
+                }
+
+                this.searchResult = result;
+                this.approvedChanges = {};
+
+                // Set hasChanges boolean for reactive x-show
+                this.hasChanges = result.changes && Object.keys(result.changes).length > 0;
+
+            } catch (error) {
+                console.error('Enrichment failed:', error);
+                console.error('Error details:', error);
+                this.showToast('✗ Search failed: ' + error.message, 'error');
+            } finally {
+                this.verifying = false;
+            }
+        },
+
+        /**
+         * Apply selected metadata changes
+         */
+        applySelectedChanges() {
+            if (!this.searchResult || !this.approvedChanges) return;
+
+            // Apply only the checked changes to editableBottle
+            for (const [field, isApproved] of Object.entries(this.approvedChanges)) {
+                if (isApproved && this.searchResult.changes[field]) {
+                    this.editableBottle[field] = this.searchResult.changes[field].new;
+                }
+            }
+
+            // Clear search results
+            this.searchResult = null;
+            this.approvedChanges = {};
+
+            this.showToast('✓ Selected changes applied to form', 'success');
+        },
+
+        /**
+         * Apply all suggested metadata changes
+         */
+        applyAllChanges() {
+            if (!this.searchResult || !this.searchResult.changes) return;
+
+            // Apply all changes to editableBottle
+            for (const [field, change] of Object.entries(this.searchResult.changes)) {
+                this.editableBottle[field] = change.new;
+            }
+
+            // Clear search results
+            this.searchResult = null;
+            this.approvedChanges = {};
+
+            this.showToast('✓ All changes applied to form', 'success');
+        },
+
+        /**
+         * Cancel/dismiss metadata changes
+         */
+        cancelChanges() {
+            this.searchResult = null;
+            this.approvedChanges = {};
+            this.hasChanges = false;
+            this.showToast('Changes cancelled', 'info');
+        },
+
+        /**
+         * Load tasting summary (management mode only)
+         */
+        async loadTastingSummary() {
+            if (!this.vaultPath) return;
+
+            try {
+                const response = await fetch('/api/v1/management/bottles/tastings-summary', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        bottle: this.bottle
+                    })
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    this.tastingSummary = result;
+                }
+            } catch (error) {
+                console.error('Failed to load tasting summary:', error);
+            }
+        },
+
+        /**
+         * Load full list of tastings with scores and notes
+         */
+        async loadTastingsList() {
+            if (!this.vaultPath || this.loadingTastings) return;
+
+            this.loadingTastings = true;
+
+            try {
+                const response = await fetch('/api/v1/management/bottles/tastings-list', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        bottle: this.bottle
+                    })
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    this.tastingsList = result.tastings || [];
+                }
+            } catch (error) {
+                console.error('Failed to load tastings list:', error);
+            } finally {
+                this.loadingTastings = false;
+            }
+        },
+
+        /**
+         * Toggle tastings list visibility (and load if needed)
+         */
+        async toggleTastingsList() {
+            if (!this.showTastingsList) {
+                // Expanding - load tastings if not already loaded
+                if (this.tastingsList.length === 0 && this.tastingSummary?.tasting_count > 0) {
+                    await this.loadTastingsList();
+                }
+            }
+            this.showTastingsList = !this.showTastingsList;
+            this.selectedTasting = null;  // Close detail view when collapsing
+        },
+
+        /**
+         * Select a tasting to show full details
+         */
+        selectTasting(tasting) {
+            this.selectedTasting = tasting;
+        },
+
+        /**
+         * Close tasting detail view and return to list
+         */
+        closeTastingDetail() {
+            this.selectedTasting = null;
+        },
+
+        /**
+         * Format tasting notes array as hashtags for display
+         */
+        formatNotesAsHashtags(notes) {
+            if (!notes || !Array.isArray(notes) || notes.length === 0) {
+                return '';
+            }
+            return notes.map(note => `#${note.replace(/\s+/g, '_')}`).join(' ');
+        },
+
+        /**
+         * Manual crop current label
+         */
+        async startManualCrop() {
+            this.manualCropActive = true;
+
+            let imageSrc;
+            if (this.mode === 'management') {
+                const labelPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
+                                  this.vaultPath + '/labels/label.jpg';
+                imageSrc = `/api/v1/labels/view?path=${encodeURIComponent(labelPath)}&t=${Date.now()}`;
+            } else {
+                // Upload mode - use temp label
+                imageSrc = `/api/v1/temp-images/${this.uploadId}/label.jpg?t=${Date.now()}`;
+            }
+
+            this.manualCropImageSrc = imageSrc;
+
+            // Initialize Cropper.js after image loads
+            // Use setTimeout to ensure DOM is updated
+            setTimeout(async () => {
+                const image = document.getElementById('manualCropImage');
+                if (image) {
+                    console.log('Initializing cropper on image:', image.src);
+                    try {
+                        this.cropperInstance = await window.cropperManager.initializeCropper(
+                            image,
+                            {},
+                            (error) => {
+                                console.error('Cropper error callback:', error);
+                                alert('Failed to load image. Please try again.');
+                                this.cancelManualCrop();
+                            }
+                        );
+                        console.log('Cropper initialized successfully');
+                    } catch (error) {
+                        console.error('Cropper init failed:', error);
+                        alert('Failed to initialize cropper: ' + error.message);
+                    }
+                } else {
+                    console.error('Image element not found with ID: manualCropImage');
+                }
+            }, 200);
+        },
+
+        /**
+         * Accept manual crop and send to backend
+         */
+        async acceptManualCrop() {
+            if (!this.cropperInstance) return;
+
+            this.labelActionInProgress = true;
+
+            try {
+                const endpoint = this.mode === 'management'
+                    ? '/api/v1/management/labels/manual-crop'
+                    : '/api/v1/bottles/manual-crop-temp';
+
+                // Clean bottle data - convert empty strings to null for numeric fields
+                const cleanBottle = { ...this.bottle };
+                if (cleanBottle.year === '') cleanBottle.year = null;
+                if (cleanBottle.price === '') cleanBottle.price = null;
+                if (cleanBottle.inventory === '') cleanBottle.inventory = null;
+                if (cleanBottle.abv === '') cleanBottle.abv = null;
+                if (cleanBottle.proof === '') cleanBottle.proof = null;
+
+                const additionalData = this.mode === 'management'
+                    ? { bottle: cleanBottle }
+                    : { upload_id: this.uploadId };
+
+                await window.cropperManager.completeCrop(
+                    this.cropperInstance,
+                    endpoint,
+                    additionalData,
+                    (result) => {
+                        console.log('Crop success:', result);
+                        this.showToast('Label cropped successfully!');
+                        this.currentLabelTimestamp = Date.now();
+                        this.cancelManualCrop();
+                    },
+                    (error) => {
+                        console.error('Crop error:', error);
+                        alert('Manual crop failed: ' + error.message);
+                    }
+                );
+
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
+        /**
+         * Cancel manual crop
+         */
+        cancelManualCrop() {
+            if (this.cropperInstance) {
+                window.cropperManager.destroyCropper(this.cropperInstance);
+                this.cropperInstance = null;
+            }
+            this.manualCropActive = false;
+            this.manualCropImageSrc = null;
+        },
+
+        /**
+         * Cancel manual crop for downloaded image
+         */
+        cancelManualCropDownloaded() {
+            if (this.cropperDownloadedInstance) {
+                window.cropperManager.destroyCropper(this.cropperDownloadedInstance);
+                this.cropperDownloadedInstance = null;
+            }
+            this.manualCropDownloadedActive = false;
+            this.manualCropDownloadedSrc = null;
+        },
+
+        /**
+         * Search for label images on the web
+         */
+        async searchForLabelReplacement() {
+            this.labelActionInProgress = true;
+            try {
+                const response = await fetch('/api/v1/bottles/search-labels', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.bottle)
+                });
+
+                const data = await response.json();
+                this.labelSearchResults = data.images || [];
+                console.log(`Found ${this.labelSearchResults.length} label candidates`);
+            } catch (error) {
+                console.error('Label search failed:', error);
+                alert('Label search failed: ' + error.message);
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
+        /**
+         * Auto-crop existing label
+         */
+        async cropExistingLabel() {
+            this.labelActionInProgress = true;
+            try {
+                const response = await fetch('/api/v1/management/labels/crop-current', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bottle: this.bottle
+                    })
+                });
+
+                const data = await response.json();
+                this.labelCropPreview = `/api/v1/labels/view?path=${encodeURIComponent(data.preview_path)}&t=${Date.now()}`;
+                this.showToast('Label cropped! Review the preview below.');
+            } catch (error) {
+                console.error('Crop failed:', error);
+                alert('Crop failed: ' + error.message);
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
+        /**
+         * Accept auto-crop preview and replace label
+         */
+        async acceptCropPreview() {
+            this.labelActionInProgress = true;
+            try {
+                const response = await fetch('/api/v1/management/labels/accept-crop', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bottle: this.bottle
+                    })
+                });
+
+                await response.json();
+                this.labelCropPreview = null;
+                this.currentLabelTimestamp = Date.now();
+                this.showToast('Label updated successfully!');
+            } catch (error) {
+                console.error('Accept crop failed:', error);
+                alert('Accept crop failed: ' + error.message);
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
+        /**
+         * Cancel auto-crop preview
+         */
+        cancelCropPreview() {
+            this.labelCropPreview = null;
+        },
+
+        /**
+         * Upload custom label image
+         */
+        async uploadCustomLabel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            this.labelActionInProgress = true;
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('bottle', JSON.stringify(this.bottle));
+
+                if (this.mode === 'upload') {
+                    formData.append('upload_id', this.uploadId);
+                }
+
+                const endpoint = this.mode === 'management'
+                    ? '/api/v1/management/labels/upload-custom'
+                    : '/api/v1/bottles/upload-custom-label';
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                await response.json();
+                this.currentLabelTimestamp = Date.now();
+                this.showToast('Custom label uploaded successfully!');
+
+                // Clear file input
+                event.target.value = '';
+            } catch (error) {
+                console.error('Upload failed:', error);
+                alert('Upload failed: ' + error.message);
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
+        /**
+         * Download and use selected search result
+         */
+        async useSelectedSearchImage(imageUrl) {
+            this.labelActionInProgress = true;
+            try {
+                const response = await fetch('/api/v1/management/labels/download-image', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bottle: this.bottle,
+                        image_url: imageUrl
+                    })
+                });
+
+                const data = await response.json();
+                this.labelDownloadedOriginal = `/api/v1/labels/view?path=${encodeURIComponent(data.downloaded_path)}&t=${Date.now()}`;
+                this.showToast('Label downloaded! You can crop it or use as-is.');
+                // Clear search results to show downloaded image
+                this.labelSearchResults = [];
+            } catch (error) {
+                console.error('Download failed:', error);
+                alert('Download failed: ' + error.message);
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
+        /**
+         * Use downloaded label (with or without cropping)
+         */
+        async useDownloadedLabel(useCropped) {
+            this.labelActionInProgress = true;
+            try {
+                const response = await fetch('/api/v1/management/labels/use-downloaded', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bottle: this.bottle,
+                        use_cropped: useCropped
+                    })
+                });
+
+                await response.json();
+                this.labelDownloadedOriginal = null;
+                this.labelDownloadedCropped = null;
+                this.currentLabelTimestamp = Date.now();
+                this.showToast('Label updated successfully!');
+            } catch (error) {
+                console.error('Use downloaded failed:', error);
+                alert('Use downloaded failed: ' + error.message);
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
+        /**
+         * Start manual crop for downloaded image
+         */
+        async startManualCropDownloaded() {
+            this.manualCropDownloadedActive = true;
+            this.manualCropDownloadedSrc = this.labelDownloadedOriginal;
+
+            // Initialize Cropper.js after image loads
+            setTimeout(async () => {
+                const image = document.getElementById('manualCropDownloadedImage');
+                if (image) {
+                    console.log('Initializing cropper on downloaded image:', image.src);
+                    try {
+                        this.cropperDownloadedInstance = await window.cropperManager.initializeCropper(
+                            image,
+                            {},
+                            (error) => {
+                                console.error('Cropper error callback:', error);
+                                alert('Failed to load image. Please try again.');
+                                this.cancelManualCropDownloaded();
+                            }
+                        );
+                        console.log('Downloaded cropper initialized successfully');
+                    } catch (error) {
+                        console.error('Downloaded cropper init failed:', error);
+                        alert('Failed to initialize cropper: ' + error.message);
+                    }
+                } else {
+                    console.error('Image element not found with ID: manualCropDownloadedImage');
+                }
+            }, 200);
+        },
+
+        /**
+         * Accept manual crop of downloaded image
+         */
+        async acceptManualCropDownloaded() {
+            if (!this.cropperDownloadedInstance) return;
+
+            this.labelActionInProgress = true;
+
+            try {
+                await window.cropperManager.completeCrop(
+                    this.cropperDownloadedInstance,
+                    '/api/v1/management/labels/manual-crop-downloaded',
+                    { bottle: this.bottle },
+                    async (result) => {
+                        // Now use the cropped version
+                        await this.useDownloadedLabel(true);
+                        this.cancelManualCropDownloaded();
+                    },
+                    (error) => {
+                        alert('Manual crop failed: ' + error.message);
+                    }
+                );
+
+            } finally {
+                this.labelActionInProgress = false;
+            }
+        },
+
+        /**
+         * Get field label for display
+         */
+        getFieldLabel(fieldName) {
+            const labels = {
+                producer: 'Producer/Distiller',
+                name: 'Name',
+                year: 'Year/Vintage',
+                type: 'Type',
+                region: 'Region',
+                country: 'Country',
+                variety: 'Variety',
+                vineyard: 'Vineyard',
+                abv: 'ABV',
+                style: 'Style',
+                age_statement: 'Age Statement',
+                proof: 'Proof',
+                mash_bill: 'Mash Bill',
+                barrel_type: 'Barrel Type',
+                price: 'Price',
+                inventory: 'Inventory'
+            };
+            return labels[fieldName] || fieldName;
+        },
+
+        /**
+         * Show toast notification
+         */
+        showToast(message, type = 'info') {
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white font-semibold z-50 transform transition-all duration-300 ${
+                type === 'success' ? 'bg-green-600' :
+                type === 'error' ? 'bg-red-600' :
+                'bg-blue-600'
+            }`;
+            toast.textContent = message;
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(20px)';
+
+            document.body.appendChild(toast);
+
+            // Animate in
+            setTimeout(() => {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateY(0)';
+            }, 10);
+
+            // Remove after 3 seconds
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(20px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    };
+};

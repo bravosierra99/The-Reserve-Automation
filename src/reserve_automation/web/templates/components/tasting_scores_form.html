@@ -1,0 +1,253 @@
+{#
+    Shared Tasting Scores Form Component
+
+    This component displays the scores and notes form for both wine and whiskey tastings.
+    It must be included within an Alpine scope that provides:
+
+    Required variables:
+    - tasting: Object with score/notes fields (wine_appearance, whiskey_nose, nose_notes, etc.)
+    - isWine: Boolean - true for wine, false for whiskey
+
+    Optional:
+    - onTastingChange(): Function called when any data changes (for auto-save)
+
+    The parent scope must also provide note management functions or use the default ones.
+    Note input variables expected: noseNotesInput, palateNotesInput, finishNotesInput,
+    appearanceNotesInput, aromaNotesInput, tasteNotesInput, aftertasteNotesInput
+#}
+
+<!-- Wine Scores & Notes -->
+<div x-show="isWine" class="space-y-4">
+    <div class="flex items-center justify-between">
+        <h3 class="text-lg font-bold text-gray-800">Scores & Tasting Notes</h3>
+        <div class="bg-blue-50 border border-blue-300 rounded-lg px-4 py-2">
+            <span class="text-sm text-gray-700">Score: </span>
+            <span class="text-xl font-bold text-blue-600" x-text="computedWineScore.toFixed(1)"></span>
+            <span class="text-gray-500">/20</span>
+            <span class="text-sm text-gray-500 ml-2">(<span x-text="computed100ptScore.toFixed(0)"></span>pt)</span>
+        </div>
+    </div>
+
+    <!-- Appearance -->
+    <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div class="flex items-center justify-between mb-3">
+            <label class="font-semibold text-gray-700">Appearance</label>
+            <div class="flex items-center gap-2">
+                <input type="range" x-model.number="tasting.wine_appearance" min="0" max="3" step="0.5"
+                       @change="typeof onTastingChange === 'function' && onTastingChange()"
+                       class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.wine_appearance || 0).toFixed(1)"></span>
+                <span class="text-gray-500 text-sm">/ 3</span>
+            </div>
+        </div>
+        <input type="text" x-model="appearanceNotesInput" @keydown.enter="addAppearanceNote()"
+               placeholder="Type a note and press Enter (e.g., ruby, clear, deep)"
+               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+        <div x-show="tasting.appearance_notes && tasting.appearance_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
+            <template x-for="(note, index) in tasting.appearance_notes || []" :key="index">
+                <span class="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
+                    <span x-text="note"></span>
+                    <button @click="removeAppearanceNote(index)" class="ml-2 text-purple-600 hover:text-purple-800">&times;</button>
+                </span>
+            </template>
+        </div>
+    </div>
+
+    <!-- Aroma -->
+    <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div class="flex items-center justify-between mb-3">
+            <label class="font-semibold text-gray-700">Aroma</label>
+            <div class="flex items-center gap-2">
+                <input type="range" x-model.number="tasting.wine_aroma" min="0" max="6" step="0.5"
+                       @change="typeof onTastingChange === 'function' && onTastingChange()"
+                       class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.wine_aroma || 0).toFixed(1)"></span>
+                <span class="text-gray-500 text-sm">/ 6</span>
+            </div>
+        </div>
+        <input type="text" x-model="aromaNotesInput" @keydown.enter="addAromaNote()"
+               placeholder="Type a note and press Enter (e.g., cherry, oak, vanilla)"
+               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+        <div x-show="tasting.nose_notes && tasting.nose_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
+            <template x-for="(note, index) in tasting.nose_notes || []" :key="index">
+                <span class="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                    <span x-text="note"></span>
+                    <button @click="removeAromaNote(index)" class="ml-2 text-blue-600 hover:text-blue-800">&times;</button>
+                </span>
+            </template>
+        </div>
+    </div>
+
+    <!-- Taste -->
+    <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div class="flex items-center justify-between mb-3">
+            <label class="font-semibold text-gray-700">Taste</label>
+            <div class="flex items-center gap-2">
+                <input type="range" x-model.number="tasting.wine_taste" min="0" max="6" step="0.5"
+                       @change="typeof onTastingChange === 'function' && onTastingChange()"
+                       class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.wine_taste || 0).toFixed(1)"></span>
+                <span class="text-gray-500 text-sm">/ 6</span>
+            </div>
+        </div>
+        <input type="text" x-model="tasteNotesInput" @keydown.enter="addTasteNote()"
+               placeholder="Type a note and press Enter (e.g., tannins, fruit, spice)"
+               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+        <div x-show="tasting.palate_notes && tasting.palate_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
+            <template x-for="(note, index) in tasting.palate_notes || []" :key="index">
+                <span class="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                    <span x-text="note"></span>
+                    <button @click="removeTasteNote(index)" class="ml-2 text-green-600 hover:text-green-800">&times;</button>
+                </span>
+            </template>
+        </div>
+    </div>
+
+    <!-- Aftertaste -->
+    <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div class="flex items-center justify-between mb-3">
+            <label class="font-semibold text-gray-700">Aftertaste</label>
+            <div class="flex items-center gap-2">
+                <input type="range" x-model.number="tasting.wine_aftertaste" min="0" max="3" step="0.5"
+                       @change="typeof onTastingChange === 'function' && onTastingChange()"
+                       class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.wine_aftertaste || 0).toFixed(1)"></span>
+                <span class="text-gray-500 text-sm">/ 3</span>
+            </div>
+        </div>
+        <input type="text" x-model="aftertasteNotesInput" @keydown.enter="addAftertasteNote()"
+               placeholder="Type a note and press Enter (e.g., long, dry, smooth)"
+               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+        <div x-show="tasting.finish_notes && tasting.finish_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
+            <template x-for="(note, index) in tasting.finish_notes || []" :key="index">
+                <span class="inline-flex items-center px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">
+                    <span x-text="note"></span>
+                    <button @click="removeAftertasteNote(index)" class="ml-2 text-orange-600 hover:text-orange-800">&times;</button>
+                </span>
+            </template>
+        </div>
+    </div>
+
+    <!-- Overall -->
+    <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div class="flex items-center justify-between mb-3">
+            <label class="font-semibold text-gray-700">Overall</label>
+            <div class="flex items-center gap-2">
+                <input type="range" x-model.number="tasting.wine_overall" min="0" max="2" step="0.5"
+                       @change="typeof onTastingChange === 'function' && onTastingChange()"
+                       class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.wine_overall || 0).toFixed(1)"></span>
+                <span class="text-gray-500 text-sm">/ 2</span>
+            </div>
+        </div>
+        <textarea x-model="tasting.overall_notes" rows="3"
+                  @change="typeof onTastingChange === 'function' && onTastingChange()"
+                  placeholder="Your overall thoughts and impressions..."
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"></textarea>
+    </div>
+</div>
+
+<!-- Whiskey Scores & Notes -->
+<div x-show="!isWine" class="space-y-4">
+    <div class="flex items-center justify-between">
+        <h3 class="text-lg font-bold text-gray-800">Scores & Tasting Notes</h3>
+        <div class="bg-blue-50 border border-blue-300 rounded-lg px-4 py-2">
+            <span class="text-sm text-gray-700">Score: </span>
+            <span class="text-xl font-bold text-blue-600" x-text="computedWhiskeyScore.toFixed(1)"></span>
+            <span class="text-gray-500">/10</span>
+        </div>
+    </div>
+
+    <!-- Nose -->
+    <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div class="flex items-center justify-between mb-3">
+            <label class="font-semibold text-gray-700">Nose</label>
+            <div class="flex items-center gap-2">
+                <input type="range" x-model.number="tasting.whiskey_nose" min="0" max="3" step="0.1"
+                       @change="typeof onTastingChange === 'function' && onTastingChange()"
+                       class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.whiskey_nose || 0).toFixed(1)"></span>
+                <span class="text-gray-500 text-sm">/ 3</span>
+            </div>
+        </div>
+        <input type="text" x-model="noseNotesInput" @keydown.enter="addNoseNote()"
+               placeholder="Type a note and press Enter (e.g., vanilla, oak, cherry)"
+               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+        <div x-show="tasting.nose_notes && tasting.nose_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
+            <template x-for="(note, index) in tasting.nose_notes || []" :key="index">
+                <span class="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                    <span x-text="note"></span>
+                    <button @click="removeNoseNote(index)" class="ml-2 text-blue-600 hover:text-blue-800">&times;</button>
+                </span>
+            </template>
+        </div>
+    </div>
+
+    <!-- Palate -->
+    <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div class="flex items-center justify-between mb-3">
+            <label class="font-semibold text-gray-700">Palate</label>
+            <div class="flex items-center gap-2">
+                <input type="range" x-model.number="tasting.whiskey_palate" min="0" max="3" step="0.1"
+                       @change="typeof onTastingChange === 'function' && onTastingChange()"
+                       class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.whiskey_palate || 0).toFixed(1)"></span>
+                <span class="text-gray-500 text-sm">/ 3</span>
+            </div>
+        </div>
+        <input type="text" x-model="palateNotesInput" @keydown.enter="addPalateNote()"
+               placeholder="Type a note and press Enter (e.g., spice, honey, leather)"
+               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+        <div x-show="tasting.palate_notes && tasting.palate_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
+            <template x-for="(note, index) in tasting.palate_notes || []" :key="index">
+                <span class="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                    <span x-text="note"></span>
+                    <button @click="removePalateNote(index)" class="ml-2 text-green-600 hover:text-green-800">&times;</button>
+                </span>
+            </template>
+        </div>
+    </div>
+
+    <!-- Finish -->
+    <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div class="flex items-center justify-between mb-3">
+            <label class="font-semibold text-gray-700">Finish</label>
+            <div class="flex items-center gap-2">
+                <input type="range" x-model.number="tasting.whiskey_finish" min="0" max="3" step="0.1"
+                       @change="typeof onTastingChange === 'function' && onTastingChange()"
+                       class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.whiskey_finish || 0).toFixed(1)"></span>
+                <span class="text-gray-500 text-sm">/ 3</span>
+            </div>
+        </div>
+        <input type="text" x-model="finishNotesInput" @keydown.enter="addFinishNote()"
+               placeholder="Type a note and press Enter (e.g., long, warm, oaky)"
+               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+        <div x-show="tasting.finish_notes && tasting.finish_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
+            <template x-for="(note, index) in tasting.finish_notes || []" :key="index">
+                <span class="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
+                    <span x-text="note"></span>
+                    <button @click="removeFinishNote(index)" class="ml-2 text-purple-600 hover:text-purple-800">&times;</button>
+                </span>
+            </template>
+        </div>
+    </div>
+
+    <!-- Overall -->
+    <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+        <div class="flex items-center justify-between mb-3">
+            <label class="font-semibold text-gray-700">Overall</label>
+            <div class="flex items-center gap-2">
+                <input type="range" x-model.number="tasting.whiskey_overall" min="0" max="1" step="0.1"
+                       @change="typeof onTastingChange === 'function' && onTastingChange()"
+                       class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.whiskey_overall || 0).toFixed(1)"></span>
+                <span class="text-gray-500 text-sm">/ 1</span>
+            </div>
+        </div>
+        <textarea x-model="tasting.overall_notes" rows="3"
+                  @change="typeof onTastingChange === 'function' && onTastingChange()"
+                  placeholder="Your overall thoughts and impressions..."
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"></textarea>
+    </div>
+</div>

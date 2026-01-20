@@ -163,7 +163,7 @@ class BatchApprovalResult(BaseModel):
 
 
 # ============================================================================
-# Manual Tasting Wizard Schemas
+# Manual Tasting Schemas (Sessionless - all state in frontend)
 # ============================================================================
 
 
@@ -173,49 +173,25 @@ class ManualTastingMode(str, Enum):
     EVENT = "event"        # Transient event-based tasting
 
 
-class ManualTastingWizardStep(str, Enum):
-    """Steps in the manual tasting wizard."""
-    TASTER_INFO = "taster_info"           # Step 1 (Obsidian only)
-    BOTTLE_SELECTION = "bottle_selection"  # Step 2 (Obsidian) or Step 1 (Event)
-    TASTING_FORM = "tasting_form"         # Step 3 (Obsidian) or Step 2 (Event)
-
-
-class ManualTastingSession(BaseModel):
-    """Session for manual tasting entry wizard."""
-    session_id: str
-    mode: ManualTastingMode
-    beverage_type: str = Field(..., description="wine or whiskey")
-    current_step: ManualTastingWizardStep
-    created_at: datetime = Field(default_factory=datetime.now)
-
-    # Obsidian-specific fields (populated in Step 1)
-    taster_name: Optional[str] = None
-    tasting_date: Optional[str] = None  # YYYY-MM-DD
-
-    # Event-specific fields
-    event_id: Optional[str] = None
-    event_name: Optional[str] = None
-    participant_id: Optional[str] = None  # Participant ID for event mode
-
-    # Wizard progress
-    selected_bottle_path: Optional[str] = None  # Set in Step 2
-    tasting_data: Optional[dict] = None  # Set in Step 3 (dict, not TastingData - missing required fields)
-
-
-class CreateManualTastingRequest(BaseModel):
-    """Request to start a manual tasting session."""
-    mode: ManualTastingMode = Field(default=ManualTastingMode.OBSIDIAN)
-    beverage_type: str = Field(..., description="wine or whiskey")
-    # Event-specific (future):
-    event_id: Optional[str] = None
-
-
-class UpdateWizardStepRequest(BaseModel):
-    """Request to update wizard step data."""
-    step: ManualTastingWizardStep
-    data: dict  # Step-specific data
-
-
 class SaveManualTastingRequest(BaseModel):
-    """Request to save completed manual tasting."""
-    pass  # No body needed - all data is in session
+    """
+    Request to save a manual tasting.
+
+    All data is passed directly in the request - no server-side session needed.
+    The frontend (Alpine.js) maintains wizard state locally.
+    """
+    # Mode determines where to save
+    mode: ManualTastingMode = Field(default=ManualTastingMode.OBSIDIAN)
+
+    # Required fields
+    beverage_type: str = Field(..., description="wine or whiskey")
+    taster_name: str = Field(..., description="Name of the taster")
+    tasting_date: str = Field(..., description="Date of tasting (YYYY-MM-DD)")
+    selected_bottle_path: str = Field(..., description="Path to bottle folder in vault")
+
+    # Event mode fields (required if mode=EVENT)
+    event_id: Optional[str] = None
+    participant_id: Optional[str] = None
+
+    # Tasting scores and notes
+    tasting_data: dict = Field(default_factory=dict, description="Scores and notes")

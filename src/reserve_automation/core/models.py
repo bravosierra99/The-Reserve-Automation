@@ -54,12 +54,16 @@ class BottleMetadata(BaseModel):
     # Wine-specific
     variety: Optional[str] = Field(None, description="Grape variety or blend")
     vineyard: Optional[str] = None
+    style: Optional[str] = Field(None, description="Wine style", max_length=100)
 
     # Whiskey-specific
     age_statement: Optional[int] = Field(None, ge=0, le=100)
     proof: Optional[float] = Field(None, ge=0, le=200)
     mash_bill: Optional[str] = None
     barrel_type: Optional[str] = None
+    batch_number: Optional[str] = Field(None, description="Batch number", max_length=100)
+    bottle_number: Optional[str] = Field(None, description="Bottle number", max_length=100)
+    bottle_opened_date: Optional[str] = Field(None, description="Date bottle was opened", max_length=50)
 
     # Common
     abv: Optional[float] = Field(None, ge=0, le=100)
@@ -67,7 +71,14 @@ class BottleMetadata(BaseModel):
 
     # Inventory and purchase info
     purchase_source: Optional[str] = Field(None, description="Where the bottle was purchased", max_length=200)
+    purchase_link: Optional[str] = Field(None, description="Purchase URL", max_length=500)
     inventory: int = Field(0, description="Number of bottles in inventory", ge=0)
+    buy: int = Field(0, description="Quantity to purchase", ge=0)
+
+    # Rating fields
+    stars: Optional[str] = Field(None, description="Star rating (e.g., ⭐️⭐️⭐️)", max_length=50)
+    value_for_money: Optional[float] = Field(None, description="Value for money rating (0-5)", ge=0, le=5)
+    points: Optional[str] = Field(None, description="Points/score", max_length=50)
 
     # Vault location (for bottles read from vault)
     vault_path: Optional[str] = Field(None, description="Relative path in vault (e.g., '1_Whiskeys/Distiller - Name - Year')")

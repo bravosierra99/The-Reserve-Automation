@@ -87,7 +87,9 @@ class TestSimilarityCalculation:
             name="Cabernet Sauvignon",
             year=2019,
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         filename = "Caymus - Cabernet Sauvignon - 2019.md"
@@ -103,7 +105,9 @@ class TestSimilarityCalculation:
             name="Cabernet",  # Shortened name
             year=2019,
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         filename = "Caymus - Cabernet Sauvignon - 2019.md"
@@ -121,7 +125,9 @@ class TestSimilarityCalculation:
             name="Puligny-Montrachet",
             year=2018,
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         filename = "Caymus - Cabernet Sauvignon - 2019.md"
@@ -137,7 +143,9 @@ class TestSimilarityCalculation:
             name="Cabernet Sauvignon",
             year=2020,  # Different year
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         filename = "Caymus - Cabernet Sauvignon - 2019.md"
@@ -149,7 +157,9 @@ class TestSimilarityCalculation:
             name="Cabernet Sauvignon",
             year=2019,  # Same year
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         similarity_same_year = service._calculate_similarity(bottle_same_year, filename, file_path)
@@ -173,7 +183,9 @@ class TestSimilarityCalculation:
             name="Bourbon",
             year=2022,
             type="whiskey",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         # Test various filename formats (use actual existing file)
@@ -197,7 +209,9 @@ class TestSimilarityCalculation:
             name="cabernet sauvignon",
             year=2019,
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         bottle_upper = BottleMetadata(
@@ -205,7 +219,9 @@ class TestSimilarityCalculation:
             name="CABERNET SAUVIGNON",
             year=2019,
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         filename = "Caymus - Cabernet Sauvignon - 2019.md"
@@ -224,7 +240,9 @@ class TestSimilarityCalculation:
             name="Bourbon",
             year=None,  # No year
             type="whiskey",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         filename = "Buffalo Trace - Bourbon.md"
@@ -249,7 +267,9 @@ class TestEdgeCases:
             name="Pavillon Rouge",
             year=2015,
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         duplicates = service.find_potential_duplicates(bottle, threshold=0.6)
@@ -264,7 +284,9 @@ class TestEdgeCases:
             producer="Blanton's",  # Apostrophe
             name="Single Barrel",
             type="whiskey",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         duplicates = service.find_potential_duplicates(bottle, threshold=0.6)
@@ -280,7 +302,9 @@ class TestEdgeCases:
             name="La Tâche",
             year=2018,
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         duplicates = service.find_potential_duplicates(bottle, threshold=0.6)
@@ -296,7 +320,9 @@ class TestEdgeCases:
             name="Cabernet Sauvignon",
             year=2019,
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         # High threshold should return fewer results
@@ -312,7 +338,9 @@ class TestEdgeCases:
             name="Imaginary Wine",
             year=2029,  # Changed from 2099 to pass validation (max 2030)
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         duplicates = service.find_potential_duplicates(bottle, threshold=0.7)
@@ -326,7 +354,9 @@ class TestEdgeCases:
             name="Cabernet",
             year=2019,
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         # Should not find whiskey files
@@ -344,7 +374,9 @@ class TestEdgeCases:
             name="La Tâche",
             year=2018,
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         duplicates = service.find_potential_duplicates(bottle, threshold=0.6)
@@ -367,7 +399,9 @@ class TestDuplicateDetectionIntegration:
             name="Cabernet Sauvignon",
             year=2019,
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         duplicates = service.find_potential_duplicates(bottle, threshold=0.8)
@@ -383,7 +417,9 @@ class TestDuplicateDetectionIntegration:
             producer="Caymus",
             name="Cab",  # Partial name to get multiple matches
             type="wine",
-            source="test"
+            source="test",
+            inventory=1,
+            buy=0
         )
 
         duplicates = service.find_potential_duplicates(bottle, threshold=0.3)
@@ -403,7 +439,9 @@ class TestDuplicateDetectionIntegration:
             source="test",
             beverage_type="Bourbon",
             age_statement=15,
-            proof=130.4
+            proof=130.4,
+            inventory=1,
+            buy=0
         )
 
         duplicates = service.find_potential_duplicates(bottle, threshold=0.7)

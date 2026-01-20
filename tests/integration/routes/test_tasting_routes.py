@@ -140,26 +140,10 @@ class TestSessionValidation:
             assert response.status_code == 404
 
 
-class TestManualTastingContracts:
-    """Test manual tasting wizard API contracts."""
-
-    def test_start_manual_tasting_accepts_valid_data(self, client):
-        """POST /api/v1/manual-tasting/start accepts valid request."""
-        with patch('reserve_automation.web.routes.tastings.SessionManager') as mock_sm:
-            mock_sm.return_value.create_session.return_value = "new-token"
-            
-            response = client.post(
-                "/api/v1/manual-tasting/start",
-                json={"mode": "obsidian", "beverage_type": "wine"}
-            )
-            
-            # Should succeed (200) or fail validation (422), not server error
-            assert response.status_code in [200, 422, 500]
-
-    def test_get_manual_session_requires_cookie(self, client):
-        """GET /api/v1/manual-tasting/session requires session."""
-        response = client.get("/api/v1/manual-tasting/session")
-        assert response.status_code == 401
+# NOTE: TestManualTastingContracts was removed because manual tastings are now
+# sessionless. The wizard manages all state in the frontend and saves directly
+# to the vault without server-side sessions. See tests/e2e/test_manual_tasting_browser.py
+# for the E2E tests that cover the manual tasting flow.
 
 
 class TestErrorResponses:

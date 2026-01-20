@@ -146,8 +146,10 @@ backup_personal() {
 
     if [ "$dry_run" = false ]; then
         # Stage ONLY personal data files
+        # Use --force because these directories are in .gitignore for the main branch
+        # but should be tracked on the personal/tastings branch
         for dir in $PERSONAL_DIRS; do
-            git add "$dir" 2>/dev/null || true
+            git add --force "$dir" 2>/dev/null || true
         done
     fi
 
@@ -172,12 +174,18 @@ backup_personal() {
         git push origin "$PERSONAL_BRANCH"
         echo -e "${GREEN}✓ Pushed to origin/$PERSONAL_BRANCH${NC}"
     else
-        # Dry run: show what would be committed
+        # Dry run: show what would be committed (including ignored files)
         echo -e "\n${BLUE}Would commit these changes:${NC}"
         for dir in $PERSONAL_DIRS; do
+            # Show tracked file changes
             git diff --stat "$dir" 2>/dev/null
+            # Show untracked/ignored files that would be added with --force
+            untracked=$(git ls-files --others --ignored --exclude-standard "$dir" 2>/dev/null | wc -l)
+            if [ "$untracked" -gt 0 ]; then
+                echo "  + $untracked untracked/ignored files in $dir"
+            fi
         done
-        [ -z "$(git diff --stat $PERSONAL_DIRS 2>/dev/null)" ] && echo "  (no changes)"
+        [ -z "$(git diff --stat $PERSONAL_DIRS 2>/dev/null)" ] && [ -z "$(git ls-files --others --ignored --exclude-standard $PERSONAL_DIRS 2>/dev/null)" ] && echo "  (no changes)"
     fi
 }
 
