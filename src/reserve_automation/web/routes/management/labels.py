@@ -184,22 +184,32 @@ async def download_label_image(data: dict):
     """
     Download image from URL and save as label_download.jpg (no cropping yet).
     """
-    from ...app import core_config
-    from ....core.models import BottleMetadata
+    from ... import app as app_module
     from pathlib import Path
     import httpx
 
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
+
     try:
-        bottle_data = data.get("bottle")
+        bottle_id = data.get("bottle_id")
         image_url = data.get("image_url")
 
-        logger.info(f"Download request - URL: '{image_url}' (type: {type(image_url)})")
+        logger.info(f"Download request - bottle_id: {bottle_id}, URL: '{image_url}'")
 
-        if not bottle_data:
-            raise HTTPException(status_code=400, detail="Missing bottle data")
+        if not bottle_id:
+            raise HTTPException(status_code=400, detail="Missing bottle_id")
 
         if not image_url:
             raise HTTPException(status_code=400, detail="Missing image URL")
+
+        # Look up vault_path from registry
+        if bottle_registry is None:
+            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
+
+        vault_path = bottle_registry.get_path(bottle_id)
+        if not vault_path:
+            raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
         # Strip whitespace
         image_url = str(image_url).strip()
@@ -214,13 +224,8 @@ async def download_label_image(data: dict):
 
         logger.info(f"Final URL: {image_url}")
 
-        bottle = BottleMetadata(**bottle_data)
-
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
-
         # Save to /tmp instead of vault
-        temp_dir = get_temp_label_dir(bottle.vault_path)
+        temp_dir = get_temp_label_dir(vault_path)
 
         # Download image
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
@@ -299,25 +304,30 @@ async def use_downloaded_label(data: dict):
     """
     Use either the original downloaded or cropped version as the final label.
     """
-    from ...app import core_config
-    from ....core.models import BottleMetadata
+    from ... import app as app_module
     from pathlib import Path
     from shutil import copyfile
 
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
+
     try:
-        bottle_data = data.get("bottle")
+        bottle_id = data.get("bottle_id")
         use_cropped = data.get("use_cropped", False)
 
-        if not bottle_data:
-            raise HTTPException(status_code=400, detail="Missing bottle data")
+        if not bottle_id:
+            raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        bottle = BottleMetadata(**bottle_data)
+        # Look up vault_path from registry
+        if bottle_registry is None:
+            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
 
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+        vault_path = bottle_registry.get_path(bottle_id)
+        if not vault_path:
+            raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
-        label_dir = core_config.vault_path / bottle.vault_path / "labels"
-        temp_dir = get_temp_label_dir(bottle.vault_path)
+        label_dir = core_config.vault_path / vault_path / "labels"
+        temp_dir = get_temp_label_dir(vault_path)
 
         # Choose source from /tmp
         if use_cropped:
@@ -336,6 +346,9 @@ async def use_downloaded_label(data: dict):
         if current_label.exists():
             backup_path = label_dir / "label_backup.jpg"
             copyfile(current_label, backup_path)
+
+        # Create labels directory if it doesn't exist (for bottles with no label yet)
+        label_dir.mkdir(parents=True, exist_ok=True)
 
         # Replace with chosen version (only final label.jpg goes to vault)
         final_label = label_dir / "label.jpg"
@@ -496,30 +509,32 @@ async def manual_crop_downloaded_label(data: dict):
     Crop downloaded label image using exact pixel coordinates from manual selection.
     Crops label_download.jpg and saves as label_download_cropped.jpg.
     """
-    from ...app import core_config
-    from ....core.models import BottleMetadata
+    from ... import app as app_module
     from pathlib import Path
     from PIL import Image
 
+    bottle_registry = app_module.bottle_registry
+
     try:
-        bottle_data = data.get("bottle")
+        bottle_id = data.get("bottle_id")
         x = data.get("x")
         y = data.get("y")
         width = data.get("width")
         height = data.get("height")
 
-        if not bottle_data or x is None or y is None or width is None or height is None:
-            raise HTTPException(status_code=400, detail="Missing data or coordinates")
+        if not bottle_id or x is None or y is None or width is None or height is None:
+            raise HTTPException(status_code=400, detail="Missing bottle_id or coordinates")
 
-        # Clean empty strings before validation
-        cleaned_bottle_data = clean_bottle_data(bottle_data)
-        bottle = BottleMetadata(**cleaned_bottle_data)
+        # Look up vault_path from registry
+        if bottle_registry is None:
+            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
 
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+        vault_path = bottle_registry.get_path(bottle_id)
+        if not vault_path:
+            raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
         # Use /tmp for intermediate files
-        temp_dir = get_temp_label_dir(bottle.vault_path)
+        temp_dir = get_temp_label_dir(vault_path)
         downloaded_label = temp_dir / "label_download.jpg"
 
         if not downloaded_label.exists():

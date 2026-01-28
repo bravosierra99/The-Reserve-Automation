@@ -1001,13 +1001,19 @@ window.bottleEditorModal = function() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        bottle: this.bottle,
+                        bottle_id: this.bottleId,
                         image_url: imageUrl
                     })
                 });
 
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Download failed');
+                }
+
                 const data = await response.json();
-                this.labelDownloadedOriginal = `/api/v1/labels/view?path=${encodeURIComponent(data.downloaded_path)}&t=${Date.now()}`;
+                // Use bottle ID to view the downloaded label
+                this.labelDownloadedOriginal = `/api/v1/labels/view?id=${encodeURIComponent(this.bottleId)}&file=label_download.jpg&t=${Date.now()}`;
                 this.showToast('Label downloaded! You can crop it or use as-is.');
                 // Clear search results to show downloaded image
                 this.labelSearchResults = [];
@@ -1029,10 +1035,15 @@ window.bottleEditorModal = function() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        bottle: this.bottle,
+                        bottle_id: this.bottleId,
                         use_cropped: useCropped
                     })
                 });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to use downloaded label');
+                }
 
                 await response.json();
                 this.labelDownloadedOriginal = null;
@@ -1092,7 +1103,7 @@ window.bottleEditorModal = function() {
                 await window.cropperManager.completeCrop(
                     this.cropperDownloadedInstance,
                     '/api/v1/management/labels/manual-crop-downloaded',
-                    { bottle: this.bottle },
+                    { bottle_id: this.bottleId },
                     async (result) => {
                         // Now use the cropped version
                         await this.useDownloadedLabel(true);
