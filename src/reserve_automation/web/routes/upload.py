@@ -23,13 +23,13 @@ templates = Jinja2Templates(directory=templates_dir)
 @router.get("/upload", include_in_schema=False)
 async def upload_page(request: Request):
     """Serve the unified upload page."""
-    return templates.TemplateResponse("upload.html", {"request": request})
+    return templates.TemplateResponse(request, "upload.html")
 
 
 @router.get("/review-bottles/{extraction_id}", include_in_schema=False)
 async def review_bottles_page(extraction_id: str, request: Request):
     """Serve the bottle review page."""
-    return templates.TemplateResponse("review_bottles.html", {"request": request})
+    return templates.TemplateResponse(request, "review_bottles.html")
 
 
 @router.post("/api/v1/upload")

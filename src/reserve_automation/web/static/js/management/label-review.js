@@ -111,8 +111,7 @@ window.labelReviewModule = function() {
                 const response = await fetch('/api/v1/management/bottles');
                 const data = await response.json();
 
-                // Each bottle already has vault_path from the backend
-                // We need to construct the full path to the label image
+                // Each bottle already has id from the backend
                 this.labelBottles = data.bottles;
 
                 // Update timestamp to bust browser cache
@@ -377,7 +376,7 @@ window.labelReviewModule = function() {
                 await this.loadLabelsForReview();
 
                 // Find and update the selected bottle with fresh data
-                const updatedBottle = this.labelBottles.find(b => b.vault_path === this.selectedLabelBottle.vault_path);
+                const updatedBottle = this.labelBottles.find(b => b.id === this.selectedLabelBottle.id);
                 if (updatedBottle) {
                     // Re-select to reinitialize form
                     this.selectLabelBottle(updatedBottle);
@@ -592,10 +591,8 @@ window.labelReviewModule = function() {
             this.resetCurrentLabelOperations();
             this.resetDownloadedOperations();
 
-            // Set the image source from current label
-            const labelPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
-                              this.selectedLabelBottle.vault_path + '/labels/label.jpg';
-            this.manualCropImageSrc = `/api/v1/labels/view?path=${encodeURIComponent(labelPath)}&t=${Date.now()}`;
+            // Set the image source from current label using bottle ID
+            this.manualCropImageSrc = `/api/v1/labels/view?id=${encodeURIComponent(this.selectedLabelBottle.id)}&t=${Date.now()}`;
             this.manualCropActive = true;
 
             // Initialize Cropper.js after image loads
@@ -700,10 +697,8 @@ window.labelReviewModule = function() {
                 this.cropperDownloadedInstance = null;
             }
 
-            // Set the image source from downloaded file
-            const labelPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
-                              this.selectedLabelBottle.vault_path + '/labels/label_download.jpg';
-            this.manualCropDownloadedSrc = `/api/v1/labels/view?path=${encodeURIComponent(labelPath)}&t=${Date.now()}`;
+            // Set the image source from downloaded file using bottle ID
+            this.manualCropDownloadedSrc = `/api/v1/labels/view?id=${encodeURIComponent(this.selectedLabelBottle.id)}&file=label_download.jpg&t=${Date.now()}`;
             this.manualCropDownloadedActive = true;
 
             // Initialize Cropper.js after image loads
@@ -775,11 +770,9 @@ window.labelReviewModule = function() {
 
                 // Use nextTick to ensure DOM updates before setting new URL
                 this.$nextTick(() => {
-                    const croppedPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
-                                        this.selectedLabelBottle.vault_path + '/labels/label_download_cropped.jpg';
                     // Add random component to guarantee uniqueness and bust cache
                     const cacheBuster = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                    this.labelDownloadedCropped = `/api/v1/labels/view?path=${encodeURIComponent(croppedPath)}&t=${cacheBuster}`;
+                    this.labelDownloadedCropped = `/api/v1/labels/view?id=${encodeURIComponent(this.selectedLabelBottle.id)}&file=label_download_cropped.jpg&t=${cacheBuster}`;
                 });
 
                 this.showToast('Downloaded image cropped successfully!');
@@ -851,10 +844,8 @@ window.labelReviewModule = function() {
                 this.cancelManualUpload();
 
                 // Now show as downloaded image (reuse download workflow)
-                const downloadPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
-                                      this.selectedLabelBottle.vault_path + '/labels/label_download.jpg';
                 const cacheBuster = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                this.labelDownloadedOriginal = `/api/v1/labels/view?path=${encodeURIComponent(downloadPath)}&t=${cacheBuster}`;
+                this.labelDownloadedOriginal = `/api/v1/labels/view?id=${encodeURIComponent(this.selectedLabelBottle.id)}&file=label_download.jpg&t=${cacheBuster}`;
                 this.labelDownloadedCropped = null;
 
                 this.showToast('Image uploaded! You can now crop it or use as-is.');

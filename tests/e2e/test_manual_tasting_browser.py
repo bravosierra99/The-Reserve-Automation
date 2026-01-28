@@ -108,7 +108,8 @@ class TestManualTastingWizard:
             # Check if Weller bottle appears in results
             try:
                 # Look for the result button containing the full bottle name
-                expect(page.locator("text=THE ORIGINAL WHEATED BOURBON")).to_be_visible(timeout=5000)
+                # Use .first to avoid strict mode errors when multiple elements match
+                expect(page.locator("text=THE ORIGINAL WHEATED BOURBON").first).to_be_visible(timeout=5000)
                 print("   Found Weller bottle in search results")
             except:
                 # Print console logs for debugging

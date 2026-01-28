@@ -144,9 +144,10 @@ class TestDuplicateDetection:
         page.wait_for_timeout(1000)
 
         # Verify: Only original Weller bottle exists, no new bottle created
-        weller_bottles = list(whiskey_dir.glob("*Weller*"))
+        # Use specific pattern to match only the simple Weller bottle (not Buffalo Trace Weller)
+        weller_bottles = list(whiskey_dir.glob("Weller - THE ORIGINAL*"))
 
-        assert len(weller_bottles) == 1, f"Expected 1 Weller bottle (skip should not create duplicate), found {len(weller_bottles)}"
+        assert len(weller_bottles) == 1, f"Expected 1 Weller bottle (skip should not create duplicate), found {len(weller_bottles)}: {[b.name for b in weller_bottles]}"
 
     def test_duplicate_save_as_new(self, web_server, sample_image, browser_no_cache, test_vault):
         """
@@ -199,9 +200,10 @@ class TestDuplicateDetection:
         page.wait_for_timeout(3000)
 
         # Verify: Two Weller bottles exist now (original + new)
-        weller_bottles = list(whiskey_dir.glob("*Weller*"))
+        # Use specific pattern to match only the simple Weller bottles (not Buffalo Trace Weller)
+        weller_bottles = list(whiskey_dir.glob("Weller - THE ORIGINAL*"))
 
-        assert len(weller_bottles) == 2, f"Expected 2 Weller bottles (original + new), found {len(weller_bottles)}"
+        assert len(weller_bottles) == 2, f"Expected 2 Weller bottles (original + new), found {len(weller_bottles)}: {[b.name for b in weller_bottles]}"
 
         # Verify both have different names (one should have a unique suffix)
         bottle_names = [b.name for b in weller_bottles]
@@ -264,9 +266,10 @@ class TestDuplicateDetection:
         page.wait_for_timeout(3000)
 
         # Verify: Still only 1 Weller bottle (replaced, not duplicated)
-        weller_bottles = list(whiskey_dir.glob("*Weller*"))
+        # Use specific pattern to match only the simple Weller bottle (not Buffalo Trace Weller)
+        weller_bottles = list(whiskey_dir.glob("Weller - THE ORIGINAL*"))
 
-        assert len(weller_bottles) == 1, f"Expected 1 Weller bottle (replaced, not duplicated), found {len(weller_bottles)}"
+        assert len(weller_bottles) == 1, f"Expected 1 Weller bottle (replaced, not duplicated), found {len(weller_bottles)}: {[b.name for b in weller_bottles]}"
 
         # No cleanup needed - test_vault fixture recreates the vault for next test
 

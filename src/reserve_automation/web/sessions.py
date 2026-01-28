@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -35,7 +35,7 @@ class SessionManager:
         # Add session metadata
         session_data = {
             "session_id": str(uuid.uuid4()),
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             **data
         }
 

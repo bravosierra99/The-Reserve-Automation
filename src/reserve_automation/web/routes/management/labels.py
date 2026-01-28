@@ -1,12 +1,19 @@
 """Label management routes - crop, download, upload, quality review."""
 
+import hashlib
 from pathlib import Path
 from shutil import copyfile
 from typing import Optional
 from fastapi import APIRouter, HTTPException, UploadFile, Form, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from loguru import logger
+from PIL import Image
+import io
+
 from ....core.models import BottleMetadata
+
+# Thumbnail cache directory
+THUMBNAIL_CACHE_DIR = Path("/tmp/reserve-automation/thumbnails")
 
 router = APIRouter()
 
@@ -703,12 +710,18 @@ async def keep_original_label(data: dict):
 
 
 @router.get("/api/v1/labels/view")
-async def view_label_image(path: str):
+async def view_label_image(path: Optional[str] = None, id: Optional[str] = None, file: Optional[str] = None):
     """
     Serve a label image for viewing.
 
     Args:
-        path: Path to label image
+        path: Path to label image (legacy, will be deprecated). Can be:
+              - Vault-relative path (e.g., "1_Wines/Producer/labels/label.jpg")
+              - Full absolute path (e.g., "/mnt/.../Cellar/1_Wines/...")
+              - Temp directory path (e.g., "/tmp/reserve-automation/...")
+        id: Opaque bottle ID - preferred over path. Resolves to vault path internally.
+        file: Optional filename within labels directory (default: "label.jpg").
+              Used for temp files like "label_download.jpg" or "label_download_cropped.jpg".
 
     Returns:
         FileResponse: The image file
@@ -716,26 +729,69 @@ async def view_label_image(path: str):
     from pathlib import Path
 
     try:
+        from ... import app as app_module
+        core_config = app_module.core_config
+        bottle_registry = app_module.bottle_registry
+        vault_path = core_config.vault_path
+        temp_path = Path("/tmp/reserve-automation")
+
+        # Default filename
+        label_filename = file if file else "label.jpg"
+
+        logger.debug(f"View label request: id={id}, path={path}, bottle_registry={bottle_registry is not None}")
+
+        # If id is provided, resolve it to a vault_path first
+        if id:
+            if bottle_registry is None:
+                logger.error(f"Bottle registry not initialized, cannot resolve ID: {id}")
+                raise HTTPException(status_code=500, detail="Bottle registry not initialized")
+            resolved_vault_path = bottle_registry.get_path(id)
+            if resolved_vault_path:
+                # For temp files (label_download, label_download_cropped), check temp dir first
+                if label_filename in ("label_download.jpg", "label_download_cropped.jpg"):
+                    temp_dir = get_temp_label_dir(resolved_vault_path)
+                    temp_file_path = temp_dir / label_filename
+                    if temp_file_path.exists():
+                        path = str(temp_file_path)
+                        logger.debug(f"Resolved bottle ID {id} to temp path {path}")
+                    else:
+                        # Fall back to vault path
+                        path = f"{resolved_vault_path}/labels/{label_filename}"
+                        logger.debug(f"Temp file not found, using vault path {path}")
+                else:
+                    # Construct the label path from vault_path
+                    path = f"{resolved_vault_path}/labels/{label_filename}"
+                    logger.debug(f"Resolved bottle ID {id} to path {path}")
+            else:
+                raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {id}")
+        elif not path:
+            raise HTTPException(status_code=400, detail="Either 'path' or 'id' parameter is required")
+
+        # Try to resolve the path - support both absolute and vault-relative paths
         image_path = Path(path)
+
+        # If path doesn't exist as-is, try prepending vault path
+        if not image_path.exists() and vault_path:
+            relative_path = path.lstrip('/')
+            vault_image_path = vault_path / relative_path
+            if vault_image_path.exists():
+                image_path = vault_image_path
 
         if not image_path.exists():
             raise HTTPException(status_code=404, detail="Image not found")
 
         # Security check - ensure path is within vault or temp directory
         # (prevents directory traversal attacks)
-        from ...app import core_config
-        vault_path = core_config.vault_path
-        temp_path = Path("/tmp/reserve-automation")
-
         resolved_path = image_path.resolve()
         is_in_vault = False
         is_in_temp = False
 
-        try:
-            resolved_path.relative_to(vault_path.resolve())
-            is_in_vault = True
-        except ValueError:
-            pass
+        if vault_path:
+            try:
+                resolved_path.relative_to(vault_path.resolve())
+                is_in_vault = True
+            except ValueError:
+                pass
 
         try:
             resolved_path.relative_to(temp_path.resolve())
@@ -748,11 +804,174 @@ async def view_label_image(path: str):
 
         return FileResponse(
             image_path,
-            media_type="image/jpeg" if image_path.suffix.lower() == ".jpg" else "image/png"
+            media_type="image/jpeg" if image_path.suffix.lower() == ".jpg" else "image/png",
+            headers={
+                "Cache-Control": "public, max-age=3600",  # 1 hour for full images
+            }
         )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to serve label image: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/v1/labels/thumbnail")
+async def get_label_thumbnail(path: Optional[str] = None, id: Optional[str] = None, size: int = 400, file: Optional[str] = None):
+    """
+    Serve a resized thumbnail of a label image.
+
+    Thumbnails are cached on disk for performance. Cache is invalidated
+    when the source file is modified.
+
+    Args:
+        path: Path to original label image (legacy, will be deprecated). Can be:
+              - Vault-relative path (e.g., "1_Wines/Producer/labels/label.jpg")
+              - Full absolute path (e.g., "/mnt/.../Cellar/1_Wines/...")
+              - Temp directory path (e.g., "/tmp/reserve-automation/...")
+        id: Opaque bottle ID - preferred over path. Resolves to vault path internally.
+        size: Maximum dimension (width or height) in pixels. Default 400.
+              Images are resized maintaining aspect ratio.
+        file: Optional filename within labels directory (default: "label.jpg").
+
+    Returns:
+        Response: JPEG thumbnail with cache headers
+    """
+    from pathlib import Path as PathLib
+
+    try:
+        from ... import app as app_module
+        core_config = app_module.core_config
+        bottle_registry = app_module.bottle_registry
+        vault_path = core_config.vault_path
+        temp_path = PathLib("/tmp/reserve-automation")
+        temp_uploads = PathLib("/tmp/reserve_uploads")
+
+        # Default filename
+        label_filename = file if file else "label.jpg"
+
+        logger.debug(f"Thumbnail request: id={id}, path={path}")
+
+        # If id is provided, resolve it to a vault_path first
+        if id:
+            if bottle_registry is None:
+                logger.error(f"Bottle registry not initialized, cannot resolve ID: {id}")
+                raise HTTPException(status_code=500, detail="Bottle registry not initialized")
+            resolved_vault_path = bottle_registry.get_path(id)
+            if resolved_vault_path:
+                # Construct the label path from vault_path
+                path = f"{resolved_vault_path}/labels/{label_filename}"
+                logger.debug(f"Resolved bottle ID {id} to path {path}")
+            else:
+                raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {id}")
+        elif not path:
+            raise HTTPException(status_code=400, detail="Either 'path' or 'id' parameter is required")
+
+        # Try to resolve the path - support both absolute and vault-relative paths
+        image_path = PathLib(path)
+
+        # If path doesn't exist as-is, try prepending vault path
+        # This supports both:
+        # - Full paths: /mnt/d/.../Cellar/1_Wines/...
+        # - Vault-relative paths: 1_Wines/... or /1_Wines/...
+        if not image_path.exists() and vault_path:
+            # Strip leading slash if present for relative path
+            relative_path = path.lstrip('/')
+            vault_image_path = vault_path / relative_path
+            if vault_image_path.exists():
+                image_path = vault_image_path
+                logger.debug(f"Thumbnail: resolved relative path {path} to {image_path}")
+
+        logger.debug(f"Thumbnail request: path={path}, resolved={image_path}, exists={image_path.exists()}")
+
+        if not image_path.exists():
+            logger.warning(f"Thumbnail not found: {path} (tried vault-relative: {vault_path / path.lstrip('/') if vault_path else 'N/A'})")
+            raise HTTPException(status_code=404, detail=f"Image not found: {path}")
+
+        # Security check - ensure path is within vault or temp directory
+        resolved_path = image_path.resolve()
+        is_allowed = False
+
+        for allowed_path in [vault_path, temp_path, temp_uploads]:
+            if allowed_path is None:
+                continue
+            try:
+                resolved_path.relative_to(allowed_path.resolve())
+                is_allowed = True
+                break
+            except ValueError:
+                pass
+
+        if not is_allowed:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Clamp size to reasonable bounds
+        size = max(100, min(size, 800))
+
+        # Generate cache key from path + size + file modification time
+        stat = image_path.stat()
+        cache_key = hashlib.md5(
+            f"{path}:{size}:{stat.st_mtime}".encode()
+        ).hexdigest()
+
+        # Check cache
+        THUMBNAIL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_path = THUMBNAIL_CACHE_DIR / f"{cache_key}.jpg"
+
+        if cache_path.exists():
+            # Serve from cache with long cache headers
+            return FileResponse(
+                cache_path,
+                media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "public, max-age=86400",  # 24 hours
+                    "X-Thumbnail-Cache": "hit"
+                }
+            )
+
+        # Generate thumbnail
+        with Image.open(image_path) as img:
+            # Handle EXIF orientation
+            try:
+                from PIL import ExifTags
+                for orientation in ExifTags.TAGS.keys():
+                    if ExifTags.TAGS[orientation] == 'Orientation':
+                        break
+                exif = img._getexif()
+                if exif is not None:
+                    orientation_value = exif.get(orientation)
+                    if orientation_value == 3:
+                        img = img.rotate(180, expand=True)
+                    elif orientation_value == 6:
+                        img = img.rotate(270, expand=True)
+                    elif orientation_value == 8:
+                        img = img.rotate(90, expand=True)
+            except (AttributeError, KeyError, IndexError):
+                pass
+
+            # Convert to RGB if necessary (for PNG with transparency)
+            if img.mode in ('RGBA', 'P'):
+                img = img.convert('RGB')
+
+            # Resize maintaining aspect ratio
+            img.thumbnail((size, size), Image.Resampling.LANCZOS)
+
+            # Save to cache
+            img.save(cache_path, "JPEG", quality=85, optimize=True)
+
+        # Serve the new thumbnail
+        return FileResponse(
+            cache_path,
+            media_type="image/jpeg",
+            headers={
+                "Cache-Control": "public, max-age=86400",  # 24 hours
+                "X-Thumbnail-Cache": "miss"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to generate thumbnail: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

@@ -12,19 +12,22 @@ from typing import Optional
 from loguru import logger
 
 from ..core.models import BottleMetadata
+from ..core.bottle_registry import BottleRegistry
 
 
 class VaultReader:
     """Read bottle metadata from Obsidian vault markdown files."""
 
-    def __init__(self, vault_path: Path):
+    def __init__(self, vault_path: Path, registry: Optional[BottleRegistry] = None):
         """
         Initialize vault reader.
 
         Args:
             vault_path: Path to Obsidian vault
+            registry: Optional BottleRegistry to register bottles with for ID mapping
         """
         self.vault_path = Path(vault_path)
+        self.registry = registry
 
     def read_all_bottles(
         self, beverage_type: Optional[str] = None
@@ -297,5 +300,15 @@ class VaultReader:
             bottle_data["bottle_opened_date"] = metadata.get("BottleOpenedDate")
             bottle_data["proof"] = parse_float(metadata.get("Proof"))
             bottle_data["abv"] = parse_float(metadata.get("ABV"))
+
+        # Register with bottle registry and get opaque ID
+        # Note: Must use "is not None" because BottleRegistry has __len__ which
+        # makes empty registries falsy in boolean context
+        if self.registry is not None:
+            bottle_id = self.registry.register(vault_path)
+            bottle_data["id"] = bottle_id
+        else:
+            # Generate ID even without registry (for deterministic IDs)
+            bottle_data["id"] = BottleRegistry.generate_id(vault_path)
 
         return BottleMetadata(**bottle_data)

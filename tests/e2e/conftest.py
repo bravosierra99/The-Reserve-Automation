@@ -8,12 +8,61 @@ import pytest
 from playwright.sync_api import sync_playwright
 
 
-@pytest.fixture(scope="function")
-def test_vault():
-    """Create a test vault with necessary structure and fixture bottles."""
-    import shutil
+# ============================================================================
+# PYTEST HOOKS FOR PROGRESS VISIBILITY
+# ============================================================================
 
-    test_vault_path = Path("/tmp/test-vault-e2e")
+def pytest_configure(config):
+    """Configure pytest with E2E-specific settings."""
+    # Register markers
+    config.addinivalue_line("markers", "e2e: mark test as end-to-end browser test")
+    config.addinivalue_line("markers", "slow: mark test as slow (uses LLM calls)")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-mark all tests in e2e/ directory and set appropriate timeouts."""
+    for item in items:
+        # Auto-mark all tests in e2e/ as e2e tests with 5-minute timeout
+        if "e2e" in str(item.fspath):
+            item.add_marker(pytest.mark.e2e)
+            # Set 5 minute timeout for E2E tests (they involve browser + LLM)
+            item.add_marker(pytest.mark.timeout(300))
+
+        # Mark tests that involve LLM extraction as slow
+        if any(kw in item.name for kw in ["upload", "extract", "metadata", "verify"]):
+            item.add_marker(pytest.mark.slow)
+
+
+def pytest_runtest_setup(item):
+    """Log when each test starts."""
+    print(f"\n{'='*60}")
+    print(f"🧪 STARTING: {item.name}")
+    print(f"{'='*60}")
+
+
+def pytest_runtest_teardown(item, nextitem):
+    """Log when each test ends."""
+    print(f"\n{'='*60}")
+    print(f"✅ FINISHED: {item.name}")
+    print(f"{'='*60}")
+
+
+@pytest.fixture(scope="function")
+def test_vault(request):
+    """Create a test vault with necessary structure and fixture bottles.
+
+    Copies fixture bottles WITH LABELS from tests/fixtures/vault_bottles/
+    to enable testing of label operations (crop, replace, etc.)
+
+    Uses unique path per test to ensure complete isolation between tests.
+    """
+    import shutil
+    import uuid
+
+    # Use test name + uuid for unique path to ensure complete isolation
+    test_name = request.node.name.replace("[", "_").replace("]", "_")
+    unique_id = str(uuid.uuid4())[:8]
+    test_vault_path = Path(f"/tmp/test-vault-{test_name}-{unique_id}")
 
     # Clean up any existing test vault
     if test_vault_path.exists():
@@ -25,13 +74,34 @@ def test_vault():
     (test_vault_path / "1_Wines").mkdir()
     (test_vault_path / "1_Spirits").mkdir()
 
-    # Create a Weller bottle for duplicate detection testing
-    # This bottle should match bourbon_001.jpg extraction (Weller - THE ORIGINAL WHEATED BOURBON)
-    weller_bottle_dir = test_vault_path / "1_Whiskeys" / "Weller - THE ORIGINAL WHEATED BOURBON"
-    weller_bottle_dir.mkdir()
+    # Copy fixture bottles WITH LABELS from tests/fixtures/vault_bottles/
+    fixtures_dir = Path(__file__).parent.parent / "fixtures" / "vault_bottles"
+    if fixtures_dir.exists():
+        for bottle_dir in fixtures_dir.iterdir():
+            if bottle_dir.is_dir():
+                # Determine destination based on bottle type
+                bottle_md = list(bottle_dir.glob("*.md"))
+                if bottle_md:
+                    content = bottle_md[0].read_text()
+                    if "fileClass: Whiskey" in content:
+                        dest_dir = test_vault_path / "1_Whiskeys" / bottle_dir.name
+                    elif "fileClass: Wine" in content:
+                        dest_dir = test_vault_path / "1_Wines" / bottle_dir.name
+                    else:
+                        dest_dir = test_vault_path / "1_Spirits" / bottle_dir.name
 
-    weller_md = weller_bottle_dir / "Weller - THE ORIGINAL WHEATED BOURBON.md"
-    weller_md.write_text("""---
+                    # Copy entire bottle directory including labels/
+                    shutil.copytree(bottle_dir, dest_dir)
+                    print(f"  Copied fixture bottle: {bottle_dir.name}")
+
+    # Also create a simple Weller bottle for duplicate detection testing
+    # (in case fixture bottles aren't available)
+    weller_bottle_dir = test_vault_path / "1_Whiskeys" / "Weller - THE ORIGINAL WHEATED BOURBON"
+    if not weller_bottle_dir.exists():
+        weller_bottle_dir.mkdir()
+
+        weller_md = weller_bottle_dir / "Weller - THE ORIGINAL WHEATED BOURBON.md"
+        weller_md.write_text("""---
 fileClass: Whiskey
 Name: Weller - THE ORIGINAL WHEATED BOURBON
 Distiller: Weller
@@ -145,6 +215,9 @@ def web_server(test_vault):
             os.killpg(os.getpgid(server_process.pid), signal.SIGKILL)
         except:
             pass
+
+    # Wait for port to be released before next test
+    time.sleep(1)
 
     # Clean up temp files
     try:

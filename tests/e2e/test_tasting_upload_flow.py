@@ -24,7 +24,22 @@ from reserve_automation.web.config import load_web_config
 
 @pytest.fixture(scope="module")
 def test_client():
-    """Create test client with proper configuration."""
+    """Create test client with proper configuration and isolated test vault."""
+    import shutil
+    import os
+
+    # Create isolated test vault BEFORE loading config
+    test_vault_path = Path("/tmp/test-vault-tasting-e2e")
+    if test_vault_path.exists():
+        shutil.rmtree(test_vault_path)
+    test_vault_path.mkdir(parents=True)
+    (test_vault_path / "1_Whiskeys").mkdir()
+    (test_vault_path / "1_Wines").mkdir()
+    (test_vault_path / "1_Spirits").mkdir()
+
+    # Set environment variable BEFORE loading config
+    os.environ["RESERVE_VAULT_PATH"] = str(test_vault_path)
+
     core_config, web_config = load_web_config()
 
     # Override dependencies
@@ -42,6 +57,10 @@ def test_client():
 
     with TestClient(app, follow_redirects=False) as client:
         yield client
+
+    # Cleanup
+    if test_vault_path.exists():
+        shutil.rmtree(test_vault_path)
 
 
 @pytest.fixture

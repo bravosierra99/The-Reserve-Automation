@@ -17,7 +17,7 @@ window.bottleEditorModal = function() {
         originalBottle: null, // For reset functionality
 
         // Context-specific state
-        vaultPath: null,         // For management mode
+        bottleId: null,          // For management mode (opaque bottle ID)
         uploadId: null,          // For upload mode
         manifestContext: null,   // { bottles: [...], currentIndex: 0 }
 
@@ -48,7 +48,7 @@ window.bottleEditorModal = function() {
         // Duplicate detection (upload mode)
         duplicates: [],
         duplicateAction: null,  // Radio button value: 'save_new', 'replace', or 'skip' (set after duplicate dialog shown)
-        selectedDuplicate: null,  // Which duplicate is selected (vault_path)
+        selectedDuplicate: null,  // Which duplicate is selected (bottle ID)
         showDuplicateDialog: false,
         selectedDuplicateAction: null, // 'new', 'replace', 'skip'
 
@@ -75,8 +75,8 @@ window.bottleEditorModal = function() {
             this.mode = 'management';
             this.bottle = { ...bottle };
             this.originalBottle = { ...bottle };
-            this.vaultPath = bottle.vault_path;
-            console.log('Set vaultPath to:', this.vaultPath);
+            this.bottleId = bottle.id;
+            console.log('Set bottleId to:', this.bottleId);
             this.uploadId = null;
             this.manifestContext = null;
 
@@ -104,7 +104,7 @@ window.bottleEditorModal = function() {
             this.uploadId = uploadId;
             console.log('Set this.uploadId to:', this.uploadId);
             this.manifestContext = manifestContext;
-            this.vaultPath = null;
+            this.bottleId = null;
 
             // Initialize editable bottle data
             this.initializeEditableBottle();
@@ -209,7 +209,7 @@ window.bottleEditorModal = function() {
                 this.mode = null;
                 this.bottle = null;
                 this.originalBottle = null;
-                this.vaultPath = null;
+                this.bottleId = null;
                 this.uploadId = null;
                 this.manifestContext = null;
                 this.editableBottle = {};
@@ -324,14 +324,14 @@ window.bottleEditorModal = function() {
                 console.log('Duplicate action:', this.duplicateAction);
                 console.log('Selected duplicate:', this.selectedDuplicate);
 
-                // Determine force_save and replace_vault_path based on radio button selection
+                // Determine force_save and replace_bottle_id based on radio button selection
                 let force_save = false;
-                let replace_vault_path = null;
+                let replace_bottle_id = null;
 
                 if (this.duplicateAction === 'save_new') {
                     force_save = true;
                 } else if (this.duplicateAction === 'replace' && this.selectedDuplicate) {
-                    replace_vault_path = this.selectedDuplicate;
+                    replace_bottle_id = this.selectedDuplicate;
                 }
 
                 const response = await fetch('/api/v1/bottles/save', {
@@ -342,7 +342,7 @@ window.bottleEditorModal = function() {
                         upload_id: this.uploadId,
                         temp_label_path: this.tempLabelPath,
                         force_save: force_save,
-                        replace_vault_path: replace_vault_path
+                        replace_bottle_id: replace_bottle_id
                     })
                 });
 
@@ -382,8 +382,8 @@ window.bottleEditorModal = function() {
         /**
          * Handle duplicate resolution
          */
-        async handleDuplicateResolution(action, duplicateVaultPath = null) {
-            console.log('🔧 handleDuplicateResolution called:', { action, duplicateVaultPath });
+        async handleDuplicateResolution(action, duplicateBottleId = null) {
+            console.log('🔧 handleDuplicateResolution called:', { action, duplicateBottleId });
             this.selectedDuplicateAction = action;
 
             if (action === 'skip') {
@@ -417,13 +417,13 @@ window.bottleEditorModal = function() {
                     upload_id: this.uploadId,
                     temp_label_path: this.tempLabelPath,
                     force_save: action === 'new',
-                    replace_vault_path: action === 'replace' ? duplicateVaultPath : null
+                    replace_bottle_id: action === 'replace' ? duplicateBottleId : null
                 };
 
                 console.log('🔧 Sending save request with:', {
                     action,
                     force_save: requestBody.force_save,
-                    replace_vault_path: requestBody.replace_vault_path,
+                    replace_bottle_id: requestBody.replace_bottle_id,
                     upload_id: requestBody.upload_id
                 });
 
@@ -666,7 +666,7 @@ window.bottleEditorModal = function() {
          * Load tasting summary (management mode only)
          */
         async loadTastingSummary() {
-            if (!this.vaultPath) return;
+            if (!this.bottleId) return;
 
             try {
                 const response = await fetch('/api/v1/management/bottles/tastings-summary', {
@@ -692,7 +692,7 @@ window.bottleEditorModal = function() {
          * Load full list of tastings with scores and notes
          */
         async loadTastingsList() {
-            if (!this.vaultPath || this.loadingTastings) return;
+            if (!this.bottleId || this.loadingTastings) return;
 
             this.loadingTastings = true;
 
@@ -764,9 +764,8 @@ window.bottleEditorModal = function() {
 
             let imageSrc;
             if (this.mode === 'management') {
-                const labelPath = '/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/' +
-                                  this.vaultPath + '/labels/label.jpg';
-                imageSrc = `/api/v1/labels/view?path=${encodeURIComponent(labelPath)}&t=${Date.now()}`;
+                // Use bottle ID to fetch label via API
+                imageSrc = `/api/v1/labels/view?id=${encodeURIComponent(this.bottleId)}&t=${Date.now()}`;
             } else {
                 // Upload mode - use temp label
                 imageSrc = `/api/v1/temp-images/${this.uploadId}/label.jpg?t=${Date.now()}`;

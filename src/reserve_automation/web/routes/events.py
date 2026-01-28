@@ -35,14 +35,13 @@ templates = Jinja2Templates(directory=templates_dir)
 @router.get("/events", include_in_schema=False)
 async def events_list_page(request: Request):
     """Browse all available events."""
-    return templates.TemplateResponse("events.html", {"request": request})
+    return templates.TemplateResponse(request, "events.html")
 
 
 @router.get("/events/{event_id}", include_in_schema=False)
 async def event_detail_page(event_id: str, request: Request):
     """Event detail and participation page."""
-    return templates.TemplateResponse("event_detail.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "event_detail.html", {
         "event_id": event_id
     })
 
@@ -50,8 +49,7 @@ async def event_detail_page(event_id: str, request: Request):
 @router.get("/events/{event_id}/results", include_in_schema=False)
 async def event_results_page(event_id: str, request: Request):
     """Event results and rankings page."""
-    return templates.TemplateResponse("event_results.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "event_results.html", {
         "event_id": event_id
     })
 
@@ -63,7 +61,10 @@ async def event_results_page(event_id: str, request: Request):
 @router.post("/api/v1/events")
 async def create_event(request_data: CreateEventRequest):
     """Create a new tasting event."""
-    from ..app import event_store, core_config
+    from .. import app as app_module
+    event_store = app_module.event_store
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
 
     if event_store is None or core_config is None:
         raise HTTPException(status_code=500, detail="Service not initialized")
@@ -76,28 +77,39 @@ async def create_event(request_data: CreateEventRequest):
                     status_code=400,
                     detail="Blind numbers required when is_blind=True"
                 )
-            if len(request_data.blind_numbers) != len(request_data.bottle_paths):
+            if len(request_data.blind_numbers) != len(request_data.bottle_ids):
                 raise HTTPException(
                     status_code=400,
-                    detail="Number of blind_numbers must match bottle_paths"
+                    detail="Number of blind_numbers must match bottle_ids"
                 )
 
-        # Validate bottles exist in vault
+        # Validate bottles exist in vault by resolving IDs to paths
         vault_path = core_config.vault_path
         bottles = []
-        for i, bottle_path in enumerate(request_data.bottle_paths):
-            full_path = vault_path / bottle_path
+        for i, bottle_id in enumerate(request_data.bottle_ids):
+            # Resolve bottle ID to vault path
+            bottle_vault_path = None
+            if bottle_registry:
+                bottle_vault_path = bottle_registry.get_path(bottle_id)
+
+            if not bottle_vault_path:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Bottle not found for ID: {bottle_id}"
+                )
+
+            full_path = vault_path / bottle_vault_path
             if not full_path.exists():
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Bottle not found: {bottle_path}"
+                    detail=f"Bottle not found in vault: {bottle_id}"
                 )
 
             # Extract bottle name from path (folder name)
-            bottle_name = bottle_path.split('/')[-1]
+            bottle_name = bottle_vault_path.split('/')[-1]
 
             bottle = EventBottle(
-                bottle_path=bottle_path,
+                bottle_id=bottle_id,
                 bottle_name=bottle_name,
                 blind_number=request_data.blind_numbers[i] if request_data.is_blind else None
             )

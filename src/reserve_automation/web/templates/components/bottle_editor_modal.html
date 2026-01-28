@@ -277,13 +277,13 @@
                     </div>
 
                     <div class="space-y-3 max-h-96 overflow-y-auto mb-4">
-                        <template x-for="(dup, index) in bottleEditor.duplicates.slice(0, 5)" :key="dup.vault_path">
-                            <div @click="bottleEditor.selectedDuplicate = dup.vault_path; bottleEditor.duplicateAction = 'replace'"
+                        <template x-for="(dup, index) in bottleEditor.duplicates.slice(0, 5)" :key="dup.id">
+                            <div @click="bottleEditor.selectedDuplicate = dup.id; bottleEditor.duplicateAction = 'replace'"
                                  class="cursor-pointer transition-all bg-white border-2 rounded-lg p-4"
                                  :class="{
-                                     'border-blue-500 bg-blue-50 ring-2 ring-blue-300': bottleEditor.selectedDuplicate === dup.vault_path,
-                                     'border-red-400 bg-red-50': bottleEditor.selectedDuplicate !== dup.vault_path && Math.round(dup.confidence * 100) >= 70,
-                                     'border-orange-300 hover:border-orange-500': bottleEditor.selectedDuplicate !== dup.vault_path && Math.round(dup.confidence * 100) < 70
+                                     'border-blue-500 bg-blue-50 ring-2 ring-blue-300': bottleEditor.selectedDuplicate === dup.id,
+                                     'border-red-400 bg-red-50': bottleEditor.selectedDuplicate !== dup.id && Math.round(dup.confidence * 100) >= 70,
+                                     'border-orange-300 hover:border-orange-500': bottleEditor.selectedDuplicate !== dup.id && Math.round(dup.confidence * 100) < 70
                                  }">
                                 <div class="flex items-start gap-4">
                                     <!-- Match Badge -->
@@ -294,8 +294,9 @@
                                         <div class="text-xs text-gray-600">match</div>
                                     </div>
 
-                                    <img :src="`/api/v1/labels/view?path=/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/${dup.vault_path}/labels/label.jpg`"
+                                    <img :src="`/api/v1/labels/thumbnail?id=${encodeURIComponent(dup.id)}&size=200`"
                                          alt="Label"
+                                         loading="lazy"
                                          class="w-20 h-20 object-cover rounded flex-shrink-0"
                                          @error="$el.src='/static/images/no-label.svg'">
 
@@ -580,7 +581,7 @@
                     <!-- Current Label Display -->
                     <div class="mb-4">
                         <img x-show="bottleEditor.mode === 'management'"
-                             :src="`/api/v1/labels/view?path=/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/${bottleEditor.vaultPath}/labels/label.jpg&t=${bottleEditor.currentLabelTimestamp}`"
+                             :src="`/api/v1/labels/view?id=${encodeURIComponent(bottleEditor.bottleId)}&t=${bottleEditor.currentLabelTimestamp}`"
                              alt="Current Label"
                              class="max-w-md mx-auto rounded-lg shadow-md"
                              @error="$el.src='/static/images/no-label.svg'">
@@ -782,11 +783,12 @@
 
             <!-- Duplicate List -->
             <div class="space-y-3 mb-6 max-h-96 overflow-y-auto">
-                <template x-for="dup in bottleEditor.duplicates" :key="dup.vault_path">
+                <template x-for="dup in bottleEditor.duplicates" :key="dup.id">
                     <div class="border-2 border-yellow-400 rounded-lg p-4 bg-yellow-50">
                         <div class="flex items-start gap-4">
-                            <img :src="`/api/v1/labels/view?path=/mnt/d/Users/ben/Documents/spirits/the-reserve/Cellar/${dup.vault_path}/labels/label.jpg`"
+                            <img :src="`/api/v1/labels/thumbnail?id=${encodeURIComponent(dup.id)}&size=200`"
                                  alt="Label"
+                                 loading="lazy"
                                  class="w-24 h-24 object-cover rounded"
                                  @error="$el.src='/static/images/no-label.svg'">
                             <div class="flex-1">
@@ -795,7 +797,7 @@
                                 <p class="text-sm text-gray-600"><span class="font-semibold">Match:</span> <span x-text="dup.confidence"></span>%</p>
                                 <p class="text-sm text-gray-600" x-text="dup.reason"></p>
                                 <button type="button"
-                                        @click.prevent="bottleEditor.handleDuplicateResolution('replace', dup.vault_path)"
+                                        @click.prevent="bottleEditor.handleDuplicateResolution('replace', dup.id)"
                                         class="mt-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded text-sm">
                                     Replace This Bottle
                                 </button>

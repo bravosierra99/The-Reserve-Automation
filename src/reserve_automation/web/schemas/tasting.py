@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TastingStatus(str, Enum):
@@ -62,8 +62,7 @@ class TastingData(BaseModel):
     finish_notes: Optional[list[str]] = Field(default_factory=list)
     overall_notes: Optional[str] = None
 
-    class Config:
-        extra = "allow"  # Allow additional fields from extraction
+    model_config = ConfigDict(extra="allow")  # Allow additional fields from extraction
 
 
 class TastingSessionItem(BaseModel):

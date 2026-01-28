@@ -33,7 +33,7 @@
         <div class="flex items-center justify-between mb-3">
             <label class="font-semibold text-gray-700">Appearance</label>
             <div class="flex items-center gap-2">
-                <input type="range" x-model.number="tasting.wine_appearance" min="0" max="3" step="0.5"
+                <input type="range" x-model.number="tasting.wine_appearance" min="0" max="3" step="0.1"
                        @change="typeof onTastingChange === 'function' && onTastingChange()"
                        class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                 <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.wine_appearance || 0).toFixed(1)"></span>
@@ -58,7 +58,7 @@
         <div class="flex items-center justify-between mb-3">
             <label class="font-semibold text-gray-700">Aroma</label>
             <div class="flex items-center gap-2">
-                <input type="range" x-model.number="tasting.wine_aroma" min="0" max="6" step="0.5"
+                <input type="range" x-model.number="tasting.wine_aroma" min="0" max="6" step="0.1"
                        @change="typeof onTastingChange === 'function' && onTastingChange()"
                        class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                 <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.wine_aroma || 0).toFixed(1)"></span>
@@ -83,7 +83,7 @@
         <div class="flex items-center justify-between mb-3">
             <label class="font-semibold text-gray-700">Taste</label>
             <div class="flex items-center gap-2">
-                <input type="range" x-model.number="tasting.wine_taste" min="0" max="6" step="0.5"
+                <input type="range" x-model.number="tasting.wine_taste" min="0" max="6" step="0.1"
                        @change="typeof onTastingChange === 'function' && onTastingChange()"
                        class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                 <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.wine_taste || 0).toFixed(1)"></span>
@@ -108,7 +108,7 @@
         <div class="flex items-center justify-between mb-3">
             <label class="font-semibold text-gray-700">Aftertaste</label>
             <div class="flex items-center gap-2">
-                <input type="range" x-model.number="tasting.wine_aftertaste" min="0" max="3" step="0.5"
+                <input type="range" x-model.number="tasting.wine_aftertaste" min="0" max="3" step="0.1"
                        @change="typeof onTastingChange === 'function' && onTastingChange()"
                        class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                 <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.wine_aftertaste || 0).toFixed(1)"></span>
@@ -133,7 +133,7 @@
         <div class="flex items-center justify-between mb-3">
             <label class="font-semibold text-gray-700">Overall</label>
             <div class="flex items-center gap-2">
-                <input type="range" x-model.number="tasting.wine_overall" min="0" max="2" step="0.5"
+                <input type="range" x-model.number="tasting.wine_overall" min="0" max="2" step="0.1"
                        @change="typeof onTastingChange === 'function' && onTastingChange()"
                        class="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                 <span class="text-lg font-bold text-blue-600 w-12 text-right" x-text="(tasting.wine_overall || 0).toFixed(1)"></span>

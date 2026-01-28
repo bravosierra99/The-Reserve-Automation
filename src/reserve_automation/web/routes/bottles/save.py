@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from loguru import logger
 
 from ....core.models import BottleMetadata
+from ....core.bottle_registry import BottleRegistry
 from ....generators.obsidian import ObsidianGenerator
 from ....utils.vault_reader import VaultReader
 from ...services.duplicate_service import DuplicateDetectionService
@@ -53,7 +54,8 @@ class SaveBottleRequest(BaseModel):
     upload_id: Optional[str] = None  # For accessing temp files
     temp_label_index: Optional[int] = None  # Which temp label to use (for manifest uploads)
     force_save: bool = False  # Skip duplicate check
-    replace_vault_path: Optional[str] = None  # Replace existing bottle at this path
+    replace_vault_path: Optional[str] = None  # Replace existing bottle at this path (legacy)
+    replace_bottle_id: Optional[str] = None  # Replace existing bottle with this ID (preferred)
 
 
 @router.post("/api/v1/bottles/save")
@@ -65,7 +67,7 @@ async def save_bottle(request: SaveBottleRequest):
     1. Parse bottle metadata
     2. Check for duplicates (unless force_save=True)
     3. If duplicates found, return them for user decision
-    4. If no duplicates OR force_save OR replace_vault_path provided:
+    4. If no duplicates OR force_save OR replace_bottle_id provided:
        - Generate Obsidian markdown file
        - Create bottle folder structure
        - Copy temp label to vault (if available)
@@ -74,11 +76,13 @@ async def save_bottle(request: SaveBottleRequest):
     Returns:
         {
             "status": "success" | "duplicate_found",
-            "vault_path": str (if success),
+            "id": str (if success),
             "duplicates": [...] (if duplicate_found)
         }
     """
-    from ...app import core_config
+    from ... import app as app_module
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
 
     if not core_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
@@ -93,17 +97,26 @@ async def save_bottle(request: SaveBottleRequest):
         logger.info(f"Save bottle request: {bottle.producer} - {bottle.name} ({bottle.year})")
         logger.info(f"  upload_id: {request.upload_id}")
         logger.info(f"  force_save: {request.force_save}")
-        logger.info(f"  replace_vault_path: {request.replace_vault_path}")
+        logger.info(f"  replace_bottle_id: {request.replace_bottle_id}")
+
+        # Resolve replace_bottle_id to replace_vault_path if provided
+        replace_vault_path = request.replace_vault_path
+        if request.replace_bottle_id and bottle_registry:
+            resolved_path = bottle_registry.get_path(request.replace_bottle_id)
+            if resolved_path:
+                replace_vault_path = resolved_path
+                logger.info(f"  Resolved replace_bottle_id {request.replace_bottle_id} to path: {replace_vault_path}")
 
         # Check for duplicates (unless force_save or replacing)
-        if not request.force_save and not request.replace_vault_path:
+        if not request.force_save and not replace_vault_path:
             duplicate_service = DuplicateDetectionService(core_config.vault_path)
             duplicates = duplicate_service.find_potential_duplicates(bottle, threshold=0.7)
 
             if duplicates:
                 logger.info(f"Found {len(duplicates)} potential duplicates")
                 # Enhance duplicates with additional info
-                vault_reader = VaultReader(core_config.vault_path)
+                # Pass registry so bottles get IDs
+                vault_reader = VaultReader(core_config.vault_path, registry=bottle_registry)
                 enhanced_duplicates = []
 
                 for dup in duplicates:
@@ -113,7 +126,7 @@ async def save_bottle(request: SaveBottleRequest):
                         existing_bottle = vault_reader.read_bottle(bottle_path)
                         enhanced_duplicates.append({
                             **dup,
-                            "vault_path": existing_bottle.vault_path,
+                            "id": existing_bottle.id,
                             "producer": existing_bottle.producer,
                             "name": existing_bottle.name,
                             "year": existing_bottle.year,
@@ -121,10 +134,11 @@ async def save_bottle(request: SaveBottleRequest):
                         })
                     except Exception as e:
                         logger.warning(f"Failed to read duplicate bottle: {e}")
-                        # Include basic info even if read fails
+                        # Include basic info even if read fails - generate ID from path
+                        dup_vault_path = str(Path(dup["file_path"]).parent)
                         enhanced_duplicates.append({
                             **dup,
-                            "vault_path": str(Path(dup["file_path"]).parent),
+                            "id": BottleRegistry.generate_id(dup_vault_path),
                         })
 
                 return {
@@ -140,7 +154,7 @@ async def save_bottle(request: SaveBottleRequest):
         obsidian_file = generator.generate_bottle_file(bottle)
 
         # If force_save (Save as New), check if file exists and add unique suffix
-        if request.force_save and not request.replace_vault_path:
+        if request.force_save and not replace_vault_path:
             original_path = obsidian_file.file_path
             counter = 2
             while obsidian_file.file_path.parent.exists():
@@ -164,8 +178,8 @@ async def save_bottle(request: SaveBottleRequest):
             logger.info(f"Force save with unique name: {obsidian_file.file_path.parent.name}")
 
         # If replacing existing bottle, move/rename directory and preserve tastings
-        if request.replace_vault_path:
-            old_bottle_folder = core_config.vault_path / request.replace_vault_path
+        if replace_vault_path:
+            old_bottle_folder = core_config.vault_path / replace_vault_path
             new_bottle_folder = obsidian_file.file_path.parent
 
             if old_bottle_folder.exists():
@@ -256,7 +270,7 @@ async def save_bottle(request: SaveBottleRequest):
             obsidian_file.file_path.write_text(obsidian_file.content, encoding="utf-8")
 
         # Ensure bottle_folder is set for label copying
-        if request.replace_vault_path:
+        if replace_vault_path:
             bottle_folder = obsidian_file.file_path.parent
 
         # Copy label from temp directory (if available)
@@ -282,14 +296,20 @@ async def save_bottle(request: SaveBottleRequest):
                 logger.warning(f"  Checked: {temp_label}")
                 logger.warning(f"  Upload dir contents: {list(temp_upload_dir.iterdir()) if temp_upload_dir.exists() else 'directory does not exist'}")
 
-        # Calculate vault_path (relative to vault root)
-        vault_path = str(bottle_folder.relative_to(core_config.vault_path))
+        # Calculate vault_path (relative to vault root) and register bottle
+        vault_path_str = str(bottle_folder.relative_to(core_config.vault_path))
 
-        logger.info(f"Bottle saved successfully: {vault_path}")
+        # Register the new/updated bottle with the registry and get its opaque ID
+        if bottle_registry:
+            bottle_id = bottle_registry.register(vault_path_str)
+        else:
+            bottle_id = BottleRegistry.generate_id(vault_path_str)
+
+        logger.info(f"Bottle saved successfully: {vault_path_str} (id={bottle_id})")
 
         return {
             "status": "success",
-            "vault_path": vault_path,
+            "id": bottle_id,
             "message": f"Bottle saved: {bottle.producer} - {bottle.name}"
         }
 
@@ -312,11 +332,13 @@ async def check_duplicates_manual(bottle_data: dict):
     Returns:
         {
             "status": "checked",
-            "duplicates": [...],
+            "duplicates": [...] (with id instead of vault_path),
             "count": int
         }
     """
-    from ...app import core_config
+    from ... import app as app_module
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
     from ...services.duplicate_service import DuplicateDetectionService
     from ....utils.vault_reader import VaultReader
 
@@ -341,7 +363,8 @@ async def check_duplicates_manual(bottle_data: dict):
         logger.info(f"Found {len(duplicates)} potential duplicates")
 
         # Enhance duplicates with additional info
-        vault_reader = VaultReader(core_config.vault_path)
+        # Pass registry so bottles get IDs
+        vault_reader = VaultReader(core_config.vault_path, registry=bottle_registry)
         enhanced_duplicates = []
 
         for dup in duplicates:
@@ -351,7 +374,7 @@ async def check_duplicates_manual(bottle_data: dict):
                 existing_bottle = vault_reader.read_bottle(bottle_path)
                 enhanced_duplicates.append({
                     **dup,
-                    "vault_path": existing_bottle.vault_path,
+                    "id": existing_bottle.id,
                     "producer": existing_bottle.producer,
                     "name": existing_bottle.name,
                     "year": existing_bottle.year,
@@ -359,10 +382,11 @@ async def check_duplicates_manual(bottle_data: dict):
                 })
             except Exception as e:
                 logger.warning(f"Failed to read duplicate bottle: {e}")
-                # Include basic info even if read fails
+                # Include basic info even if read fails - generate ID from path
+                dup_vault_path = str(Path(dup["file_path"]).parent)
                 enhanced_duplicates.append({
                     **dup,
-                    "vault_path": str(Path(dup["file_path"]).parent),
+                    "id": BottleRegistry.generate_id(dup_vault_path),
                 })
 
         return {

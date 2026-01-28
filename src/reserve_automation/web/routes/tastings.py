@@ -37,8 +37,7 @@ templates = Jinja2Templates(directory=templates_dir)
 @router.get("/review-tastings/{extraction_id}", include_in_schema=False)
 async def review_tastings_page(request: Request, extraction_id: str):
     """Serve the new tasting review page."""
-    return templates.TemplateResponse("review_tastings.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "review_tastings.html", {
         "extraction_id": extraction_id
     })
 
@@ -684,9 +683,7 @@ async def refresh_matches(
 @router.get("/manual-tasting", include_in_schema=False)
 async def manual_tasting_page(request: Request):
     """Serve manual tasting wizard page."""
-    return templates.TemplateResponse("manual_tasting.html", {
-        "request": request
-    })
+    return templates.TemplateResponse(request, "manual_tasting.html")
 
 
 @router.post("/api/v1/manual-tasting/save")

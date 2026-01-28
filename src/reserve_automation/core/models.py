@@ -81,7 +81,11 @@ class BottleMetadata(BaseModel):
     points: Optional[str] = Field(None, description="Points/score", max_length=50)
 
     # Vault location (for bottles read from vault)
-    vault_path: Optional[str] = Field(None, description="Relative path in vault (e.g., '1_Whiskeys/Distiller - Name - Year')")
+    # Note: vault_path is excluded from JSON serialization to hide filesystem paths from frontend
+    vault_path: Optional[str] = Field(None, exclude=True, description="Relative path in vault (e.g., '1_Whiskeys/Distiller - Name - Year')")
+
+    # Opaque identifier for external/API use (generated from vault_path hash)
+    id: Optional[str] = Field(None, description="Opaque bottle identifier for API use")
 
     # Metadata
     confidence: float = Field(
@@ -132,7 +136,7 @@ class BottleMetadata(BaseModel):
         data["Inventory"] = self.inventory
 
         # Add non-null fields
-        excluded_fields = ["producer", "name", "year", "type", "purchase_source", "inventory"]
+        excluded_fields = ["producer", "name", "year", "type", "purchase_source", "inventory", "vault_path", "id"]
         for field_name in self.model_fields:
             value = getattr(self, field_name)
             if value is not None and field_name not in excluded_fields:

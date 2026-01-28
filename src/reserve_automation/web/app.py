@@ -13,6 +13,7 @@ from .config import load_web_config
 from .logging_config import setup_web_logging
 from .routes import upload, review, health, bottles, tastings, management, events
 from .services.upload_service import UploadService
+from ..core.bottle_registry import BottleRegistry
 
 
 # Global services (initialized on startup)
@@ -20,12 +21,13 @@ upload_service: UploadService = None
 core_config = None
 web_config = None
 event_store: dict[str, dict] = {}
+bottle_registry: BottleRegistry = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    global upload_service, core_config, web_config, event_store
+    global upload_service, core_config, web_config, event_store, bottle_registry
 
     # Startup - Initialize logging first
     # Read log level from environment variable, default to INFO for production
@@ -47,6 +49,16 @@ async def lifespan(app: FastAPI):
     # Initialize event store (in-memory)
     event_store = {}
     logger.info("Event store initialized")
+
+    # Initialize bottle registry (in-memory mapping between opaque IDs and vault paths)
+    bottle_registry = BottleRegistry()
+    logger.info(f"Bottle registry initialized: {bottle_registry}, id={id(bottle_registry)}")
+
+    # Verify the module-level variable is set
+    import sys
+    this_module = sys.modules[__name__]
+    logger.info(f"app.py module name: {__name__}")
+    logger.info(f"Module-level bottle_registry check: {getattr(this_module, 'bottle_registry', 'NOT FOUND')}, id={id(getattr(this_module, 'bottle_registry', None)) if getattr(this_module, 'bottle_registry', None) else 'None'}")
 
     # Clean up old temp files on startup
     deleted = upload_service.cleanup_old_files(

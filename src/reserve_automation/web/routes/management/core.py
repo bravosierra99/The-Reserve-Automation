@@ -82,12 +82,16 @@ async def management_page(request: Request):
     This page provides administrative functions including:
     - Update all bottle metadata from vault
     """
-    from ...app import templates, web_config
+    import os
+    from ...app import templates, web_config, core_config
 
-    return templates.TemplateResponse(
-        "management.html",
-        {"request": request}
-    )
+    # Debug: check environment variable and config
+    env_vault = os.getenv("RESERVE_VAULT_PATH")
+    logger.info(f"Management page: RESERVE_VAULT_PATH env = {env_vault}")
+    logger.info(f"Management page: core_config.paths = {core_config.paths}")
+    logger.info(f"Management page: core_config.vault_path = {core_config.vault_path}")
+
+    return templates.TemplateResponse(request, "management.html", {})
 
 
 @router.get("/api/v1/management/bottles")
@@ -96,12 +100,17 @@ async def get_all_vault_bottles():
     Get all bottles from the vault for metadata update.
 
     Returns:
-        dict: Contains list of bottles with their current metadata
+        dict: Contains list of bottles with their current metadata (with IDs, without vault_paths)
     """
-    from ...app import core_config
+    from ... import app as app_module
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
+
+    logger.info(f"get_all_vault_bottles: bottle_registry={bottle_registry}, is None={bottle_registry is None}")
 
     try:
-        vault_reader = VaultReader(core_config.vault_path)
+        # Pass registry so bottles get registered and assigned IDs
+        vault_reader = VaultReader(core_config.vault_path, registry=bottle_registry)
         bottles = vault_reader.read_all_bottles()
 
         # Convert to dict format
@@ -128,12 +137,15 @@ async def search_bottles(q: str):
         q: Search query
 
     Returns:
-        dict: List of matching bottles
+        dict: List of matching bottles (with IDs, without vault_paths)
     """
-    from ...app import core_config
+    from ... import app as app_module
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
 
     try:
-        vault_reader = VaultReader(core_config.vault_path)
+        # Pass registry so bottles get registered and assigned IDs
+        vault_reader = VaultReader(core_config.vault_path, registry=bottle_registry)
         all_bottles = vault_reader.read_all_bottles()
 
         # Filter bottles by search query
@@ -173,7 +185,9 @@ async def get_bottle_tastings_summary(request: Request):
     - earliest_date: Oldest tasting date
     - tasters: List of unique taster names
     """
-    from ...app import core_config
+    from ... import app as app_module
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
     from ....core.models import BottleMetadata
     from pathlib import Path
     import re
@@ -189,11 +203,16 @@ async def get_bottle_tastings_summary(request: Request):
 
         bottle = BottleMetadata(**bottle_data)
 
-        if not bottle.vault_path:
-            raise HTTPException(status_code=404, detail="Bottle has no vault path")
+        # Resolve vault_path from bottle ID if not provided directly
+        vault_path_str = bottle.vault_path
+        if not vault_path_str and bottle.id and bottle_registry:
+            vault_path_str = bottle_registry.get_path(bottle.id)
+
+        if not vault_path_str:
+            raise HTTPException(status_code=404, detail="Bottle has no vault path and ID could not be resolved")
 
         # Get bottle folder path
-        bottle_folder = core_config.vault_path / bottle.vault_path
+        bottle_folder = core_config.vault_path / vault_path_str
 
         if not bottle_folder.exists():
             raise HTTPException(status_code=404, detail="Bottle folder not found")
@@ -280,7 +299,9 @@ async def get_bottle_tastings_list(request: Request):
     Returns list of tastings sorted by date descending (newest first).
     Each tasting includes individual scores, total score, and tasting notes.
     """
-    from ...app import core_config
+    from ... import app as app_module
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
     from ....core.models import BottleMetadata
     import re
 
@@ -293,10 +314,15 @@ async def get_bottle_tastings_list(request: Request):
 
         bottle = BottleMetadata(**bottle_data)
 
-        if not bottle.vault_path:
-            raise HTTPException(status_code=404, detail="Bottle has no vault path")
+        # Resolve vault_path from bottle ID if not provided directly
+        vault_path_str = bottle.vault_path
+        if not vault_path_str and bottle.id and bottle_registry:
+            vault_path_str = bottle_registry.get_path(bottle.id)
 
-        bottle_folder = core_config.vault_path / bottle.vault_path
+        if not vault_path_str:
+            raise HTTPException(status_code=404, detail="Bottle has no vault path and ID could not be resolved")
+
+        bottle_folder = core_config.vault_path / vault_path_str
 
         if not bottle_folder.exists():
             raise HTTPException(status_code=404, detail="Bottle folder not found")
@@ -727,12 +753,14 @@ async def start_batch_verification(background_tasks: BackgroundTasks):
     Returns:
         dict: Batch ID and initial status
     """
-    from ...app import core_config
+    from ... import app as app_module
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
     import uuid
 
     try:
-        # Load all bottles
-        vault_reader = VaultReader(core_config.vault_path)
+        # Load all bottles (pass registry for ID assignment)
+        vault_reader = VaultReader(core_config.vault_path, registry=bottle_registry)
         bottles = vault_reader.read_all_bottles()
         bottles_data = [bottle.model_dump(mode='json') for bottle in bottles]
 
@@ -879,13 +907,15 @@ async def update_bottle_fields(request: Request):
     Update specific fields of a bottle (individual field approval).
 
     Request body:
-        - bottle: Original bottle data
+        - bottle: Original bottle data (with id field for lookup)
         - updates: Dict of field names to new values
 
     Returns:
         dict: Status of the update operation
     """
-    from ...app import core_config
+    from ... import app as app_module
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
     from ....generators.obsidian import ObsidianGenerator
     from ....core.models import BottleMetadata
     from pathlib import Path
@@ -904,6 +934,15 @@ async def update_bottle_fields(request: Request):
 
         # Clean empty strings before validation
         cleaned_bottle_data = clean_bottle_data(bottle_data)
+
+        # Resolve vault_path from bottle ID if not provided directly
+        # This is necessary because vault_path is no longer sent from frontend
+        bottle_id = cleaned_bottle_data.get("id")
+        if not cleaned_bottle_data.get("vault_path") and bottle_id and bottle_registry:
+            resolved_path = bottle_registry.get_path(bottle_id)
+            if resolved_path:
+                cleaned_bottle_data["vault_path"] = resolved_path
+                logger.info(f"Resolved vault_path from ID {bottle_id}: {resolved_path}")
 
         # Convert to BottleMetadata
         original_bottle = BottleMetadata(**cleaned_bottle_data)
@@ -925,11 +964,11 @@ async def update_bottle_fields(request: Request):
         if not core_config.vault_path or not core_config.vault_path.exists():
             raise HTTPException(status_code=500, detail="Vault path not configured")
 
-        # Bottles loaded from vault MUST have vault_path set
+        # Bottles loaded from vault MUST have vault_path set (resolved from ID if needed)
         # This endpoint is for updating existing bottles, not creating new ones
         if not original_bottle.vault_path:
-            logger.error(f"Bottle missing vault_path - this endpoint only works with bottles loaded from vault")
-            raise HTTPException(status_code=400, detail="Bottle must have vault_path (only bottles loaded from vault can be updated)")
+            logger.error(f"Bottle missing vault_path and ID could not be resolved - this endpoint only works with bottles loaded from vault")
+            raise HTTPException(status_code=400, detail="Bottle must have vault_path or valid ID (only bottles loaded from vault can be updated)")
 
         # Use vault_path directly - no searching needed
         # vault_path is relative, e.g., "1_Whiskeys/Distiller - Name - Year"

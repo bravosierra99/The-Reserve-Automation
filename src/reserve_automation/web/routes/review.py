@@ -23,8 +23,7 @@ templates = Jinja2Templates(directory=templates_dir)
 @router.get("/review/{extraction_id}", include_in_schema=False)
 async def review_page(request: Request, extraction_id: str):
     """Serve the review page."""
-    return templates.TemplateResponse("review.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "review.html", {
         "extraction_id": extraction_id
     })
 

@@ -16,14 +16,14 @@ class EventStatus(str, Enum):
 
 class EventBottle(BaseModel):
     """A bottle in a tasting event."""
-    bottle_path: str = Field(..., description="Path to bottle folder in vault")
+    bottle_id: str = Field(..., description="Opaque bottle ID")
     bottle_name: str = Field(..., description="Full bottle name")
     blind_number: Optional[int] = Field(None, description="Bottle number for blind tastings")
 
 
 class ParticipantTasting(BaseModel):
     """A tasting submitted by a participant."""
-    bottle_path: str = Field(..., description="Path to bottle that was tasted")
+    bottle_id: str = Field(..., description="Opaque ID of bottle that was tasted")
     tasting_data: dict = Field(..., description="TastingData as dict")
 
 
@@ -55,7 +55,7 @@ class CreateEventRequest(BaseModel):
     beverage_type: str = Field(..., description="wine or whiskey")
     is_blind: bool = Field(default=False, description="Enable blind tasting mode")
     host_name: str = Field(..., min_length=1, description="Host name")
-    bottle_paths: list[str] = Field(..., min_items=1, description="List of bottle paths")
+    bottle_ids: list[str] = Field(..., min_length=1, description="List of opaque bottle IDs")
     blind_numbers: Optional[list[int]] = Field(None, description="Bottle numbers (required if is_blind)")
 
 
