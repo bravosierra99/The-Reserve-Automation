@@ -70,25 +70,29 @@ async def crop_current_label(data: dict):
 
     Creates a preview file that can be accepted or discarded.
     """
-    from ...app import core_config
+    from ... import app as app_module
     from ....llm.gateway import LLMGateway
     from ....utils.label_processor import LabelImageProcessor
-    from ....core.models import BottleMetadata
     from pathlib import Path
     from shutil import copyfile
 
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
+
     try:
-        bottle_data = data.get("bottle")
-        if not bottle_data:
-            raise HTTPException(status_code=400, detail="Missing bottle data")
+        bottle_id = data.get("bottle_id")
+        if not bottle_id:
+            raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        bottle = BottleMetadata(**bottle_data)
+        # Look up vault_path from registry
+        if bottle_registry is None:
+            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
 
-        # Get current label path
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+        vault_path = bottle_registry.get_path(bottle_id)
+        if not vault_path:
+            raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
-        label_dir = core_config.vault_path / bottle.vault_path / "labels"
+        label_dir = core_config.vault_path / vault_path / "labels"
         current_label = label_dir / "label.jpg"
         if not current_label.exists():
             current_label = label_dir / "label.png"
@@ -97,7 +101,7 @@ async def crop_current_label(data: dict):
             raise HTTPException(status_code=404, detail="No label found")
 
         # Create preview path in /tmp (not in vault)
-        temp_dir = get_temp_label_dir(bottle.vault_path)
+        temp_dir = get_temp_label_dir(vault_path)
         preview_path = temp_dir / "label_preview.jpg"
 
         # Copy current to preview
@@ -129,23 +133,28 @@ async def accept_label_crop(data: dict):
     """
     Accept the cropped preview and replace the original label.
     """
-    from ...app import core_config
-    from ....core.models import BottleMetadata
+    from ... import app as app_module
     from pathlib import Path
     from shutil import copyfile
 
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
+
     try:
-        bottle_data = data.get("bottle")
-        if not bottle_data:
-            raise HTTPException(status_code=400, detail="Missing bottle data")
+        bottle_id = data.get("bottle_id")
+        if not bottle_id:
+            raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        bottle = BottleMetadata(**bottle_data)
+        # Look up vault_path from registry
+        if bottle_registry is None:
+            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
 
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+        vault_path = bottle_registry.get_path(bottle_id)
+        if not vault_path:
+            raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
-        label_dir = core_config.vault_path / bottle.vault_path / "labels"
-        temp_dir = get_temp_label_dir(bottle.vault_path)
+        label_dir = core_config.vault_path / vault_path / "labels"
+        temp_dir = get_temp_label_dir(vault_path)
         preview_path = temp_dir / "label_preview.jpg"
 
         if not preview_path.exists():
@@ -254,25 +263,30 @@ async def crop_downloaded_image(data: dict):
     """
     Crop the downloaded image and save as label_download_cropped.jpg.
     """
-    from ...app import core_config
+    from ... import app as app_module
     from ....llm.gateway import LLMGateway
     from ....utils.label_processor import LabelImageProcessor
-    from ....core.models import BottleMetadata
     from pathlib import Path
     from shutil import copyfile
 
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
+
     try:
-        bottle_data = data.get("bottle")
-        if not bottle_data:
-            raise HTTPException(status_code=400, detail="Missing bottle data")
+        bottle_id = data.get("bottle_id")
+        if not bottle_id:
+            raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        bottle = BottleMetadata(**bottle_data)
+        # Look up vault_path from registry
+        if bottle_registry is None:
+            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
 
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+        vault_path = bottle_registry.get_path(bottle_id)
+        if not vault_path:
+            raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
         # Use /tmp for intermediate files
-        temp_dir = get_temp_label_dir(bottle.vault_path)
+        temp_dir = get_temp_label_dir(vault_path)
         download_path = temp_dir / "label_download.jpg"
 
         if not download_path.exists():
@@ -375,30 +389,33 @@ async def manual_crop_label(data: dict):
     """
     Crop label using exact pixel coordinates from manual selection.
     """
-    from ...app import core_config
-    from ....core.models import BottleMetadata
+    from ... import app as app_module
     from pathlib import Path
     from PIL import Image
     from shutil import copyfile
 
+    core_config = app_module.core_config
+    bottle_registry = app_module.bottle_registry
+
     try:
-        bottle_data = data.get("bottle")
+        bottle_id = data.get("bottle_id")
         x = data.get("x")
         y = data.get("y")
         width = data.get("width")
         height = data.get("height")
 
-        if not bottle_data or x is None or y is None or width is None or height is None:
-            raise HTTPException(status_code=400, detail="Missing data or coordinates")
+        if not bottle_id or x is None or y is None or width is None or height is None:
+            raise HTTPException(status_code=400, detail="Missing bottle_id or coordinates")
 
-        # Clean empty strings before validation
-        cleaned_bottle_data = clean_bottle_data(bottle_data)
-        bottle = BottleMetadata(**cleaned_bottle_data)
+        # Look up vault_path from registry
+        if bottle_registry is None:
+            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
 
-        if not bottle.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+        vault_path = bottle_registry.get_path(bottle_id)
+        if not vault_path:
+            raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
-        label_dir = core_config.vault_path / bottle.vault_path / "labels"
+        label_dir = core_config.vault_path / vault_path / "labels"
         current_label = label_dir / "label.jpg"
         if not current_label.exists():
             current_label = label_dir / "label.png"
@@ -409,7 +426,7 @@ async def manual_crop_label(data: dict):
         logger.info(f"Manual crop: x={x}, y={y}, w={width}, h={height}")
 
         # Backup original to /tmp (not vault)
-        temp_dir = get_temp_label_dir(bottle.vault_path)
+        temp_dir = get_temp_label_dir(vault_path)
         backup_path = temp_dir / "label_manual_backup.jpg"
         copyfile(current_label, backup_path)
 

@@ -186,7 +186,9 @@ class SaveManualTastingRequest(BaseModel):
     beverage_type: str = Field(..., description="wine or whiskey")
     taster_name: str = Field(..., description="Name of the taster")
     tasting_date: str = Field(..., description="Date of tasting (YYYY-MM-DD)")
-    selected_bottle_path: str = Field(..., description="Path to bottle folder in vault")
+    # Either selected_bottle_id or selected_bottle_path must be provided
+    selected_bottle_id: Optional[str] = Field(None, description="Opaque bottle ID (preferred)")
+    selected_bottle_path: Optional[str] = Field(None, description="Path to bottle folder in vault (legacy)")
 
     # Event mode fields (required if mode=EVENT)
     event_id: Optional[str] = None

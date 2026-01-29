@@ -32,8 +32,12 @@ def test_client():
     core_config, web_config = load_web_config()
 
     from reserve_automation.web import app as web_app
+    from reserve_automation.core.bottle_registry import BottleRegistry
     web_app.core_config = core_config
     web_app.web_config = web_config
+
+    # Initialize bottle registry for ID lookups
+    web_app.bottle_registry = BottleRegistry()
 
     from reserve_automation.web.services.upload_service import UploadService
     web_app.upload_service = UploadService(
@@ -114,19 +118,21 @@ class TestManagementWorkflow:
         assert "bottleEditor.openManagement" in html
 
     def test_get_bottles_returns_valid_data(self, test_client):
-        """Test that /api/v1/management/bottles returns bottles with vault_path."""
+        """Test that /api/v1/management/bottles returns bottles with opaque id."""
         response = test_client.get("/api/v1/management/bottles")
 
         if response.status_code == 200:
             data = response.json()
             assert "bottles" in data
 
-            # If there are bottles, verify they have vault_path
+            # If there are bottles, verify they have id (opaque bottle ID)
             if len(data["bottles"]) > 0:
                 bottle = data["bottles"][0]
-                assert "vault_path" in bottle, "Bottles MUST have vault_path for modal to work"
-                assert bottle["vault_path"] is not None
-                assert bottle["vault_path"] != ""
+                assert "id" in bottle, "Bottles MUST have id for modal to work"
+                assert bottle["id"] is not None
+                assert bottle["id"] != ""
+                # vault_path should NOT be in the response (excluded from JSON)
+                assert "vault_path" not in bottle, "vault_path should be excluded from API responses"
 
     def test_save_bottle_with_empty_strings(self, test_client):
         """
@@ -250,26 +256,17 @@ class TestManagementWorkflow:
 class TestManualCropWorkflow:
     """Test manual crop workflow end-to-end."""
 
-    def test_manual_crop_endpoint_with_valid_bottle(self, test_client):
-        """Test manual crop with properly formatted bottle data."""
-        bottle_data = {
-            "producer": "Test Distillery",
-            "name": "Test Bourbon",
-            "year": 2020,  # Proper integer
-            "type": "whiskey",
-            "beverage_type": "Bourbon",
-            "vault_path": "1_Whiskeys/Test Distillery - Test Bourbon - 2020",
-            "price": 50.0,  # Proper float
-            "inventory": 1,  # Proper integer
-            "proof": 100,
-            "abv": 50.0,
-            "source": "manual"
-        }
+    def test_manual_crop_endpoint_with_valid_bottle_id(self, test_client):
+        """Test manual crop with bottle_id (new API contract)."""
+        # Register a test bottle in the registry
+        from reserve_automation.web import app as web_app
+        test_vault_path = "1_Whiskeys/Test Distillery - Test Bourbon - 2020"
+        test_bottle_id = web_app.bottle_registry.register(test_vault_path)
 
         response = test_client.post(
             "/api/v1/management/labels/manual-crop",
             json={
-                "bottle": bottle_data,
+                "bottle_id": test_bottle_id,
                 "x": 10,
                 "y": 10,
                 "width": 200,
@@ -277,35 +274,19 @@ class TestManualCropWorkflow:
             }
         )
 
-        # May fail if vault doesn't exist, but should NOT fail with validation error
+        # May fail with 404 because label doesn't exist, but should NOT fail with validation error
         if response.status_code != 200:
             error = response.json()
-            assert "validation error" not in str(error).lower(), \
+            # 404 "No label found" is expected when the bottle dir doesn't have a label
+            assert response.status_code == 404 or "validation error" not in str(error).lower(), \
                 f"Should not fail with validation error: {error}"
 
-    def test_manual_crop_with_empty_string_fields(self, test_client):
-        """
-        CRITICAL: Test manual crop with empty strings (what frontend actually sends).
-        This is the exact bug we just fixed.
-        """
-        bottle_data = {
-            "producer": "Test Distillery",
-            "name": "Test Bourbon",
-            "year": "",  # EMPTY STRING - frontend sends this
-            "type": "whiskey",
-            "beverage_type": "Bourbon",
-            "vault_path": "1_Whiskeys/Test Distillery - Test Bourbon - 2020",
-            "price": "",  # EMPTY STRING
-            "inventory": "",  # EMPTY STRING
-            "proof": 100,
-            "abv": "",  # EMPTY STRING
-            "source": "manual"
-        }
-
+    def test_manual_crop_missing_bottle_id(self, test_client):
+        """Test that manual crop fails gracefully when bottle_id is missing."""
         response = test_client.post(
             "/api/v1/management/labels/manual-crop",
             json={
-                "bottle": bottle_data,
+                # bottle_id is MISSING
                 "x": 10,
                 "y": 10,
                 "width": 200,
@@ -313,33 +294,19 @@ class TestManualCropWorkflow:
             }
         )
 
-        # Should NOT fail with Pydantic validation error
-        if response.status_code != 200:
-            error = response.json()
-            detail = error.get("detail", "")
+        # Should fail with 400 for missing bottle_id
+        assert response.status_code == 400, \
+            f"Should fail with 400 when bottle_id missing, got {response.status_code}"
+        error = response.json()
+        assert "bottle_id" in error.get("detail", "").lower(), \
+            f"Error should mention missing bottle_id: {error}"
 
-            # Check if it's a validation error
-            if "validation error" in str(detail).lower() or "int_parsing" in str(detail):
-                pytest.fail(
-                    f"Manual crop failed with validation error - empty strings not handled!\n"
-                    f"Error: {detail}\n"
-                    f"This is the bug we just fixed - frontend sends empty strings, backend must handle them."
-                )
-
-    def test_manual_crop_missing_vault_path(self, test_client):
-        """Test that manual crop fails gracefully when vault_path is missing."""
-        bottle_data = {
-            "producer": "Test Distillery",
-            "name": "Test Bourbon",
-            "type": "whiskey",
-            "source": "manual"
-            # vault_path is MISSING - this was happening in the modal
-        }
-
+    def test_manual_crop_invalid_bottle_id(self, test_client):
+        """Test that manual crop fails gracefully when bottle_id is not found."""
         response = test_client.post(
             "/api/v1/management/labels/manual-crop",
             json={
-                "bottle": bottle_data,
+                "bottle_id": "nonexistent_id_12345",
                 "x": 10,
                 "y": 10,
                 "width": 200,
@@ -347,9 +314,9 @@ class TestManualCropWorkflow:
             }
         )
 
-        # Should fail with clear error, not 500
-        assert response.status_code in [400, 404], \
-            "Should fail with 400/404 when vault_path missing, not 500"
+        # Should fail with 404 for unknown bottle_id
+        assert response.status_code == 404, \
+            f"Should fail with 404 when bottle_id not found, got {response.status_code}"
 
 
 class TestUploadWorkflow:

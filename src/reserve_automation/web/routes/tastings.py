@@ -698,19 +698,31 @@ async def save_manual_tasting(
     This endpoint just receives the complete data and saves it.
     No server-side session needed.
     """
-    from ..app import core_config, event_store
+    from .. import app as app_module
+    core_config = app_module.core_config
+    event_store = app_module.event_store
+    bottle_registry = app_module.bottle_registry
 
     try:
         if not core_config:
             raise HTTPException(status_code=500, detail="Service not initialized")
+
+        # Resolve bottle ID to path if needed
+        selected_bottle_path = request_data.selected_bottle_path
+        if not selected_bottle_path and request_data.selected_bottle_id:
+            if bottle_registry is None:
+                raise HTTPException(status_code=500, detail="Bottle registry not initialized")
+            selected_bottle_path = bottle_registry.get_path(request_data.selected_bottle_id)
+            if not selected_bottle_path:
+                raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {request_data.selected_bottle_id}")
 
         # Validate required fields
         if not request_data.taster_name:
             raise HTTPException(status_code=400, detail="Taster name is required")
         if not request_data.tasting_date:
             raise HTTPException(status_code=400, detail="Tasting date is required")
-        if not request_data.selected_bottle_path:
-            raise HTTPException(status_code=400, detail="Bottle selection is required")
+        if not selected_bottle_path:
+            raise HTTPException(status_code=400, detail="Bottle selection is required (provide selected_bottle_id or selected_bottle_path)")
 
         # Save based on mode
         if request_data.mode == ManualTastingMode.OBSIDIAN:
@@ -719,7 +731,7 @@ async def save_manual_tasting(
                 taster_name=request_data.taster_name,
                 tasting_date=request_data.tasting_date,
                 beverage_type=request_data.beverage_type,
-                selected_bottle_path=request_data.selected_bottle_path,
+                selected_bottle_path=selected_bottle_path,
                 tasting_data=request_data.tasting_data,
             )
 
@@ -752,21 +764,21 @@ async def save_manual_tasting(
             # Check if tasting already exists (for editing)
             existing_index = None
             for i, t in enumerate(participant["tastings"]):
-                if t["bottle_path"] == request_data.selected_bottle_path:
+                if t["bottle_path"] == selected_bottle_path:
                     existing_index = i
                     break
 
             tasting_entry = {
-                "bottle_path": request_data.selected_bottle_path,
+                "bottle_path": selected_bottle_path,
                 "tasting_data": request_data.tasting_data
             }
 
             if existing_index is not None:
                 participant["tastings"][existing_index] = tasting_entry
-                logger.info(f"Updated tasting for bottle {request_data.selected_bottle_path}")
+                logger.info(f"Updated tasting for bottle {selected_bottle_path}")
             else:
                 participant["tastings"].append(tasting_entry)
-                logger.info(f"Added new tasting for bottle {request_data.selected_bottle_path}")
+                logger.info(f"Added new tasting for bottle {selected_bottle_path}")
 
             logger.info(f"Saved manual tasting to event {request_data.event_id}")
             return {"status": "saved", "event_id": request_data.event_id}

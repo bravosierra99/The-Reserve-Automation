@@ -129,8 +129,12 @@ def test_client(test_vault):
 
     # Override dependencies
     from reserve_automation.web import app as web_app
+    from reserve_automation.core.bottle_registry import BottleRegistry
     web_app.core_config = core_config
     web_app.web_config = web_config
+
+    # Initialize bottle registry for ID lookups
+    web_app.bottle_registry = BottleRegistry()
 
     # Create services
     from reserve_automation.web.services.upload_service import UploadService
@@ -145,20 +149,30 @@ def test_client(test_vault):
 
 
 @pytest.fixture
-def weller_bottle(test_vault):
-    """Return path info for the test Weller bottle."""
+def weller_bottle(test_vault, test_client):
+    """Return path info for the test Weller bottle with opaque ID."""
+    from reserve_automation.web import app as web_app
+    vault_path = "1_Whiskeys/Buffalo Trace - Weller Special Reserve"
+    # Register bottle and get ID
+    bottle_id = web_app.bottle_registry.register(vault_path)
     return {
         "name": "Buffalo Trace - Weller Special Reserve",
-        "vault_path": "1_Whiskeys/Buffalo Trace - Weller Special Reserve",
+        "vault_path": vault_path,  # Keep for internal test use (file operations)
+        "id": bottle_id,  # Opaque ID for API calls
         "beverage_type": "whiskey"
     }
 
 
 @pytest.fixture
-def caymus_bottle(test_vault):
-    """Return path info for the test Caymus bottle."""
+def caymus_bottle(test_vault, test_client):
+    """Return path info for the test Caymus bottle with opaque ID."""
+    from reserve_automation.web import app as web_app
+    vault_path = "1_Wines/Caymus Vineyards - Cabernet Sauvignon - 2021"
+    # Register bottle and get ID
+    bottle_id = web_app.bottle_registry.register(vault_path)
     return {
         "name": "Caymus Vineyards - Cabernet Sauvignon - 2021",
-        "vault_path": "1_Wines/Caymus Vineyards - Cabernet Sauvignon - 2021",
+        "vault_path": vault_path,  # Keep for internal test use (file operations)
+        "id": bottle_id,  # Opaque ID for API calls
         "beverage_type": "wine"
     }

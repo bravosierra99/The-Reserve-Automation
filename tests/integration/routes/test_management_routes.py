@@ -131,6 +131,10 @@ Type: {{ beverage_type | title }}
     config = Config(paths={"vault": str(vault_path), "templates_dir": str(templates_dir)})
     app_module.core_config = config
 
+    # Initialize bottle registry for ID lookups
+    from reserve_automation.core.bottle_registry import BottleRegistry
+    app_module.bottle_registry = BottleRegistry()
+
     web_config = Mock()
     web_config.sessions.secret_key = "test-secret"
     web_config.sessions.max_age_hours = 24
@@ -210,8 +214,11 @@ class TestManagementBottleUpdate:
         assert "path" in result
 
         # Verify the file was actually updated
+        # Look up vault_path from registry using bottle ID
+        from reserve_automation.web import app as app_module
+        bottle_vault_path = app_module.bottle_registry.get_path(stagg["id"])
         vault_path = tmp_path / "vault"
-        bottle_file = vault_path / stagg["vault_path"] / f"{Path(stagg['vault_path']).name}.md"
+        bottle_file = vault_path / bottle_vault_path / f"{Path(bottle_vault_path).name}.md"
 
         assert bottle_file.exists(), "Bottle file should exist"
 
@@ -253,7 +260,10 @@ class TestManagementBottleUpdate:
         bottles = list_response.json()["bottles"]
         margaux = next((b for b in bottles if "Margaux" in b.get("producer", "")), None)
 
-        original_path = tmp_path / "vault" / margaux["vault_path"]
+        # Look up vault_path from registry using bottle ID
+        from reserve_automation.web import app as app_module
+        margaux_vault_path = app_module.bottle_registry.get_path(margaux["id"])
+        original_path = tmp_path / "vault" / margaux_vault_path
         assert original_path.exists(), "Original bottle directory should exist"
 
         # Change the vintage
@@ -299,7 +309,10 @@ class TestManagementTastingsSummary:
 
         # Test with whiskey (10-point scale)
         stagg = next((b for b in bottles if "STAGG" in b.get("name", "")), None)
-        bottle_dir = tmp_path / "vault" / stagg["vault_path"]
+        # Look up vault_path from registry using bottle ID
+        from reserve_automation.web import app as app_module
+        stagg_vault_path = app_module.bottle_registry.get_path(stagg["id"])
+        bottle_dir = tmp_path / "vault" / stagg_vault_path
         tasting_file = bottle_dir / "Tasting-2024-12-30-TestTaster.md"
         tasting_file.write_text("""---
 fileClass: Tasting
@@ -326,7 +339,9 @@ Great whiskey!
 
         # Test with wine (100-point scale)
         margaux = next((b for b in bottles if "Margaux" in b.get("producer", "")), None)
-        wine_dir = tmp_path / "vault" / margaux["vault_path"]
+        # Look up vault_path from registry using bottle ID
+        margaux_vault_path = app_module.bottle_registry.get_path(margaux["id"])
+        wine_dir = tmp_path / "vault" / margaux_vault_path
         wine_tasting = wine_dir / "Tasting-2024-12-31-WineTaster.md"
         wine_tasting.write_text("""---
 fileClass: Wine Tasting

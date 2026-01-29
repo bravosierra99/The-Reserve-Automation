@@ -108,8 +108,12 @@ def test_client():
 
     # Override dependencies
     from reserve_automation.web import app as web_app
+    from reserve_automation.core.bottle_registry import BottleRegistry
     web_app.core_config = core_config
     web_app.web_config = web_config
+
+    # Initialize bottle registry for ID lookups
+    web_app.bottle_registry = BottleRegistry()
 
     # Create services
     from reserve_automation.web.services.upload_service import UploadService
@@ -154,7 +158,7 @@ def test_manual_obsidian_tasting(test_client):
             "beverage_type": "whiskey",
             "taster_name": "TestTaster",
             "tasting_date": "2025-12-27",
-            "selected_bottle_path": test_bottle["vault_path"],
+            "selected_bottle_id": test_bottle["id"],
             "tasting_data": {
                 "whiskey_nose": 2.8,
                 "whiskey_palate": 2.5,
@@ -172,8 +176,10 @@ def test_manual_obsidian_tasting(test_client):
 
     print("\n3️⃣ Verifying tasting file created...")
     # Look for tasting file in test bottle directory
-    # vault_path is already the bottle directory, not the file path
-    bottle_dir = TEST_VAULT / test_bottle["vault_path"]
+    # Use bottle registry to get vault_path from ID
+    from reserve_automation.web import app as web_app
+    bottle_vault_path = web_app.bottle_registry.get_path(test_bottle["id"])
+    bottle_dir = TEST_VAULT / bottle_vault_path
     tasting_files = list(bottle_dir.glob("Tasting-*.md"))
 
     assert len(tasting_files) > 0, f"No tasting files found in {bottle_dir}"
@@ -298,7 +304,7 @@ def test_duplicate_detection(test_client):
         "beverage_type": "whiskey",
         "taster_name": "DupeTestTaster",
         "tasting_date": "2025-12-27",
-        "selected_bottle_path": test_bottle["vault_path"],
+        "selected_bottle_id": test_bottle["id"],
         "tasting_data": {
             "whiskey_nose": 2.0,
             "whiskey_palate": 2.0,
@@ -317,7 +323,7 @@ def test_duplicate_detection(test_client):
         "beverage_type": "whiskey",
         "taster_name": "DupeTestTaster",
         "tasting_date": "2025-12-27",
-        "selected_bottle_path": test_bottle["vault_path"],
+        "selected_bottle_id": test_bottle["id"],
         "tasting_data": {
             "whiskey_nose": 3.0,
             "whiskey_palate": 3.0,
@@ -328,8 +334,10 @@ def test_duplicate_detection(test_client):
     assert response.status_code == 200, f"Second save failed: {response.status_code} - {response.text}"
 
     # Verify only 1 file exists (duplicate was overwritten)
-    # vault_path is already the bottle directory
-    bottle_dir = TEST_VAULT / test_bottle["vault_path"]
+    # Use bottle registry to get vault_path from ID
+    from reserve_automation.web import app as web_app
+    bottle_vault_path = web_app.bottle_registry.get_path(test_bottle["id"])
+    bottle_dir = TEST_VAULT / bottle_vault_path
     tasting_files = list(bottle_dir.glob("Tasting-2025-12-27-DupeTestTaster*.md"))
 
     assert len(tasting_files) == 1, f"Should only have 1 tasting file, found {len(tasting_files)}"

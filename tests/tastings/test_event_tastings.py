@@ -33,7 +33,7 @@ def test_manual_event_tasting(test_client, weller_bottle):
         "date": "2025-12-27",
         "is_blind": False,
         "beverage_type": "whiskey",
-        "bottle_paths": [test_bottle["vault_path"]]
+        "bottle_ids": [test_bottle["id"]]  # Use opaque ID instead of vault_path
     }
     response = test_client.post("/api/v1/events", json=event_data)
     assert response.status_code == 200, f"Event creation failed: {response.status_code} - {response.text}"
@@ -125,7 +125,7 @@ def test_edit_event_tasting(test_client, weller_bottle):
         "date": "2025-12-27",
         "is_blind": False,
         "beverage_type": "whiskey",
-        "bottle_paths": [test_bottle["vault_path"]]
+        "bottle_ids": [test_bottle["id"]]
     }
     response = test_client.post("/api/v1/events", json=event_data)
     assert response.status_code == 200, f"Event creation failed: {response.status_code} - {response.text}"

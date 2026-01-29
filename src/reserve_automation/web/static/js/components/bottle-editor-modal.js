@@ -822,7 +822,7 @@ window.bottleEditorModal = function() {
                 if (cleanBottle.proof === '') cleanBottle.proof = null;
 
                 const additionalData = this.mode === 'management'
-                    ? { bottle: cleanBottle }
+                    ? { bottle_id: this.bottleId }
                     : { upload_id: this.uploadId };
 
                 await window.cropperManager.completeCrop(
@@ -903,12 +903,18 @@ window.bottleEditorModal = function() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        bottle: this.bottle
+                        bottle_id: this.bottleId
                     })
                 });
 
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Crop failed');
+                }
+
                 const data = await response.json();
-                this.labelCropPreview = `/api/v1/labels/view?path=${encodeURIComponent(data.preview_path)}&t=${Date.now()}`;
+                // Use bottle ID to view the preview from temp dir
+                this.labelCropPreview = `/api/v1/labels/view?id=${encodeURIComponent(this.bottleId)}&file=label_preview.jpg&t=${Date.now()}`;
                 this.showToast('Label cropped! Review the preview below.');
             } catch (error) {
                 console.error('Crop failed:', error);
@@ -928,9 +934,14 @@ window.bottleEditorModal = function() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        bottle: this.bottle
+                        bottle_id: this.bottleId
                     })
                 });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Accept crop failed');
+                }
 
                 await response.json();
                 this.labelCropPreview = null;
