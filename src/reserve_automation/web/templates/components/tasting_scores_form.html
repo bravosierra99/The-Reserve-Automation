@@ -5,13 +5,12 @@
     It must be included within an Alpine scope that provides:
 
     Required variables:
-    - tasting: Object with score/notes fields (wine_appearance, whiskey_nose, nose_notes, etc.)
+    - tasting: Object with score/notes fields (wine_appearance, whiskey_nose, etc.)
     - isWine: Boolean - true for wine, false for whiskey
 
     Optional:
     - onTastingChange(): Function called when any data changes (for auto-save)
 
-    The parent scope must also provide note management functions or use the default ones.
     Note input variables expected: noseNotesInput, palateNotesInput, finishNotesInput,
     appearanceNotesInput, aromaNotesInput, tasteNotesInput, aftertasteNotesInput
 #}
@@ -40,17 +39,9 @@
                 <span class="text-gray-500 text-sm">/ 3</span>
             </div>
         </div>
-        <input type="text" x-model="appearanceNotesInput" @keydown.enter="addAppearanceNote()"
+        <input type="text" x-model="appearanceNotesInput"
                placeholder="e.g., ruby, clear, deep"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
-        <div x-show="tasting.appearance_notes && tasting.appearance_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-            <template x-for="(note, index) in tasting.appearance_notes || []" :key="index">
-                <span class="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-                    <span x-text="note"></span>
-                    <button @click="removeAppearanceNote(index)" class="ml-2 text-purple-600 hover:text-purple-800">&times;</button>
-                </span>
-            </template>
-        </div>
     </div>
 
     <!-- Aroma -->
@@ -65,17 +56,9 @@
                 <span class="text-gray-500 text-sm">/ 6</span>
             </div>
         </div>
-        <input type="text" x-model="aromaNotesInput" @keydown.enter="addAromaNote()"
+        <input type="text" x-model="aromaNotesInput"
                placeholder="e.g., cherry, oak, vanilla"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
-        <div x-show="tasting.nose_notes && tasting.nose_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-            <template x-for="(note, index) in tasting.nose_notes || []" :key="index">
-                <span class="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                    <span x-text="note"></span>
-                    <button @click="removeAromaNote(index)" class="ml-2 text-blue-600 hover:text-blue-800">&times;</button>
-                </span>
-            </template>
-        </div>
     </div>
 
     <!-- Taste -->
@@ -90,17 +73,9 @@
                 <span class="text-gray-500 text-sm">/ 6</span>
             </div>
         </div>
-        <input type="text" x-model="tasteNotesInput" @keydown.enter="addTasteNote()"
+        <input type="text" x-model="tasteNotesInput"
                placeholder="e.g., tannins, fruit, spice"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
-        <div x-show="tasting.palate_notes && tasting.palate_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-            <template x-for="(note, index) in tasting.palate_notes || []" :key="index">
-                <span class="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                    <span x-text="note"></span>
-                    <button @click="removeTasteNote(index)" class="ml-2 text-green-600 hover:text-green-800">&times;</button>
-                </span>
-            </template>
-        </div>
     </div>
 
     <!-- Aftertaste -->
@@ -115,17 +90,9 @@
                 <span class="text-gray-500 text-sm">/ 3</span>
             </div>
         </div>
-        <input type="text" x-model="aftertasteNotesInput" @keydown.enter="addAftertasteNote()"
+        <input type="text" x-model="aftertasteNotesInput"
                placeholder="e.g., long, dry, smooth"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
-        <div x-show="tasting.finish_notes && tasting.finish_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-            <template x-for="(note, index) in tasting.finish_notes || []" :key="index">
-                <span class="inline-flex items-center px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">
-                    <span x-text="note"></span>
-                    <button @click="removeAftertasteNote(index)" class="ml-2 text-orange-600 hover:text-orange-800">&times;</button>
-                </span>
-            </template>
-        </div>
     </div>
 
     <!-- Overall -->
@@ -170,17 +137,9 @@
                 <span class="text-gray-500 text-sm">/ 3</span>
             </div>
         </div>
-        <input type="text" x-model="noseNotesInput" @keydown.enter="addNoseNote()"
+        <input type="text" x-model="noseNotesInput"
                placeholder="e.g., vanilla, oak, cherry"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
-        <div x-show="tasting.nose_notes && tasting.nose_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-            <template x-for="(note, index) in tasting.nose_notes || []" :key="index">
-                <span class="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                    <span x-text="note"></span>
-                    <button @click="removeNoseNote(index)" class="ml-2 text-blue-600 hover:text-blue-800">&times;</button>
-                </span>
-            </template>
-        </div>
     </div>
 
     <!-- Palate -->
@@ -195,17 +154,9 @@
                 <span class="text-gray-500 text-sm">/ 3</span>
             </div>
         </div>
-        <input type="text" x-model="palateNotesInput" @keydown.enter="addPalateNote()"
+        <input type="text" x-model="palateNotesInput"
                placeholder="e.g., spice, honey, leather"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
-        <div x-show="tasting.palate_notes && tasting.palate_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-            <template x-for="(note, index) in tasting.palate_notes || []" :key="index">
-                <span class="inline-flex items-center px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                    <span x-text="note"></span>
-                    <button @click="removePalateNote(index)" class="ml-2 text-green-600 hover:text-green-800">&times;</button>
-                </span>
-            </template>
-        </div>
     </div>
 
     <!-- Finish -->
@@ -220,17 +171,9 @@
                 <span class="text-gray-500 text-sm">/ 3</span>
             </div>
         </div>
-        <input type="text" x-model="finishNotesInput" @keydown.enter="addFinishNote()"
+        <input type="text" x-model="finishNotesInput"
                placeholder="e.g., long, warm, oaky"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
-        <div x-show="tasting.finish_notes && tasting.finish_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
-            <template x-for="(note, index) in tasting.finish_notes || []" :key="index">
-                <span class="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-                    <span x-text="note"></span>
-                    <button @click="removeFinishNote(index)" class="ml-2 text-purple-600 hover:text-purple-800">&times;</button>
-                </span>
-            </template>
-        </div>
     </div>
 
     <!-- Overall -->
