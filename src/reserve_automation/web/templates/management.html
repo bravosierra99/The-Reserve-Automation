@@ -314,19 +314,11 @@
                 <h3 class="text-lg font-bold text-gray-800 mb-3">Select Bottles</h3>
 
                 <div class="mb-4">
-                    <div class="flex gap-2">
-                        <input type="text"
-                               x-model="eventBottleSearchQuery"
-                               @keyup.enter="searchBottlesForEvent()"
-                               placeholder="Search for bottles to add..."
-                               class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
-                        <button @click="searchBottlesForEvent()"
-                                :disabled="eventBottleSearching || !eventBottleSearchQuery"
-                                class="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-lg">
-                            <span x-show="!eventBottleSearching">Search</span>
-                            <span x-show="eventBottleSearching">...</span>
-                        </button>
-                    </div>
+                    <input type="text"
+                           x-model="eventBottleSearchQuery"
+                           @input="debouncedSearchBottlesForEvent()"
+                           placeholder="Search for bottles to add..."
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
                 </div>
 
                 <!-- Search Results -->
@@ -684,6 +676,7 @@ function managementApp() {
         eventHostName: '',
         eventIsBlind: false,
         eventBottleSearchQuery: '',
+        eventBottleSearchTimeout: null,
         eventBottleSearching: false,
         eventBottleSearchResults: [],
         eventSelectedBottles: [],
@@ -1034,8 +1027,16 @@ function managementApp() {
         },
 
         // Create Event Functions
+        debouncedSearchBottlesForEvent() {
+            clearTimeout(this.eventBottleSearchTimeout);
+            this.eventBottleSearchTimeout = setTimeout(() => this.searchBottlesForEvent(), 300);
+        },
+
         async searchBottlesForEvent() {
-            if (!this.eventBottleSearchQuery) return;
+            if (!this.eventBottleSearchQuery || this.eventBottleSearchQuery.length < 2) {
+                this.eventBottleSearchResults = [];
+                return;
+            }
 
             this.eventBottleSearching = true;
             try {

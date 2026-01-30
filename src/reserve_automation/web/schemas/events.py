@@ -18,6 +18,7 @@ class EventBottle(BaseModel):
     """A bottle in a tasting event."""
     bottle_id: str = Field(..., description="Opaque bottle ID")
     bottle_name: str = Field(..., description="Full bottle name")
+    bottle_path: str = Field(..., description="Vault path for bottle image retrieval")
     blind_number: Optional[int] = Field(None, description="Bottle number for blind tastings")
 
 

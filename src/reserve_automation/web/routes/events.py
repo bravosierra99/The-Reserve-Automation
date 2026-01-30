@@ -111,6 +111,7 @@ async def create_event(request_data: CreateEventRequest):
             bottle = EventBottle(
                 bottle_id=bottle_id,
                 bottle_name=bottle_name,
+                bottle_path=bottle_vault_path,
                 blind_number=request_data.blind_numbers[i] if request_data.is_blind else None
             )
             bottles.append(bottle)
