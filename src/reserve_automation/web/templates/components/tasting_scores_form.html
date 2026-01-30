@@ -41,7 +41,7 @@
             </div>
         </div>
         <input type="text" x-model="appearanceNotesInput" @keydown.enter="addAppearanceNote()"
-               placeholder="Type a note and press Enter (e.g., ruby, clear, deep)"
+               placeholder="e.g., ruby, clear, deep"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
         <div x-show="tasting.appearance_notes && tasting.appearance_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
             <template x-for="(note, index) in tasting.appearance_notes || []" :key="index">
@@ -66,7 +66,7 @@
             </div>
         </div>
         <input type="text" x-model="aromaNotesInput" @keydown.enter="addAromaNote()"
-               placeholder="Type a note and press Enter (e.g., cherry, oak, vanilla)"
+               placeholder="e.g., cherry, oak, vanilla"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
         <div x-show="tasting.nose_notes && tasting.nose_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
             <template x-for="(note, index) in tasting.nose_notes || []" :key="index">
@@ -91,7 +91,7 @@
             </div>
         </div>
         <input type="text" x-model="tasteNotesInput" @keydown.enter="addTasteNote()"
-               placeholder="Type a note and press Enter (e.g., tannins, fruit, spice)"
+               placeholder="e.g., tannins, fruit, spice"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
         <div x-show="tasting.palate_notes && tasting.palate_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
             <template x-for="(note, index) in tasting.palate_notes || []" :key="index">
@@ -116,7 +116,7 @@
             </div>
         </div>
         <input type="text" x-model="aftertasteNotesInput" @keydown.enter="addAftertasteNote()"
-               placeholder="Type a note and press Enter (e.g., long, dry, smooth)"
+               placeholder="e.g., long, dry, smooth"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
         <div x-show="tasting.finish_notes && tasting.finish_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
             <template x-for="(note, index) in tasting.finish_notes || []" :key="index">
@@ -171,7 +171,7 @@
             </div>
         </div>
         <input type="text" x-model="noseNotesInput" @keydown.enter="addNoseNote()"
-               placeholder="Type a note and press Enter (e.g., vanilla, oak, cherry)"
+               placeholder="e.g., vanilla, oak, cherry"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
         <div x-show="tasting.nose_notes && tasting.nose_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
             <template x-for="(note, index) in tasting.nose_notes || []" :key="index">
@@ -196,7 +196,7 @@
             </div>
         </div>
         <input type="text" x-model="palateNotesInput" @keydown.enter="addPalateNote()"
-               placeholder="Type a note and press Enter (e.g., spice, honey, leather)"
+               placeholder="e.g., spice, honey, leather"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
         <div x-show="tasting.palate_notes && tasting.palate_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
             <template x-for="(note, index) in tasting.palate_notes || []" :key="index">
@@ -221,7 +221,7 @@
             </div>
         </div>
         <input type="text" x-model="finishNotesInput" @keydown.enter="addFinishNote()"
-               placeholder="Type a note and press Enter (e.g., long, warm, oaky)"
+               placeholder="e.g., long, warm, oaky"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
         <div x-show="tasting.finish_notes && tasting.finish_notes.length > 0" class="flex flex-wrap gap-2 mt-2">
             <template x-for="(note, index) in tasting.finish_notes || []" :key="index">

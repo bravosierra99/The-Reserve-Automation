@@ -611,6 +611,23 @@ function manualTastingWizard() {
             this.saving = true;
 
             try {
+                // Parse comma-separated notes from input fields into arrays
+                const parseNotes = (input) => {
+                    if (!input?.trim()) return [];
+                    return input.split(',').map(n => n.trim()).filter(n => n.length > 0);
+                };
+
+                if (this.isWine) {
+                    this.tastingData.appearance_notes = parseNotes(this.appearanceNotesInput);
+                    this.tastingData.nose_notes = parseNotes(this.aromaNotesInput);
+                    this.tastingData.palate_notes = parseNotes(this.tasteNotesInput);
+                    this.tastingData.finish_notes = parseNotes(this.aftertasteNotesInput);
+                } else {
+                    this.tastingData.nose_notes = parseNotes(this.noseNotesInput);
+                    this.tastingData.palate_notes = parseNotes(this.palateNotesInput);
+                    this.tastingData.finish_notes = parseNotes(this.finishNotesInput);
+                }
+
                 // Build the complete save request - no session needed
                 const saveRequest = {
                     mode: this.isEventMode ? 'event' : 'obsidian',
