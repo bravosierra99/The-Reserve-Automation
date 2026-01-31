@@ -42,28 +42,33 @@
         <!-- Progress indicator -->
         <div class="bg-white rounded-lg shadow-md p-6">
             <div class="flex items-center justify-between mb-4">
-                <div class="flex-1 flex items-center" :class="currentStepNumber >= 1 ? 'text-blue-600' : 'text-gray-400'">
+                <!-- Taster Info (non-event mode only) -->
+                <div x-show="!isEventMode" class="flex-1 flex items-center" :class="currentStepNumber >= 1 ? 'text-blue-600' : 'text-gray-400'">
                     <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold border-2"
                          :class="currentStepNumber >= 1 ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 border-gray-300'">
-                        1
+                        <span class="text-sm">✓</span>
                     </div>
                     <div class="ml-2 font-semibold text-sm">Taster Info</div>
                 </div>
-                <div class="h-1 flex-1 mx-4"
+                <div x-show="!isEventMode" class="h-1 flex-1 mx-4"
                      :class="currentStepNumber >= 2 ? 'bg-blue-600' : 'bg-gray-300'"></div>
-                <div class="flex-1 flex items-center" :class="currentStepNumber >= 2 ? 'text-blue-600' : 'text-gray-400'">
+
+                <!-- Select Bottle -->
+                <div class="flex-1 flex items-center" :class="currentStep === 'bottle_selection' || currentStep === 'tasting_form' ? 'text-blue-600' : 'text-gray-400'">
                     <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold border-2"
-                         :class="currentStepNumber >= 2 ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 border-gray-300'">
-                        2
+                         :class="currentStep === 'bottle_selection' || currentStep === 'tasting_form' ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 border-gray-300'">
+                        <span class="text-sm">✓</span>
                     </div>
                     <div class="ml-2 font-semibold text-sm">Select Bottle</div>
                 </div>
                 <div class="h-1 flex-1 mx-4"
-                     :class="currentStepNumber >= 3 ? 'bg-blue-600' : 'bg-gray-300'"></div>
-                <div class="flex-1 flex items-center" :class="currentStepNumber >= 3 ? 'text-blue-600' : 'text-gray-400'">
+                     :class="currentStep === 'tasting_form' ? 'bg-blue-600' : 'bg-gray-300'"></div>
+
+                <!-- Tasting Details -->
+                <div class="flex-1 flex items-center" :class="currentStep === 'tasting_form' ? 'text-blue-600' : 'text-gray-400'">
                     <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold border-2"
-                         :class="currentStepNumber >= 3 ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 border-gray-300'">
-                        3
+                         :class="currentStep === 'tasting_form' ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 border-gray-300'">
+                        <span class="text-sm">✓</span>
                     </div>
                     <div class="ml-2 font-semibold text-sm">Tasting Details</div>
                 </div>
@@ -72,7 +77,7 @@
 
         <!-- Step 1: Taster Info -->
         <div x-show="currentStep === 'taster_info'" class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6">Step 1: Taster Information</h2>
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Taster Information</h2>
             <div class="space-y-4">
                 <!-- Taster Name -->
                 <div>
@@ -136,7 +141,7 @@
 
         <!-- Step 2: Bottle Selection -->
         <div x-show="currentStep === 'bottle_selection'" class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6">Step 2: Select Bottle</h2>
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Select Bottle</h2>
 
             <!-- Event Mode: Show bottle grid with Upload/Manual buttons -->
             <div x-show="participantSession && eventBottles.length > 0">
@@ -223,7 +228,14 @@
 
             <!-- Navigation -->
             <div class="flex justify-between mt-6">
-                <button @click="previousStep()"
+                <!-- In event mode, back goes to event page; otherwise back to step 1 -->
+                <button x-show="isEventMode"
+                        @click="window.location.href = `/events/${participantSession.event_id}`"
+                        class="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg shadow-md transition-colors">
+                    &larr; Back to Event
+                </button>
+                <button x-show="!isEventMode"
+                        @click="previousStep()"
                         class="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white font-semibold rounded-lg shadow-md transition-colors">
                     &larr; Back
                 </button>
@@ -238,7 +250,7 @@
 
         <!-- Step 3: Tasting Form -->
         <div x-show="currentStep === 'tasting_form'" class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-2xl font-bold text-gray-800 mb-6">Step 3: Tasting Details</h2>
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Tasting Details</h2>
 
             <div class="space-y-6">
                 <!-- Optional Metadata -->
@@ -541,6 +553,9 @@ function manualTastingWizard() {
                         console.error('Failed to load event:', e);
                     }
                 }
+
+                // Skip step 1 in event mode - go directly to bottle selection
+                this._currentStep = 'bottle_selection';
             }
 
             // No server session to load - we start fresh each time
@@ -584,7 +599,8 @@ function manualTastingWizard() {
         },
 
         previousStep() {
-            if (this._currentStep === 'bottle_selection') {
+            if (this._currentStep === 'bottle_selection' && !this.isEventMode) {
+                // Only go back to taster_info in non-event mode
                 this._currentStep = 'taster_info';
             } else if (this._currentStep === 'tasting_form') {
                 this._currentStep = 'bottle_selection';
