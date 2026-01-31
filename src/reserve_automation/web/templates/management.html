@@ -41,41 +41,43 @@
     </div>
 
     <!-- Mode Selection -->
-    <div x-show="!mode" class="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h2 class="text-2xl font-bold mb-6 text-gray-800">Metadata Management</h2>
+    <div x-show="!mode" class="space-y-6">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">Collection Management</h2>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <button @click="selectMode('review-labels')"
-                    class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-orange-50 hover:bg-orange-100">
-                <div class="text-4xl mb-2">📊</div>
-                <h3 class="font-bold text-lg mb-2">Bottle Grid View</h3>
-                <p class="text-sm text-gray-600">Browse, search, and edit your entire collection</p>
-            </button>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button @click="selectMode('review-labels')"
+                        class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-orange-50 hover:bg-orange-100">
+                    <div class="text-4xl mb-2">📊</div>
+                    <h3 class="font-bold text-lg mb-2">Bottle Grid View</h3>
+                    <p class="text-sm text-gray-600">Browse, search, and edit your entire collection</p>
+                </button>
 
-            <button @click="selectMode('batch')"
-                    class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-purple-50 hover:bg-purple-100">
-                <div class="text-4xl mb-2">📦</div>
-                <h3 class="font-bold text-lg mb-2">Batch Update All Bottles</h3>
-                <p class="text-sm text-gray-600">Verify all bottles in the background, approve as they complete</p>
-            </button>
+                <button @click="selectMode('manage-events')"
+                        class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-yellow-50 hover:bg-yellow-100">
+                    <div class="text-4xl mb-2">🎭</div>
+                    <h3 class="font-bold text-lg mb-2">Manage Events</h3>
+                    <p class="text-sm text-gray-600">Create and manage your tasting events</p>
+                </button>
+            </div>
 
-            <button @click="selectMode('create-event')"
-                    class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-green-50 hover:bg-green-100">
-                <div class="text-4xl mb-2">📅</div>
-                <h3 class="font-bold text-lg mb-2">Create Tasting Event</h3>
-                <p class="text-sm text-gray-600">Create a tasting event with selected bottles</p>
-            </button>
-
-            <button @click="selectMode('manage-events')"
-                    class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-yellow-50 hover:bg-yellow-100">
-                <div class="text-4xl mb-2">🎭</div>
-                <h3 class="font-bold text-lg mb-2">Manage Events</h3>
-                <p class="text-sm text-gray-600">View and manage your tasting events</p>
-            </button>
+            <div class="mt-6">
+                <a href="/upload" class="text-blue-600 hover:text-blue-800 font-semibold">← Back to Upload</a>
+            </div>
         </div>
 
-        <div class="mt-6">
-            <a href="/upload" class="text-blue-600 hover:text-blue-800 font-semibold">← Back to Upload</a>
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-bold mb-4 text-gray-800">Experimental Features</h2>
+            <p class="text-sm text-gray-500 mb-4">These features are still in development and may have rough edges.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button @click="selectMode('batch')"
+                        class="p-6 border-2 border-dashed border-gray-300 rounded-lg transition-all bg-gray-50 hover:bg-purple-50 hover:border-purple-300">
+                    <div class="text-4xl mb-2">📦</div>
+                    <h3 class="font-bold text-lg mb-2">Batch Update All Bottles</h3>
+                    <p class="text-sm text-gray-600">Verify all bottles in the background, approve as they complete</p>
+                </button>
+            </div>
         </div>
     </div>
 
