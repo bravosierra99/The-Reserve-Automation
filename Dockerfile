@@ -4,6 +4,9 @@ WORKDIR /app
 
 # Install system dependencies for all Python packages
 RUN apt-get update && apt-get install -y \
+    # Git for vault sync
+    git \
+    \
     # Build tools (needed for scikit-image compilation)
     gcc \
     g++ \
@@ -53,6 +56,9 @@ COPY src/ ./src/
 COPY config/ ./config/
 COPY templates/ ./templates/
 
+# Copy startup scripts
+COPY scripts/ ./scripts/
+
 # Create temp directory for uploads and logs
 RUN mkdir -p /tmp/reserve_uploads /app/logs
 
@@ -69,5 +75,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
-# Run web application
-CMD ["uv", "run", "uvicorn", "reserve_automation.web.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run via entrypoint script (handles git pull + backup scheduler)
+CMD ["/app/scripts/entrypoint.sh"]
