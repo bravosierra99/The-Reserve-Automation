@@ -2,6 +2,52 @@
 
 This file contains permanent instructions for Claude Code when working with this codebase.
 
+## Documentation Reference Guide
+
+**CRITICAL: Read the appropriate documentation BEFORE starting work on these topics.**
+
+### When to Read Which Documentation
+
+| Scenario | Read This FIRST | Why |
+|----------|-----------------|-----|
+| **Modifying tests** or creating new tests | [DEVELOPMENT.md](DEVELOPMENT.md) | Complete testing philosophy, protocols, and patterns |
+| **Running tests** for a specific system | [TESTING.md](TESTING.md) | Quick reference table for which command to run |
+| **Docker deployment** questions | [DEPLOYMENT.md](DEPLOYMENT.md) | Comprehensive Docker setup, networking, troubleshooting |
+| **Proxmox deployment** or multi-host setup | [CLAUDE_HANDOFF.md](CLAUDE_HANDOFF.md) | Critical architecture, gotchas, and verification steps |
+| **General project info** or user-facing docs | [README.md](README.md) | Overview, features, installation, usage examples |
+| **Working with bottle fields** | THIS FILE (CLAUDE.md) | #CLAUDE_REQ system and field coherence workflow |
+| **E2E browser tests** | [tests/e2e/TESTING_SAFETY.md](tests/e2e/TESTING_SAFETY.md) | Vault isolation and safety requirements |
+| **Event system tests** | [tests/events/README.md](tests/events/README.md) | Event test specifics and known issues |
+| **Tasting tests** | [tests/tastings/README.md](tests/tastings/README.md) | Tasting test suites and vault integration |
+
+### Mandatory Reading Triggers
+
+**BEFORE you start ANY of these tasks, you MUST read the corresponding documentation:**
+
+1. **About to modify test files?** → Read DEVELOPMENT.md first
+2. **About to run tests?** → Read TESTING.md first (quick reference)
+3. **User asks about Docker/deployment?** → Read DEPLOYMENT.md first
+4. **User asks about Proxmox setup?** → Read CLAUDE_HANDOFF.md first
+5. **About to modify bottle field** (model, template, generator, vault reader)? → Read this file's "CRITICAL: Working with Bottle Fields" section
+6. **About to create E2E tests?** → Read tests/e2e/TESTING_SAFETY.md first
+
+### How to Use This Guide
+
+1. **User mentions a topic** → Check the table above
+2. **Find the matching scenario** → Note which doc to read
+3. **Read that doc FIRST** → Before writing code or making plans
+4. **Then proceed** with full context
+
+**Example:**
+- User: "Can you help me deploy this to Proxmox?"
+- You: *reads CLAUDE_HANDOFF.md and DEPLOYMENT.md first*
+- Then: Proceed with deployment assistance using the documented architecture
+
+**Anti-pattern:**
+- User: "Can you help me deploy this to Proxmox?"
+- You: *immediately starts guessing about deployment without reading docs*
+- Result: Mistakes, incorrect assumptions, wasted time
+
 ## #CLAUDE_REQ System
 
 This codebase uses a special comment system to document cross-file dependencies and integration requirements that you might not know about without having all the context loaded.
