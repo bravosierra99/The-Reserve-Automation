@@ -1,3 +1,0 @@
-ben      2964352  0.0  0.0  11848  5900 ?        S    Dec15   0:00 /bin/bash -c -l source /home/ben/.claude/shell-snapshots/snapshot-bash-1765108557583-zcjjy5.sh && { shopt -u extglob || setopt NO_EXTENDED_GLOB; } 2>/dev/null || true && eval 'sleep 2 && WEB_SECRET_KEY=1b05f33f393fea7d4aea7d0b217bdd5618ef0fa9ce1737834b8c4de07d805007 uv run uvicorn reserve_automation.web.app:app --host 0.0.0.0 --port 8000 --reload 2>&1 &' \< /dev/null && pwd -P >| /tmp/claude-ddbf-cwd
-ben      2964361  0.0  0.0 232940 34992 ?        Sl   Dec15   0:00 uv run uvicorn reserve_automation.web.app:app --host 0.0.0.0 --port 8000 --reload
-ben      3245587  0.0  0.0   7012  2176 pts/5    S+   07:54   0:00 grep --color=auto uv run uvicorn
