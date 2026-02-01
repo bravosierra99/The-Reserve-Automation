@@ -6,14 +6,16 @@
 paths:
   vault: "/path/to/the-reserve"
 
-# Override LLM provider URLs with your local network IPs
-# (Only needed if LM Studio is on a different machine)
-# llm:
-#   providers:
-#     lm_studio_vision:
-#       base_url: "http://192.168.1.100:1234/v1"
-#     lm_studio_text:
-#       base_url: "http://192.168.1.100:1234/v1"
+# Override LLM provider settings
+# IMPORTANT: Update these to match YOUR loaded models in LM Studio
+llm:
+  providers:
+    lm_studio_vision:
+      base_url: "http://192.168.1.100:1234/v1"  # Your LM Studio IP
+      model: "qwen/qwen3-vl-8b"  # Your actual vision model (check LM Studio)
+    lm_studio_text:
+      base_url: "http://192.168.1.100:1234/v1"  # Your LM Studio IP
+      model: "qwen3-coder-30b-a3b-instruct"  # Your actual text model
 
 # Optional: Override extraction settings
 # extraction:

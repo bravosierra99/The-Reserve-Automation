@@ -93,6 +93,73 @@ See [DESIGN.md](DESIGN.md) for comprehensive technical documentation.
    reserve-automation config validate
    ```
 
+### Docker Deployment
+
+For server deployments (Proxmox, VPS, etc.):
+
+1. **Clone both repositories:**
+   ```bash
+   mkdir ~/reserve
+   cd ~/reserve
+   git clone https://github.com/bravosierra99/The-Reserve-Automation.git app
+   git clone https://github.com/bravosierra99/The-Reserve.git vault
+   cd vault && git checkout tastings-backup && cd ..
+   ```
+
+2. **Configure environment:**
+   ```bash
+   cd app
+   cp .env.example .env
+
+   # Edit .env and set:
+   nano .env
+   ```
+
+   Required `.env` settings:
+   ```bash
+   WEB_SECRET_KEY=<generate with: openssl rand -hex 32>
+   VAULT_HOST_PATH=/path/to/vault  # Absolute path to vault directory
+   LM_STUDIO_HOST=192.168.x.x      # IP of machine running LM Studio
+   LM_STUDIO_PORT=1234
+   ```
+
+3. **Configure LLM models:**
+   ```bash
+   cp config/user.yaml.example config/user.yaml
+   nano config/user.yaml
+   ```
+
+   Update with YOUR loaded models from LM Studio:
+   ```yaml
+   llm:
+     providers:
+       lm_studio_vision:
+         base_url: "http://192.168.x.x:1234/v1"
+         model: "qwen/qwen3-vl-8b"  # YOUR vision model
+       lm_studio_text:
+         base_url: "http://192.168.x.x:1234/v1"
+         model: "qwen3-coder-30b-a3b-instruct"  # YOUR text model
+   ```
+
+4. **Start the container:**
+   ```bash
+   docker compose up -d
+   ```
+
+5. **Verify:**
+   ```bash
+   # Check health
+   curl http://localhost:8000/api/v1/health
+
+   # Check logs
+   docker logs reserve-app
+   ```
+
+**Container Features:**
+- Auto-pulls vault from git on startup
+- Auto-commits and pushes bottle changes every 5 minutes
+- Runs on port 8000 (configurable via `WEB_PORT` in `.env`)
+
 ## Usage
 
 ### CLI Commands
