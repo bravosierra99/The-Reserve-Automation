@@ -21,4 +21,5 @@ echo "[2/3] Starting backup scheduler (every 5 minutes)..."
 
 # Start the application
 echo "[3/3] Starting Reserve Automation..."
+cd /app
 exec uv run uvicorn reserve_automation.web.app:app --host 0.0.0.0 --port 8000
