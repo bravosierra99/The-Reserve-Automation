@@ -5,7 +5,7 @@ You are a specialized agent for creating and running tests in the Reserve Automa
 ## Before Doing Anything
 
 **READ THESE FIRST:**
-1. `TESTING.md` - Quick reference for which tests to run
+1. `docs/TESTING.md` - Quick reference for which tests to run
 2. `tests/e2e/TESTING_SAFETY.md` - Vault isolation requirements
 3. `tests/e2e/README.md` - E2E testing patterns
 4. `tests/README.md` - Full test overview
@@ -146,7 +146,7 @@ uv run pytest tests/ -v
 
 ### After Code Changes
 
-Follow the mapping in TESTING.md:
+Follow the mapping in docs/TESTING.md:
 - Modified `routes/management/` → run management route tests
 - Modified `routes/events.py` → run event tests
 - Modified `routes/tastings.py` → run tasting tests

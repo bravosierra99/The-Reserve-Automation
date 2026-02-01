@@ -37,8 +37,6 @@ The Reserve Automation is a Python-based CLI tool and (future) web application f
 
 ## Architecture
 
-See [DESIGN.md](DESIGN.md) for comprehensive technical documentation.
-
 **Key Design Principles:**
 - **LLM Agnostic**: Swap between local (LM Studio, Ollama) and cloud (Anthropic, OpenAI) providers
 - **Config-Driven**: All behavior controlled via YAML files
@@ -434,7 +432,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."  # For cloud fallback
 
 ### Testing & Development Workflow
 
-**See [DEVELOPMENT.md](DEVELOPMENT.md) for complete development guidelines.**
+**See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for complete development guidelines.**
 
 **CRITICAL**: Always run tests when modifying code:
 
@@ -453,7 +451,7 @@ uv run pytest tests/ -v
 **Quick Testing Guide:**
 - Modified `routes/events.py` or `templates/event_*.html`? → Run `./tests/events/run_all_tests.sh`
 - Modified extraction logic? → Run extraction tests
-- See [TESTING.md](TESTING.md) for quick reference
+- See [docs/TESTING.md](docs/TESTING.md) for quick reference
 
 ### Project Structure
 
@@ -473,9 +471,12 @@ The-Reserve-Automation/
 │   └── test_bottle_extraction_web.py
 ├── config/                 # Configuration files
 ├── templates/              # Jinja2 templates
-├── DESIGN.md              # Technical design document
-├── DEVELOPMENT.md         # Development guidelines & testing protocol
-└── TESTING.md             # Quick testing reference
+├── docs/                   # Documentation
+│   ├── DEPLOYMENT.md      # Docker/Proxmox deployment guide
+│   ├── DEVELOPMENT.md     # Development guidelines & testing protocol
+│   ├── TESTING.md         # Quick testing reference
+│   └── CLAUDE_HANDOFF.md  # Proxmox handoff guide
+└── CLAUDE.md               # Claude Code instructions
 ```
 
 ### Running Tests
@@ -554,7 +555,7 @@ mypy src/
 - [x] Metadata verification with web sources
 - [x] Obsidian Label field integration
 
-**Phase 3.0+:** See [DESIGN.md](DESIGN.md) for full roadmap
+**Phase 3.0+ (Future):**
 - Web interface for uploads
 - Mobile app integration
 - Multi-user tasting sessions
