@@ -237,12 +237,17 @@ class LMStudioProvider(BaseLLMProvider):
                 tool_calls = message.get("tool_calls", [])
 
                 if tool_calls and finish_reason == "tool_calls":
-                    logger.info(f"LLM calling {len(tool_calls)} tool(s)")
+                    # Log what tools are being called with what arguments
+                    tool_summary = []
+                    for tc in tool_calls:
+                        args_preview = json.loads(tc["function"]["arguments"])
+                        tool_summary.append(f"{tc['function']['name']}({list(args_preview.values())[0] if args_preview else ''})")
+                    logger.info(f"LLM calling {len(tool_calls)} tool(s): {', '.join(tool_summary)}")
 
                     # Add assistant message with tool calls to conversation
                     payload["messages"].append({
                         "role": "assistant",
-                        "content": message.get("content", ""),
+                        "content": message.get("content") or "",  # Ensure it's always a string, not None
                         "tool_calls": tool_calls
                     })
 
@@ -253,6 +258,13 @@ class LMStudioProvider(BaseLLMProvider):
 
                         # Execute tool
                         tool_result = self.tool_executor.execute(tool_name, tool_args)
+
+                        # Log tool result for debugging
+                        if "error" in tool_result:
+                            logger.error(f"Tool {tool_name} returned error: {tool_result['error']}")
+                        else:
+                            result_preview = str(tool_result)[:200] + "..." if len(str(tool_result)) > 200 else str(tool_result)
+                            logger.debug(f"Tool {tool_name} result preview: {result_preview}")
 
                         # Add tool result to conversation
                         payload["messages"].append({

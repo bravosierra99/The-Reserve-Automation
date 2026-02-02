@@ -428,12 +428,14 @@ class LLMResponseParser:
             Model instance or None if creation fails
         """
         try:
-            # Apply required defaults for missing fields
+            # Apply required defaults for missing or empty fields
             if required_defaults:
                 for field, default_value in required_defaults.items():
-                    if field not in data or data[field] is None:
+                    # Check for missing, None, or empty string (but not other falsy values like 0 or False)
+                    value = data.get(field)
+                    if field not in data or value is None or (isinstance(value, str) and value == ""):
                         data[field] = default_value
-                        logger.debug(f"[{context}] Using default for '{field}': {default_value}")
+                        logger.info(f"[{context}] Using default for '{field}': {default_value}")
 
             # Try to create model
             instance = model_class(**data)
@@ -465,6 +467,17 @@ class LLMResponseParser:
                             field_name=field_name
                         )
                         logger.info(f"[{context}] Truncated '{field_name}' to {max_len} chars")
+
+                    # String too short (empty) - apply defaults
+                    elif "string_too_short" in error_type:
+                        if required_defaults and field_name in required_defaults:
+                            sanitized_data[field_name] = required_defaults[field_name]
+                            logger.info(f"[{context}] Applied default for empty '{field_name}': {required_defaults[field_name]}")
+                        else:
+                            # Remove field to trigger model's own default
+                            if field_name in sanitized_data:
+                                del sanitized_data[field_name]
+                                logger.info(f"[{context}] Removed empty field '{field_name}'")
 
                     # Invalid type - try to convert
                     elif "type_error" in error_type:

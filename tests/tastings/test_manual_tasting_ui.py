@@ -159,12 +159,8 @@ def test_wine_whiskey_tasting_notes_fields(client):
     assert 'x-model="finishNotesInput"' in content, \
         "Should have finishNotesInput model"
 
-    # Verify JavaScript functions exist
-    assert "addAppearanceNote()" in content, "Should have addAppearanceNote function"
-    assert "addAromaNote()" in content, "Should have addAromaNote function"
-    assert "addTasteNote()" in content, "Should have addTasteNote function"
-    assert "addAftertasteNote()" in content, "Should have addAftertasteNote function"
+    # Verify tasting form mixin is loaded (contains the note functions)
+    assert "tasting-form-mixin.js" in content, "Should load tasting-form-mixin.js"
 
-    assert "addNoseNote()" in content, "Should have addNoseNote function"
-    assert "addPalateNote()" in content, "Should have addPalateNote function"
-    assert "addFinishNote()" in content, "Should have addFinishNote function"
+    # Verify the template uses parseNotes() to convert input text to note arrays
+    assert "parseNotes" in content, "Should use parseNotes function for converting text to arrays"

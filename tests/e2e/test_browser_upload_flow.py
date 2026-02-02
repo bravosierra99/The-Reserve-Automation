@@ -656,9 +656,9 @@ class TestBrowserManagementFlow:
             expect(page).to_have_title("Management - The Reserve")
 
             # Verify mode selection exists
-            expect(page.locator("h2:has-text('Metadata Management')")).to_be_visible()
-            # Use the button in mode selection (first occurrence)
-            expect(page.locator("button:has-text('Bottle Grid View')").first).to_be_visible()
+            expect(page.locator("h2:has-text('Collection Management')")).to_be_visible()
+            # Verify Bottle Grid View option is visible (it's inside a button)
+            expect(page.locator("h3:has-text('Bottle Grid View')").first).to_be_visible()
 
             browser.close()
 

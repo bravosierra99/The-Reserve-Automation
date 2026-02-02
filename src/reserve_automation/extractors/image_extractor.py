@@ -133,11 +133,11 @@ Return only the JSON, nothing else."""
             )
 
             if extracted_data:
-                logger.debug("=" * 80)
-                logger.debug("PARSED EXTRACTION DATA:")
+                logger.info("=" * 80)
+                logger.info("PARSED EXTRACTION DATA:")
                 import json
-                logger.debug(json.dumps(extracted_data, indent=2))
-                logger.debug("=" * 80)
+                logger.info(json.dumps(extracted_data, indent=2))
+                logger.info("=" * 80)
 
             if not extracted_data:
                 return None, {"error": "Failed to parse extraction response"}

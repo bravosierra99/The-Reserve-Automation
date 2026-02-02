@@ -32,8 +32,8 @@ class TestManualTastingWizard:
             # Verify page title
             expect(page).to_have_title("Manual Tasting - The Reserve")
 
-            # Verify step 1 is visible (Taster Info)
-            expect(page.locator("text=Step 1: Taster Info")).to_be_visible()
+            # Verify step 1 header is visible
+            expect(page.locator("h2:has-text('Taster Information')")).to_be_visible()
 
             # Verify form fields exist
             expect(page.locator("input[placeholder*='your name']")).to_be_visible()
@@ -67,8 +67,8 @@ class TestManualTastingWizard:
             # Click Next to go to Step 2
             next_button.click()
 
-            # Verify Step 2 is now visible
-            expect(page.locator("text=Step 2: Select Bottle")).to_be_visible(timeout=5000)
+            # Verify Step 2 header is now visible
+            expect(page.locator("h2:has-text('Select Bottle')")).to_be_visible(timeout=5000)
 
             browser.close()
 
@@ -90,7 +90,7 @@ class TestManualTastingWizard:
             page.click("button:has-text('Next: Select Bottle')")
 
             # Wait for Step 2
-            page.wait_for_selector("text=Step 2: Select Bottle", timeout=5000)
+            page.wait_for_selector("h2:has-text('Select Bottle')", timeout=5000)
 
             # Click Search Vault button
             page.click("button:has-text('Search for Bottle')")
@@ -141,7 +141,7 @@ class TestManualTastingWizard:
             page.click("button:has-text('Next: Select Bottle')")
 
             # === STEP 2: Select Bottle ===
-            page.wait_for_selector("text=Step 2: Select Bottle", timeout=5000)
+            page.wait_for_selector("h2:has-text('Select Bottle')", timeout=5000)
 
             # Open search modal and find Weller
             page.click("button:has-text('Search for Bottle')")
@@ -219,7 +219,7 @@ class TestManualTastingWizard:
             next_button.click()
 
             # === STEP 3: Tasting Form ===
-            page.wait_for_selector("text=Step 3: Tasting Details", timeout=5000)
+            page.wait_for_selector("h2:has-text('Tasting Details')", timeout=5000)
 
             # Verify score sliders exist for whiskey
             expect(page.locator("text=Nose")).to_be_visible()
@@ -398,7 +398,7 @@ class TestTastingFormValidation:
             page.click("button:has-text('Next: Select Bottle')")
 
             # Wait for step 2
-            page.wait_for_selector("text=Step 2: Select Bottle", timeout=5000)
+            page.wait_for_selector("h2:has-text('Select Bottle')", timeout=5000)
 
             # Don't select a bottle - just check that Next is disabled (step 2 button)
             next_button = page.locator("button:has-text('Next: Tasting Form')")

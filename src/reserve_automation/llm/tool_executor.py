@@ -1,13 +1,11 @@
 """Execute LLM tool calls locally."""
 
 import json
-import logging
 from typing import Any
 
 import httpx
 from ddgs import DDGS
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class ToolExecutor:
