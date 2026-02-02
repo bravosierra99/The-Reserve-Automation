@@ -58,6 +58,7 @@ COPY templates/ ./templates/
 
 # Copy startup scripts
 COPY scripts/ ./scripts/
+RUN chmod +x /app/scripts/*.sh
 
 # Create temp directory for uploads and logs
 RUN mkdir -p /tmp/reserve_uploads /app/logs
