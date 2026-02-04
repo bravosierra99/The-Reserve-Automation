@@ -228,27 +228,37 @@ class TestManagementBottleUpdate:
 
     @pytest.mark.asyncio
     async def test_verify_bottle_metadata(self, client_with_vault):
-        """POST /api/v1/management/bottles/{id}/verify should verify bottle.
+        """POST /api/v1/management/bottles/{id}/verify starts async task,
+        GET /api/v1/management/tasks/{task_id}/status returns the result.
 
-        This endpoint uses ObsidianGenerator which requires correct template paths.
+        Starlette's TestClient runs BackgroundTasks synchronously, so the
+        task is complete by the time we poll.
         """
         # Get a bottle
         list_response = client_with_vault.get("/api/v1/management/bottles")
         bottles = list_response.json()["bottles"]
         stagg = next((b for b in bottles if "STAGG" in b.get("name", "")), None)
 
-        # Verify the bottle (index 0 for simplicity)
-        verify_data = {"bottle": stagg}
-
+        # Start async verification
         response = client_with_vault.post(
             "/api/v1/management/bottles/0/verify",
-            json=verify_data
+            json={"bottle": stagg}
         )
-
-        # This would fail with template path errors
         assert response.status_code == 200, f"Verify failed: {response.json()}"
 
-        result = response.json()
+        start_result = response.json()
+        assert "task_id" in start_result
+        assert start_result["status"] == "queued"
+
+        # Poll for result (task already completed — TestClient runs bg tasks sync)
+        task_id = start_result["task_id"]
+        status_response = client_with_vault.get(
+            f"/api/v1/management/tasks/{task_id}/status"
+        )
+        assert status_response.status_code == 200, f"Status poll failed: {status_response.json()}"
+
+        result = status_response.json()
+        assert result["status"] == "complete"
         assert "original" in result
         assert "updated" in result
         assert "changes" in result

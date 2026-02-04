@@ -43,6 +43,8 @@ window.labelReviewModule = function() {
                 // Grid metadata editing
                 gridEditedFields: {},
                 gridVerifying: false,
+                gridVerifyingProgress: '',
+                gridVerifyingTaskId: null,
                 gridSaving: false,
                 gridSaveSuccess: false,
                 gridSearchResult: null,
@@ -183,6 +185,7 @@ window.labelReviewModule = function() {
             if (!this.selectedLabelBottle) return;
 
             this.gridVerifying = true;
+            this.gridVerifyingProgress = 'Starting verification...';
             this.gridSaveSuccess = false;
             this.gridSearchResult = null;
             this.gridApprovedChanges = {};
@@ -202,6 +205,9 @@ window.labelReviewModule = function() {
                     }
                 }
 
+                console.log('Starting async verification for bottle:', currentBottle);
+
+                // Start the async verification task
                 const response = await fetch(`/api/v1/management/bottles/${this.selectedLabelBottle._index || 0}/verify`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -210,10 +216,19 @@ window.labelReviewModule = function() {
 
                 if (!response.ok) {
                     const errorData = await response.json();
-                    throw new Error(errorData.detail || 'Search failed');
+                    throw new Error(errorData.detail || 'Failed to start verification');
                 }
 
-                const data = await response.json();
+                const startResult = await response.json();
+
+                // Get task ID
+                this.gridVerifyingTaskId = startResult.task_id;
+                this.gridVerifyingProgress = 'Searching web for bottle information...';
+                console.log('Verification task started:', this.gridVerifyingTaskId);
+
+                // Poll for task completion
+                const data = await this.pollTaskStatus(this.gridVerifyingTaskId);
+
                 this.gridSearchResult = data;
 
                 // Initialize all changes as approved by default
@@ -222,12 +237,79 @@ window.labelReviewModule = function() {
                         this.gridApprovedChanges[field] = true;
                     }
                 }
+
+                this.gridVerifyingProgress = 'Complete!';
+                console.log('Verification completed');
+
             } catch (error) {
                 console.error('Search failed:', error);
                 alert('Search failed: ' + error.message);
             } finally {
                 this.gridVerifying = false;
+                this.gridVerifyingProgress = '';
+                this.gridVerifyingTaskId = null;
             }
+        },
+
+        async pollTaskStatus(taskId) {
+            const maxAttempts = 60;
+            const interval = 2000;
+            let attempts = 0;
+            let elapsedSeconds = 0;
+
+            while (attempts < maxAttempts) {
+                try {
+                    const response = await fetch(`/api/v1/management/tasks/${taskId}/status`);
+
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            throw new Error('Task not found');
+                        }
+                        throw new Error(`Failed to get task status: ${response.statusText}`);
+                    }
+
+                    const result = await response.json();
+
+                    // Update progress message
+                    if (result.status === 'queued') {
+                        this.gridVerifyingProgress = 'Queued for verification...';
+                    } else if (result.status === 'processing') {
+                        this.gridVerifyingProgress = `Searching web for bottle information... (${elapsedSeconds}s)`;
+                    }
+
+                    if (elapsedSeconds >= 30) {
+                        this.gridVerifyingProgress = `Still searching... (${elapsedSeconds}s) - This may take a while`;
+                    }
+
+                    // Check if task is complete
+                    if (result.status === 'complete') {
+                        return result;
+                    }
+
+                    // Check if task failed
+                    if (result.status === 'failed') {
+                        throw new Error(result.error || 'Task failed');
+                    }
+
+                    // Wait before next poll
+                    await new Promise(resolve => setTimeout(resolve, interval));
+                    attempts++;
+                    elapsedSeconds += interval / 1000;
+
+                } catch (error) {
+                    // On network error, retry a few times
+                    if (attempts < 3) {
+                        console.warn('Polling error, retrying...', error);
+                        await new Promise(resolve => setTimeout(resolve, interval));
+                        attempts++;
+                        continue;
+                    }
+                    throw error;
+                }
+            }
+
+            // Timeout
+            throw new Error('Verification timed out - please try again');
         },
 
         applySelectedChanges() {

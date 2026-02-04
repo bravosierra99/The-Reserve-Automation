@@ -22,27 +22,10 @@ function tastingFormMixin() {
         tasteNotesInput: '',       // Wine (maps to palate_notes)
         aftertasteNotesInput: '',  // Wine (maps to finish_notes)
 
-        // Computed scores - these are getters that calculate from tasting data
-        get computedWineScore() {
-            const t = this.tasting || {};
-            return (t.wine_appearance || 0) +
-                   (t.wine_aroma || 0) +
-                   (t.wine_taste || 0) +
-                   (t.wine_aftertaste || 0) +
-                   (t.wine_overall || 0);
-        },
-
-        get computed100ptScore() {
-            return 50 + (this.computedWineScore / 20) * 50;
-        },
-
-        get computedWhiskeyScore() {
-            const t = this.tasting || {};
-            return (t.whiskey_nose || 0) +
-                   (t.whiskey_palate || 0) +
-                   (t.whiskey_finish || 0) +
-                   (t.whiskey_overall || 0);
-        },
+        // NOTE: computedWineScore, computed100ptScore, and computedWhiskeyScore
+        // are NOT defined here. Getters are invoked and flattened by the spread
+        // operator when this mixin is merged into a component. Define them directly
+        // in each component's object literal (alongside the `tasting` getter).
 
         // Ensure tasting object has required note arrays
         ensureNoteArrays() {

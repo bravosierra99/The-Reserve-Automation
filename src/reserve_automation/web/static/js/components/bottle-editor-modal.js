@@ -42,6 +42,8 @@ window.bottleEditorModal = function() {
         // Enrichment/verification
         searchResult: null,
         verifying: false,
+        verifyingProgress: '',  // Progress message during verification
+        verifyingTaskId: null,  // Current verification task ID
         approvedChanges: {},
         hasChanges: false,  // Simple boolean for x-show reactivity
 
@@ -561,10 +563,11 @@ window.bottleEditorModal = function() {
         },
 
         /**
-         * Enrich metadata via web search
+         * Enrich metadata via web search (async with polling)
          */
         async enrichMetadata() {
             this.verifying = true;
+            this.verifyingProgress = 'Starting verification...';
             this.searchResult = null;
             this.hasChanges = false;
 
@@ -580,19 +583,28 @@ window.bottleEditorModal = function() {
                 if (cleanBottle.abv === '') cleanBottle.abv = null;
                 if (cleanBottle.proof === '') cleanBottle.proof = null;
 
-                console.log('Enriching metadata for bottle:', cleanBottle);
+                console.log('Starting async enrichment for bottle:', cleanBottle);
 
+                // Start the async verification task
                 const response = await fetch('/api/v1/management/bottles/verify', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ bottle: cleanBottle })
                 });
 
-                const result = await response.json();
+                const startResult = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(result.error || 'Search failed');
+                    throw new Error(startResult.error || 'Failed to start verification');
                 }
+
+                // Get task ID
+                this.verifyingTaskId = startResult.task_id;
+                this.verifyingProgress = 'Searching web for bottle information...';
+                console.log('Verification task started:', this.verifyingTaskId);
+
+                // Poll for task completion
+                const result = await this.pollTaskStatus(this.verifyingTaskId);
 
                 // Check if enrichment actually succeeded
                 if (result.metadata && result.metadata.verified === false) {
@@ -605,13 +617,87 @@ window.bottleEditorModal = function() {
                 // Set hasChanges boolean for reactive x-show
                 this.hasChanges = result.changes && Object.keys(result.changes).length > 0;
 
+                this.verifyingProgress = 'Complete!';
+                console.log('Enrichment completed with', Object.keys(result.changes || {}).length, 'changes');
+
             } catch (error) {
                 console.error('Enrichment failed:', error);
                 console.error('Error details:', error);
                 this.showToast('✗ Search failed: ' + error.message, 'error');
             } finally {
                 this.verifying = false;
+                this.verifyingProgress = '';
+                this.verifyingTaskId = null;
             }
+        },
+
+        /**
+         * Poll a task status endpoint until completion or timeout.
+         *
+         * @param {string} taskId - The task ID to poll
+         * @returns {Promise<object>} - Resolves with final task result or rejects on timeout/error
+         */
+        async pollTaskStatus(taskId) {
+            const maxAttempts = 60;
+            const interval = 2000;
+            let attempts = 0;
+            let elapsedSeconds = 0;
+
+            while (attempts < maxAttempts) {
+                try {
+                    const response = await fetch(`/api/v1/management/tasks/${taskId}/status`);
+
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            throw new Error('Task not found');
+                        }
+                        throw new Error(`Failed to get task status: ${response.statusText}`);
+                    }
+
+                    const result = await response.json();
+                    console.log('Task status:', result.status);
+
+                    // Update progress message based on status
+                    if (result.status === 'queued') {
+                        this.verifyingProgress = 'Queued for verification...';
+                    } else if (result.status === 'processing') {
+                        this.verifyingProgress = `Searching web for bottle information... (${elapsedSeconds}s)`;
+                    }
+
+                    // Show "taking longer than expected" after 30 seconds
+                    if (elapsedSeconds >= 30) {
+                        this.verifyingProgress = `Still searching... (${elapsedSeconds}s) - This may take a while`;
+                    }
+
+                    // Check if task is complete
+                    if (result.status === 'complete') {
+                        return result;
+                    }
+
+                    // Check if task failed
+                    if (result.status === 'failed') {
+                        throw new Error(result.error || 'Task failed');
+                    }
+
+                    // Wait before next poll
+                    await new Promise(resolve => setTimeout(resolve, interval));
+                    attempts++;
+                    elapsedSeconds += interval / 1000;
+
+                } catch (error) {
+                    // On network error, retry a few times
+                    if (attempts < 3) {
+                        console.warn('Polling error, retrying...', error);
+                        await new Promise(resolve => setTimeout(resolve, interval));
+                        attempts++;
+                        continue;
+                    }
+                    throw error;
+                }
+            }
+
+            // Timeout
+            throw new Error('Verification timed out - please try again');
         },
 
         /**

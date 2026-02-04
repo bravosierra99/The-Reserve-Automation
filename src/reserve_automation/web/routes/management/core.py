@@ -25,6 +25,7 @@ router = APIRouter()
 # In production, this should be Redis or a database
 verification_results: Dict[str, dict] = {}
 batch_status: Dict[str, dict] = {}
+task_results: Dict[str, dict] = {}  # Single task results (key: task_id)
 
 
 def clean_bottle_data(bottle_data: dict) -> dict:
@@ -259,13 +260,39 @@ async def get_bottle_tastings_summary(request: Request):
                         aws_match = re.search(r'^AWS Score::?\s*(\d+(?:\.\d+)?)', content, re.MULTILINE)
                         if aws_match:
                             # Convert AWS Score (0-20) to 100pt scale
-                            scores.append(float(aws_match.group(1)) * 5)
+                            scores.append(round(50 + (float(aws_match.group(1)) / 20) * 50, 1))
+                        else:
+                            # Backstop: calculate from component scores if Obsidian hasn't run
+                            # Appearance: /3, Aroma: /6, Taste: /6, Aftertaste: /3, Overall: /2
+                            wine_components = ['Appearance', 'Aroma', 'Taste', 'Aftertaste', 'Overall']
+                            aws_sum = 0.0
+                            found_any = False
+                            for comp in wine_components:
+                                comp_match = re.search(rf'^{comp}::?\s*(\d+(?:\.\d+)?)', content, re.MULTILINE)
+                                if comp_match:
+                                    aws_sum += float(comp_match.group(1))
+                                    found_any = True
+                            if found_any:
+                                scores.append(round(50 + (aws_sum / 20) * 50, 1))
                 else:
                     # Look for TotalScore (whiskey 10-point scale)
                     # YAML frontmatter uses single colon, Dataview inline uses double colons
                     total_match = re.search(r'^TotalScore::?\s*(\d+(?:\.\d+)?)', content, re.MULTILINE)
                     if total_match:
                         scores.append(float(total_match.group(1)))
+                    else:
+                        # Backstop: calculate from component scores if Obsidian hasn't run
+                        # Nose: /3, Palate: /3, Finish: /3, Overall: /1
+                        whiskey_components = ['Nose', 'Palate', 'Finish', 'Overall']
+                        total_sum = 0.0
+                        found_any = False
+                        for comp in whiskey_components:
+                            comp_match = re.search(rf'^{comp}::?\s*(\d+(?:\.\d+)?)', content, re.MULTILINE)
+                            if comp_match:
+                                total_sum += float(comp_match.group(1))
+                                found_any = True
+                        if found_any:
+                            scores.append(round(total_sum, 2))
 
             except Exception as e:
                 logger.warning(f"Failed to parse tasting file {tasting_file.name}: {e}")
@@ -386,6 +413,14 @@ async def get_bottle_tastings_list(request: Request):
                     tasting_data["aws_score"] = _parse_float(frontmatter.get("AWS Score"))
                     tasting_data["max_score"] = 100
 
+                    # Backstop: calculate AWS Score and 100pt Scale from components if Obsidian hasn't run
+                    if tasting_data["aws_score"] is None:
+                        component_sum = sum(v for v in tasting_data["scores"].values() if v is not None)
+                        if component_sum > 0:
+                            tasting_data["aws_score"] = round(component_sum, 1)
+                    if tasting_data["total_score"] is None and tasting_data["aws_score"] is not None:
+                        tasting_data["total_score"] = round(50 + (tasting_data["aws_score"] / 20) * 50, 1)
+
                     # Parse notes from body
                     tasting_data["notes"] = _parse_wine_notes(body_content)
                 else:
@@ -400,6 +435,12 @@ async def get_bottle_tastings_list(request: Request):
                     tasting_data["days_from_crack"] = _parse_int(frontmatter.get("DaysFromCrack"))
                     tasting_data["fill_level"] = _parse_int(frontmatter.get("FillLevel"))
                     tasting_data["max_score"] = 10
+
+                    # Backstop: calculate TotalScore from components if Obsidian hasn't run
+                    if tasting_data["total_score"] is None:
+                        component_sum = sum(v for v in tasting_data["scores"].values() if v is not None)
+                        if component_sum > 0:
+                            tasting_data["total_score"] = round(component_sum, 2)
 
                     # Parse notes from body
                     tasting_data["notes"] = _parse_whiskey_notes(body_content)
@@ -525,19 +566,23 @@ def _extract_hashtags(text: str) -> list[str]:
 
 
 @router.post("/api/v1/management/bottles/verify")
-async def verify_bottle(request: Request):
+async def verify_bottle(request: Request, background_tasks: BackgroundTasks):
     """
-    Verify and enrich metadata for a bottle (stateless).
+    Verify and enrich metadata for a bottle (async with polling).
 
     Used by the unified bottle editor modal for both upload and management workflows.
+    Returns immediately with a task_id - client should poll /api/v1/management/tasks/{task_id}/status
 
     Args:
         request: Request containing the bottle data
+        background_tasks: FastAPI background tasks
 
     Returns:
-        dict: Contains original bottle, updated bottle, and changes made
+        dict: Contains task_id and status
     """
     from ...app import core_config
+    import uuid
+    import time
 
     try:
         # Get the bottle data from request body
@@ -550,48 +595,54 @@ async def verify_bottle(request: Request):
         # Clean empty strings before validation
         cleaned_bottle_data = clean_bottle_data(bottle_data)
 
-        # Convert to BottleMetadata
-        from ....core.models import BottleMetadata
-        bottle = BottleMetadata(**cleaned_bottle_data)
+        # Generate task ID
+        task_id = str(uuid.uuid4())
 
-        # Initialize extraction service
-        extraction_service = ExtractionService(core_config)
+        # Initialize task status
+        task_results[task_id] = {
+            "task_id": task_id,
+            "status": "queued",
+            "created_at": time.time()
+        }
 
-        # Verify the bottle metadata (this will check and correct all fields)
-        updated_bottle, metadata = await extraction_service.enrich_bottle(bottle)
-
-        changes = metadata.get("changes", {})
-
-        logger.info(
-            f"Verified bottle: {bottle.producer} - {bottle.name}, "
-            f"{len(changes)} changes found"
+        # Queue background verification
+        background_tasks.add_task(
+            verify_single_bottle_background,
+            task_id,
+            cleaned_bottle_data,
+            core_config
         )
 
+        logger.info(f"Started async verification task {task_id} for bottle")
+
         return {
-            "original": bottle.model_dump(mode='json'),
-            "updated": updated_bottle.model_dump(mode='json'),
-            "changes": changes,
-            "metadata": metadata
+            "task_id": task_id,
+            "status": "queued"
         }
 
     except Exception as e:
-        logger.error(f"Failed to verify bottle: {e}", exc_info=True)
+        logger.error(f"Failed to queue verification task: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/api/v1/management/bottles/{bottle_index}/verify")
-async def verify_bottle_metadata(bottle_index: int, request: Request):
+async def verify_bottle_metadata(bottle_index: int, request: Request, background_tasks: BackgroundTasks):
     """
-    Verify and get updated metadata for a specific bottle.
+    Verify and get updated metadata for a specific bottle (async with polling).
+
+    Returns immediately with a task_id - client should poll /api/v1/management/tasks/{task_id}/status
 
     Args:
         bottle_index: Index of bottle in the vault bottles list
         request: Request containing the bottle data
+        background_tasks: FastAPI background tasks
 
     Returns:
-        dict: Contains original bottle, updated bottle, and changes made
+        dict: Contains task_id and status
     """
     from ...app import core_config
+    import uuid
+    import time
 
     try:
         # Get the bottle data from request body
@@ -601,32 +652,38 @@ async def verify_bottle_metadata(bottle_index: int, request: Request):
         if not bottle_data:
             raise HTTPException(status_code=400, detail="Bottle data not provided")
 
-        # Convert to BottleMetadata
-        from ....core.models import BottleMetadata
-        bottle = BottleMetadata(**bottle_data)
+        # Clean empty strings before validation
+        cleaned_bottle_data = clean_bottle_data(bottle_data)
 
-        # Initialize extraction service
-        extraction_service = ExtractionService(core_config)
+        # Generate task ID
+        task_id = str(uuid.uuid4())
 
-        # Verify the bottle metadata (this will check and correct all fields)
-        updated_bottle, metadata = await extraction_service.enrich_bottle(bottle)
+        # Initialize task status
+        task_results[task_id] = {
+            "task_id": task_id,
+            "status": "queued",
+            "bottle_index": bottle_index,
+            "created_at": time.time()
+        }
 
-        changes = metadata.get("changes", {})
-
-        logger.info(
-            f"Verified bottle {bottle_index}: {bottle.producer} - {bottle.name}, "
-            f"{len(changes)} changes found"
+        # Queue background verification
+        background_tasks.add_task(
+            verify_single_bottle_background,
+            task_id,
+            cleaned_bottle_data,
+            core_config
         )
 
+        logger.info(f"Started async verification task {task_id} for bottle {bottle_index}")
+
         return {
-            "original": bottle.model_dump(mode='json'),
-            "updated": updated_bottle.model_dump(mode='json'),
-            "changes": changes,
-            "metadata": metadata
+            "task_id": task_id,
+            "status": "queued",
+            "bottle_index": bottle_index
         }
 
     except Exception as e:
-        logger.error(f"Failed to verify bottle {bottle_index}: {e}", exc_info=True)
+        logger.error(f"Failed to queue verification task for bottle {bottle_index}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -745,6 +802,86 @@ async def verify_bottle_background(batch_id: str, bottle_index: int, bottle_data
             batch_status[batch_id]["errors"] += 1
 
 
+async def verify_single_bottle_background(task_id: str, bottle_data: dict, core_config):
+    """
+    Background task to verify a single bottle's metadata (for single-bottle operations).
+
+    Args:
+        task_id: Unique task ID
+        bottle_data: Bottle metadata dict
+        core_config: Core configuration
+    """
+    import time
+
+    try:
+        from ....core.models import BottleMetadata
+
+        # Update status to processing
+        task_results[task_id]["status"] = "processing"
+        task_results[task_id]["started_at"] = time.time()
+
+        bottle = BottleMetadata(**bottle_data)
+        extraction_service = ExtractionService(core_config)
+
+        # Verify the bottle
+        updated_bottle, metadata = await extraction_service.enrich_bottle(bottle)
+
+        changes = metadata.get("changes", {})
+
+        # Store result
+        task_results[task_id] = {
+            "task_id": task_id,
+            "original": bottle_data,
+            "updated": updated_bottle.model_dump(mode='json'),
+            "changes": changes,
+            "metadata": metadata,
+            "status": "complete",
+            "has_changes": len(changes) > 0,
+            "completed_at": time.time()
+        }
+
+        logger.info(f"Task {task_id}: Verified bottle - {len(changes)} changes found")
+
+    except Exception as e:
+        logger.error(f"Task {task_id}: Failed to verify bottle: {e}", exc_info=True)
+
+        # Store error
+        task_results[task_id] = {
+            "task_id": task_id,
+            "original": bottle_data,
+            "status": "failed",
+            "error": str(e),
+            "completed_at": time.time()
+        }
+
+
+def cleanup_expired_tasks(ttl_seconds: int = 3600):
+    """
+    Clean up expired task results older than TTL.
+
+    Args:
+        ttl_seconds: Time-to-live in seconds (default: 1 hour)
+    """
+    import time
+
+    current_time = time.time()
+    expired_tasks = []
+
+    for task_id, task_data in task_results.items():
+        # Check if task has completed_at timestamp
+        completed_at = task_data.get("completed_at")
+        if completed_at and current_time - completed_at > ttl_seconds:
+            expired_tasks.append(task_id)
+
+    # Remove expired tasks
+    for task_id in expired_tasks:
+        del task_results[task_id]
+        logger.debug(f"Cleaned up expired task {task_id}")
+
+    if expired_tasks:
+        logger.info(f"Cleaned up {len(expired_tasks)} expired tasks")
+
+
 @router.post("/api/v1/management/bottles/batch-verify")
 async def start_batch_verification(background_tasks: BackgroundTasks):
     """
@@ -832,6 +969,37 @@ async def get_batch_status(batch_id: str):
         "status": status,
         "results": results
     }
+
+
+@router.get("/api/v1/management/tasks/{task_id}/status")
+async def get_task_status(task_id: str):
+    """
+    Get status of a single verification task.
+
+    Args:
+        task_id: ID of the task
+
+    Returns:
+        dict: Task status and result (if completed)
+    """
+    import time
+
+    # Cleanup expired tasks (run on every status check)
+    cleanup_expired_tasks()
+
+    if task_id not in task_results:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task = task_results[task_id]
+
+    # Check for timeout (2 minutes)
+    created_at = task.get("created_at", time.time())
+    if time.time() - created_at > 120 and task["status"] not in ["complete", "failed"]:
+        task["status"] = "failed"
+        task["error"] = "Task timed out after 2 minutes"
+        logger.warning(f"Task {task_id} timed out")
+
+    return task
 
 
 def find_existing_bottle_file(vault_path: Path, bottle: BottleMetadata) -> Optional[Path]:

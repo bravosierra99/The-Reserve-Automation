@@ -67,7 +67,7 @@
                     <!-- Verifying State -->
                     <div x-show="bottleEditor.verifying" class="text-center py-8">
                         <div class="animate-spin rounded-full h-12 w-12 border-b-4 border-purple-600 mx-auto mb-4"></div>
-                        <p class="text-gray-600">Searching the web for metadata updates...</p>
+                        <p class="text-gray-600" x-text="bottleEditor.verifyingProgress || 'Searching the web for metadata updates...'"></p>
                     </div>
 
                     <!-- Search Results -->

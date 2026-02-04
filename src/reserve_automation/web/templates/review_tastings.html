@@ -434,6 +434,27 @@ function tastingReview() {
             return this.session?.template_type === 'aws_wine';
         },
 
+        // Computed scores - must be defined here, not in the mixin,
+        // because spread invokes getters and stores static values.
+        get computedWineScore() {
+            const t = this.tasting || {};
+            return (t.wine_appearance || 0) +
+                   (t.wine_aroma || 0) +
+                   (t.wine_taste || 0) +
+                   (t.wine_aftertaste || 0) +
+                   (t.wine_overall || 0);
+        },
+        get computed100ptScore() {
+            return 50 + (this.computedWineScore / 20) * 50;
+        },
+        get computedWhiskeyScore() {
+            const t = this.tasting || {};
+            return (t.whiskey_nose || 0) +
+                   (t.whiskey_palate || 0) +
+                   (t.whiskey_finish || 0) +
+                   (t.whiskey_overall || 0);
+        },
+
         // Called by shared component when tasting data changes
         onTastingChange() {
             this.saveTastingData();

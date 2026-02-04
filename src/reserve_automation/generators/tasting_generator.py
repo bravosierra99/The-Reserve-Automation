@@ -112,11 +112,22 @@ class TastingGenerator:
                 "appearance_notes": tasting.appearance_notes or [],
             })
         else:  # whiskey
+            # Calculate TotalScore (sum of all component scores, max 10 points)
+            # Nose: /3, Palate: /3, Finish: /3, Overall: /1
+            total_score = round(
+                (tasting.whiskey_nose or 0) +
+                (tasting.whiskey_palate or 0) +
+                (tasting.whiskey_finish or 0) +
+                (tasting.whiskey_overall or 0),
+                2
+            )
+
             context.update({
                 "whiskey_nose": tasting.whiskey_nose,
                 "whiskey_palate": tasting.whiskey_palate,
                 "whiskey_finish": tasting.whiskey_finish,
                 "whiskey_overall": tasting.whiskey_overall,
+                "total_score": total_score,
                 "days_from_crack": tasting.days_from_crack,
                 "fill_level": tasting.fill_level,
             })
