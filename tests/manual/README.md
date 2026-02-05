@@ -183,6 +183,43 @@ participants_data = [
 ]
 ```
 
+---
+
+### `bench_models.py`
+
+Benchmarks LM Studio models head-to-head against the wine-manifest extraction
+pipeline.  Each model is loaded in isolation (all others evicted first), so the
+comparison is fair regardless of how many models you have installed.
+
+**Usage:**
+```bash
+# List available models (no LM Studio connection needed)
+uv run python tests/manual/bench_models.py --list
+
+# Benchmark a single model
+uv run python tests/manual/bench_models.py -m qwen/qwen3-vl-8b
+
+# Benchmark all configured models (prints a summary table at the end)
+uv run python tests/manual/bench_models.py
+```
+
+**What it does:**
+- Evicts all non-embedding models from LM Studio
+- Loads the target model (with any required `context_length` overrides)
+- Runs the real `BottleExtractor` pipeline against `wine_manifest_sample.pdf`
+- Scores: bottle count, key-bottle fuzzy match, year/region coverage, confidence, latency
+- Prints per-model results, then a summary table when running multiple models
+- Unloads the model before moving to the next one
+
+**Adding a new model:**
+Edit `ALL_MODELS` at the top of the script.  If the model needs a
+`context_length` override to avoid OOM on load, add it to `MODEL_LOAD_PARAMS`.
+
+**NOTE:** Whatever you have loaded in LM Studio before running this will be
+unloaded.  Reload it afterwards if you need it.
+
+---
+
 ## Tips
 
 - **Clear event data**: Restart the server to clear in-memory event store

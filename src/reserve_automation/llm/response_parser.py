@@ -55,6 +55,14 @@ class LLMResponseParser:
                     cleaned = "\n".join(lines[1:-1])
                     logger.debug(f"[{context}] Removed markdown code blocks")
 
+            # Step 1b: Strip <think>...</think> blocks emitted by reasoning models
+            # (GLM-4, Qwen3-thinking, etc.) before searching for JSON boundaries —
+            # the thinking text often contains [ ] { } that would confuse the
+            # boundary scanner below.
+            if "<think>" in cleaned:
+                cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL).strip()
+                logger.debug(f"[{context}] Stripped <think> block(s)")
+
             # Step 2: Find JSON boundaries (try array first, then object)
             array_start = cleaned.find("[")
             array_end = cleaned.rfind("]") + 1

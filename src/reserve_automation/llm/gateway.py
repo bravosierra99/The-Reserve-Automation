@@ -141,6 +141,7 @@ class LLMGateway:
             logger.error(f"✗ {provider_name} failed for {task_type}: {e}")
 
             # 4. Try fallback if configured
+            fallback_provider = None
             if self.fallback_config.get("enabled", False):
                 fallback_provider = self._get_fallback(provider_name)
 
