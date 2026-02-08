@@ -195,8 +195,12 @@ class LMStudioProvider(BaseLLMProvider):
                 "messages": messages,
                 "max_tokens": request.max_tokens,
                 "temperature": request.temperature,
-                "frequency_penalty": 0.5,  # Reduce repetition (OpenAI-compatible param)
-                "presence_penalty": 0.5,   # Encourage diversity
+                # NOTE: Penalties removed for LM Studio 0.4.1+ compatibility
+                # LM Studio 0.4.1 handles these more aggressively, causing vision models
+                # to generate garbage tokens. If repetition becomes an issue again,
+                # use lower values (0.1-0.2) or make them conditional based on task type.
+                # "frequency_penalty": 0.5,
+                # "presence_penalty": 0.5,
             }
 
             # Request larger context if configured (some backends support this)
