@@ -1,17 +1,43 @@
 """Health check endpoints."""
 
+import json
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter
+from loguru import logger
 
 router = APIRouter()
 
 
 def _get_git_info() -> dict:
-    """Get git version information."""
+    """Get git version information.
+
+    Tries to load from version.json file first (for Docker builds),
+    then falls back to git commands if available.
+    """
+    # First try to load from version.json (generated at Docker build time)
+    version_file = Path(__file__).parent.parent.parent / "version.json"
+    if version_file.exists():
+        try:
+            with open(version_file) as f:
+                version_data = json.load(f)
+                return {
+                    "version": version_data.get("version", "dev"),
+                    "commit": version_data.get("commit", "unknown"),
+                    "commit_short": version_data.get("commit_short", "unknown"),
+                    "branch": version_data.get("branch", "unknown"),
+                    "clean": version_data.get("clean"),
+                    "commit_message": version_data.get("commit_message", "Unknown"),
+                    "commit_date": version_data.get("commit_date"),
+                    "build_date": version_data.get("build_date"),
+                }
+        except (json.JSONDecodeError, IOError):
+            pass  # Fall through to git commands
+
+    # Fall back to git commands (for local development)
     try:
         # Get git commit hash
         commit = subprocess.check_output(
@@ -56,22 +82,39 @@ def _get_git_info() -> dict:
             text=True,
         ).strip()
 
+        # Get version from git tag
+        try:
+            version = subprocess.check_output(
+                ["git", "describe", "--tags", "--abbrev=0"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            # Remove 'v' prefix if present (v1.2.3 -> 1.2.3)
+            if version.startswith("v"):
+                version = version[1:]
+        except subprocess.CalledProcessError:
+            version = "dev"  # No tags found
+
         return {
+            "version": version,
             "commit": commit,
             "commit_short": commit_short,
             "branch": branch,
             "clean": is_clean,
             "commit_message": commit_message,
             "commit_date": commit_date,
+            "build_date": None,  # Not available from git
         }
     except (subprocess.CalledProcessError, FileNotFoundError):
         return {
+            "version": "unknown",
             "commit": "unknown",
             "commit_short": "unknown",
             "branch": "unknown",
             "clean": None,
             "commit_message": "Git not available",
             "commit_date": None,
+            "build_date": None,
         }
 
 
@@ -85,10 +128,10 @@ async def health_check():
     """
     git_info = _get_git_info()
 
-    return {
+    response = {
         "status": "healthy",
         "service": "The Reserve Automation",
-        "version": "0.1.0",
+        "version": git_info["version"],  # From git tag
         "git": {
             "commit": git_info["commit_short"],  # Short hash for readability
             "commit_full": git_info["commit"],
@@ -103,3 +146,16 @@ async def health_check():
         },
         "timestamp": datetime.now().isoformat(),
     }
+
+    # Add build date if available (from Docker build)
+    if git_info.get("build_date"):
+        response["git"]["build_date"] = git_info["build_date"]
+
+    # Log health check with version info for visibility
+    logger.info(
+        f"Health check: v{response['version']} "
+        f"[{git_info['commit_short']}@{git_info['branch']}] "
+        f"clean={git_info['clean']}"
+    )
+
+    return response

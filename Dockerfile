@@ -54,6 +54,7 @@ COPY --chown=appuser:appuser pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen
 
 # Copy application code
+# NOTE: version.json should be generated before build with: ./scripts/generate-version.sh
 COPY --chown=appuser:appuser src/ ./src/
 COPY --chown=appuser:appuser config/ ./config/
 COPY --chown=appuser:appuser templates/ ./templates/

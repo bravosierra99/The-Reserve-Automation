@@ -67,3 +67,4 @@ config/*.local.yaml
 output/
 results/
 *.extraction.json
+src/reserve_automation/version.json
