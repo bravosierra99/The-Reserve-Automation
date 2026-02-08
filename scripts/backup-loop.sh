@@ -12,34 +12,19 @@ while true; do
 
     cd "$VAULT_DIR"
 
-    # Check if there are any changes
-    has_changes=false
+    # Stage personal data directories (--force overrides .gitignore)
     for dir in $PERSONAL_DIRS; do
         if [ -d "$dir" ]; then
-            changes=$(git status --porcelain "$dir" 2>/dev/null | wc -l)
-            if [ "$changes" -gt 0 ]; then
-                has_changes=true
-                break
-            fi
+            git add --force "$dir" 2>/dev/null || true
         fi
     done
 
-    if [ "$has_changes" = true ]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - Changes detected, backing up..."
-
-        # Stage personal data directories
-        for dir in $PERSONAL_DIRS; do
-            if [ -d "$dir" ]; then
-                git add --force "$dir" 2>/dev/null || true
-            fi
-        done
-
-        # Commit if there are staged changes
-        if ! git diff --cached --quiet; then
-            TIMESTAMP=$(date +"%Y-%m-%d %H:%M")
-            git commit -m "Auto-backup bottles - $TIMESTAMP"
-            git push origin tastings-backup
-            echo "$(date '+%Y-%m-%d %H:%M:%S') - Backup complete"
-        fi
+    # Commit and push if anything was staged
+    if ! git diff --cached --quiet; then
+        echo "$(date '%Y-%m-%d %H:%M:%S') - Changes detected, backing up..."
+        TIMESTAMP=$(date +"%Y-%m-%d %H:%M")
+        git commit -m "Auto-backup bottles - $TIMESTAMP"
+        git push origin tastings-backup
+        echo "$(date '%Y-%m-%d %H:%M:%S') - Backup complete"
     fi
 done

@@ -42,32 +42,28 @@ RUN apt-get update && apt-get install -y \
 RUN groupadd --gid 1000 appuser && \
     useradd --uid 1000 --gid 1000 --create-home appuser
 
-# Install uv
+# Install uv (as root, into system path)
 RUN pip install uv
 
-# Copy dependency files
-COPY pyproject.toml uv.lock README.md ./
+# Hand off /app to appuser and switch early so all subsequent layers run as appuser
+RUN chown appuser:appuser /app
+USER appuser
 
-# Install Python dependencies
+# Copy dependency files and install (cached if uv.lock unchanged)
+COPY --chown=appuser:appuser pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen
 
 # Copy application code
-COPY src/ ./src/
-COPY config/ ./config/
-COPY templates/ ./templates/
+COPY --chown=appuser:appuser src/ ./src/
+COPY --chown=appuser:appuser config/ ./config/
+COPY --chown=appuser:appuser templates/ ./templates/
 
 # Copy startup scripts
-COPY scripts/ ./scripts/
+COPY --chown=appuser:appuser scripts/ ./scripts/
 RUN chmod +x /app/scripts/*.sh
 
 # Create temp directory for uploads and logs
 RUN mkdir -p /tmp/reserve_uploads /app/logs
-
-# Set ownership to appuser
-RUN chown -R appuser:appuser /app /tmp/reserve_uploads
-
-# Switch to non-root user
-USER appuser
 
 # Expose port
 EXPOSE 8000
