@@ -51,7 +51,10 @@ USER appuser
 
 # Copy dependency files and install (cached if uv.lock unchanged)
 COPY --chown=appuser:appuser pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen
+
+# Use cache mount for uv downloads - makes rebuilds fast even when pyproject.toml version changes
+RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=1000,gid=1000 \
+    uv sync --frozen
 
 # Copy application code
 # NOTE: version.json should be generated before build with: ./scripts/generate-version.sh
