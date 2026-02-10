@@ -49,6 +49,9 @@ RUN pip install uv
 RUN chown appuser:appuser /app
 USER appuser
 
+# Create cache directory before mount to avoid permission issues
+RUN mkdir -p /home/appuser/.cache
+
 # Copy dependency files and install (cached if uv.lock unchanged)
 COPY --chown=appuser:appuser pyproject.toml uv.lock README.md ./
 
