@@ -2,6 +2,42 @@
 
 This file contains permanent instructions for Claude Code when working with this codebase.
 
+## Version Bumping
+
+**CRITICAL: Always use the unified version bump script when bumping versions.**
+
+When the user asks to "bump the version" or "create a new release":
+
+```bash
+# Patch version bump (0.3.8 -> 0.3.9) - for bug fixes
+./scripts/version-bump.sh patch
+
+# Minor version bump (0.3.8 -> 0.4.0) - for new features
+./scripts/version-bump.sh minor
+
+# Major version bump (0.3.8 -> 1.0.0) - for breaking changes
+./scripts/version-bump.sh major
+
+# Explicit version
+./scripts/version-bump.sh 1.2.3
+
+# Preview changes without applying
+./scripts/version-bump.sh --dry-run patch
+```
+
+**What this script does:**
+1. Updates `pyproject.toml` version
+2. Commits the change
+3. Creates matching git tag (e.g., `v0.3.9`)
+4. Pushes commits AND tags to origin
+
+**DO NOT:**
+- Manually edit `pyproject.toml` version
+- Create git tags manually (unless explicit one-off need)
+- Update version in one place but not the other
+
+**Why:** `pyproject.toml` and git tags must stay in sync. The script ensures both are updated together.
+
 ## Documentation Reference Guide
 
 **CRITICAL: Read the appropriate documentation BEFORE starting work on these topics.**
