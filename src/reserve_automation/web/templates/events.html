@@ -31,9 +31,10 @@
                 <div class="mb-4">
                     <h2 class="text-xl font-bold text-gray-800 mb-1" x-text="event.name"></h2>
                     <div class="flex items-center gap-2 text-sm text-gray-600">
-                        <span x-text="event.beverage_type === 'wine' ? '🍷 Wine' : '🥃 Whiskey'"></span>
+                        <span x-text="event.event_type === 'cocktail' ? '🍸 Cocktail' : (event.beverage_type === 'wine' ? '🍷 Wine' : '🥃 Whiskey')"></span>
                         <span>•</span>
-                        <span x-text="event.bottles.length + ' bottles'"></span>
+                        <span x-show="event.event_type !== 'cocktail'" x-text="event.bottles.length + ' bottles'"></span>
+                        <span x-show="event.event_type === 'cocktail'" x-text="(event.cocktails || []).length + ' cocktails'"></span>
                     </div>
                 </div>
 
@@ -41,6 +42,9 @@
                 <div class="flex flex-wrap gap-2 mb-4">
                     <span x-show="event.is_blind" class="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-semibold rounded">
                         🎭 Blind
+                    </span>
+                    <span x-show="event.event_mode === 'flight'" class="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-semibold rounded">
+                        🍸 Flight
                     </span>
                     <span x-show="event.status === 'open'" class="px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded">
                         ✓ Open

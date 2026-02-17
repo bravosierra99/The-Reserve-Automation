@@ -1,0 +1,68 @@
+{# NOTE: Use inline conditionals {{ x if x else '' }} not block tags {% if %}{% endif %} #}
+{# Block tags with trim_blocks=True cause newlines to be stripped, breaking frontmatter #}
+{# Ingredients and Instructions are YAML arrays - rendered by the generator, not inline #}
+---
+fileClass: Cocktail
+CocktailName: {{ name }}
+Description: {{ description if description else '' }}
+Method: {{ method if method else '' }}
+Glassware: {{ glassware if glassware else '' }}
+Garnish: {{ garnish if garnish else '' }}
+Style: {{ style if style else '' }}
+Ingredients:
+{{ ingredients_yaml }}Instructions:
+{{ instructions_yaml }}ServingSize: {{ serving_size }}
+Stars: {{ stars if stars else '--' }}
+Photo: {{ photo if photo else '' }}
+---
+
+## {{ name }}
+
+{{ description if description else '' }}
+
+### Ingredients
+{% if ingredients_display %}
+{% for ing in ingredients_display %}
+- {{ ing }}
+{% endfor %}
+{% else %}
+No ingredients listed.
+{% endif %}
+
+### Instructions
+{% if instructions %}
+{% for step in instructions %}
+{{ loop.index }}. {{ step }}
+{% endfor %}
+{% else %}
+No instructions listed.
+{% endif %}
+
+### Tasting Notes
+
+{% raw %}
+```dataviewjs
+const cocktailName = dv.current().file.name;
+const tastings = dv.pages('"3_Cocktails/' + cocktailName + '"')
+    .where(p => p.fileClass === "Cocktail Tasting")
+    .sort(p => p.Date, 'desc');
+
+if (tastings.length === 0) {
+    dv.paragraph("No tastings recorded yet.");
+} else {
+    const avgScore = tastings.map(t => t.Score || 0).reduce((a, b) => a + b, 0) / tastings.length;
+    dv.paragraph(`**Average Score:** ${avgScore.toFixed(1)}/10 (${tastings.length} tastings)`);
+
+    dv.table(
+        ["Tasting", "Date", "Taster", "Score", "Bartender"],
+        tastings.map(p => [
+            p.file.link,
+            p.Date,
+            p.TasterName,
+            p.Score,
+            p.Bartender || ""
+        ])
+    );
+}
+```
+{% endraw %}

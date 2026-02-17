@@ -1,0 +1,748 @@
+{% extends "base.html" %}
+
+{% block title %}Ingredients - The Reserve{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto p-4" x-data="ingredientsApp()">
+    <div class="mb-6 flex justify-between items-start">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Ingredients</h1>
+            <p class="text-gray-600">Manage your ingredient tree - spirits, mixers, bitters, syrups, garnishes</p>
+        </div>
+        <div class="flex gap-2">
+            <button @click="expandAll()"
+                    class="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded-lg transition-colors">
+                Expand All
+            </button>
+            <button @click="collapseAll()"
+                    class="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded-lg transition-colors">
+                Collapse All
+            </button>
+            <button @click="openBulkImport()"
+                    class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-colors">
+                Bulk Import
+            </button>
+            <button @click="openAddForm(null)"
+                    class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-colors">
+                + Add Root
+            </button>
+        </div>
+    </div>
+
+    <!-- Search bar -->
+    <div class="mb-6">
+        <input type="text"
+               x-model="searchQuery"
+               @input.debounce.300ms="doSearch()"
+               placeholder="Search ingredients..."
+               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+    </div>
+
+    <!-- Loading state -->
+    <div x-show="loading" class="text-center py-12">
+        <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <p class="mt-4 text-gray-600">Loading ingredients...</p>
+    </div>
+
+    <!-- Search results -->
+    <div x-show="!loading && searchMode && searchResults.length > 0" class="mb-6">
+        <h2 class="text-lg font-semibold text-gray-700 mb-3">Search Results</h2>
+        <div class="bg-white rounded-lg shadow-md divide-y">
+            <template x-for="ing in searchResults" :key="ing.id">
+                <div class="p-4 hover:bg-gray-50 flex justify-between items-center">
+                    <div>
+                        <span class="font-semibold" x-text="ing.name"></span>
+                        <span x-show="ing.is_product" class="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded">Product</span>
+                        <div x-show="ing.ancestors && ing.ancestors.length > 0" class="text-xs text-gray-400 mt-1">
+                            <span x-text="ing.ancestors.join(' > ') + ' > ' + ing.name"></span>
+                        </div>
+                    </div>
+                    <button @click="editIngredient(ing)" class="text-blue-600 hover:text-blue-800 text-sm">Edit</button>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <div x-show="!loading && searchMode && searchResults.length === 0" class="text-center py-8 text-gray-500">
+        No ingredients match your search.
+    </div>
+
+    <!-- Empty state -->
+    <div x-show="!loading && !searchMode && tree.length === 0" class="bg-white rounded-lg shadow-md p-12 text-center">
+        <div class="text-6xl mb-4">🧪</div>
+        <h2 class="text-2xl font-bold text-gray-800 mb-2">No Ingredients Yet</h2>
+        <p class="text-gray-600 mb-6">Start by creating root categories like "Spirit", "Mixer", or "Garnish"</p>
+        <button @click="openAddForm(null)"
+                class="inline-block px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
+            Create First Ingredient
+        </button>
+    </div>
+
+    <!-- Tree view -->
+    <div x-show="!loading && !searchMode && tree.length > 0" class="bg-white rounded-lg shadow-md">
+        <template x-for="node in tree" :key="`${node.id}-${treeVersion}`">
+            <div>
+                <div x-data="{ treeNode: node }" x-init="$nextTick(() => renderNode(treeNode, $el, 0))"></div>
+            </div>
+        </template>
+    </div>
+
+    <!-- View Modal (Read-only) -->
+    <div x-show="showViewForm"
+         x-transition
+         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+         @click.self="showViewForm = false">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-start mb-4">
+                    <h2 class="text-xl font-bold" x-text="viewData.name"></h2>
+                    <button @click="showViewForm = false" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="space-y-3 text-sm">
+                    <div x-show="viewData.parent">
+                        <span class="font-medium text-gray-700">Parent:</span>
+                        <span class="text-gray-900 ml-2" x-text="viewData.parent"></span>
+                    </div>
+                    <div x-show="viewData.ancestors && viewData.ancestors.length > 0" class="text-xs text-gray-500">
+                        <span x-text="viewData.ancestors.join(' > ')"></span>
+                    </div>
+
+                    <hr class="my-3">
+
+                    <div x-show="viewData.is_product" class="mb-2">
+                        <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-medium">Product</span>
+                    </div>
+
+                    <div x-show="viewData.cost">
+                        <span class="font-medium text-gray-700">Cost:</span>
+                        <span class="text-gray-900 ml-2" x-text="'$' + viewData.cost"></span>
+                    </div>
+                    <div x-show="viewData.volume_ml">
+                        <span class="font-medium text-gray-700">Volume:</span>
+                        <span class="text-gray-900 ml-2" x-text="viewData.volume_ml + ' ml'"></span>
+                    </div>
+                    <div x-show="viewData.abv">
+                        <span class="font-medium text-gray-700">ABV:</span>
+                        <span class="text-gray-900 ml-2" x-text="viewData.abv + '%'"></span>
+                    </div>
+                    <div x-show="viewData.notes">
+                        <span class="font-medium text-gray-700">Notes:</span>
+                        <p class="text-gray-900 mt-1" x-text="viewData.notes"></p>
+                    </div>
+
+                    <div x-show="viewData.children && viewData.children.length > 0" class="mt-4">
+                        <span class="font-medium text-gray-700">Children:</span>
+                        <span class="text-gray-600 ml-2" x-text="viewData.children.length + ' item(s)'"></span>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button @click="editFromView()"
+                            class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
+                        Edit
+                    </button>
+                    <button @click="showViewForm = false"
+                            class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Modal -->
+    <div x-show="showAddForm || showEditForm"
+         x-transition
+         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+         @click.self="closeModal()">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <h2 class="text-xl font-bold mb-4" x-text="showEditForm ? 'Edit Ingredient' : 'Add Ingredient'"></h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                        <input type="text" x-model="formData.name"
+                               @keydown.enter="saveIngredient()"
+                               x-ref="nameInput"
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Parent</label>
+                        <input type="text" x-model="formData.parent"
+                               @keydown.enter="saveIngredient()"
+                               placeholder="Leave empty for root ingredient"
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                               list="parent-suggestions">
+                        <datalist id="parent-suggestions">
+                            <template x-for="name in allIngredientNames" :key="name">
+                                <option :value="name"></option>
+                            </template>
+                        </datalist>
+                    </div>
+
+                    <hr class="border-gray-200">
+                    <p class="text-sm text-gray-500">Product details (optional - fill in for purchasable items)</p>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Cost ($)</label>
+                        <input type="number" x-model.number="formData.cost"
+                               @keydown.enter="saveIngredient()"
+                               step="0.01" min="0" class="w-full px-3 py-2 border rounded-lg">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Volume (ml)</label>
+                            <input type="number" x-model.number="formData.volume_ml"
+                                   @keydown.enter="saveIngredient()"
+                                   min="0" class="w-full px-3 py-2 border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">ABV (%)</label>
+                            <input type="number" x-model.number="formData.abv"
+                                   @keydown.enter="saveIngredient()"
+                                   step="0.1" min="0" max="100" class="w-full px-3 py-2 border rounded-lg">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                        <textarea x-model="formData.notes" rows="2" class="w-full px-3 py-2 border rounded-lg"></textarea>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button @click="saveIngredient()"
+                            class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
+                        <span x-text="saving ? 'Saving...' : (showEditForm ? 'Update' : 'Create')"></span>
+                    </button>
+                    <button @click="closeModal()"
+                            class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg">
+                        Cancel
+                    </button>
+                    <button x-show="showEditForm"
+                            @click="deleteIngredient()"
+                            class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg">
+                        Delete
+                    </button>
+                </div>
+
+                <div x-show="formError" class="mt-3 p-3 bg-red-50 text-red-700 rounded-lg text-sm" x-text="formError"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Import Modal -->
+    <div x-show="showBulkImport"
+         x-transition
+         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+         @click.self="showBulkImport = false">
+        <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6">
+                <h2 class="text-xl font-bold mb-4">Bulk Import Ingredients</h2>
+
+                <!-- Search form -->
+                <div class="space-y-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Search Query</label>
+                        <input type="text" x-model="bulkQuery"
+                               @keydown.enter="doBulkSearch()"
+                               x-ref="bulkQueryInput"
+                               placeholder="e.g., vanilla vodkas, craft gin brands"
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Add under parent</label>
+                        <input type="text" x-model="bulkParent"
+                               @keydown.enter="doBulkSearch()"
+                               placeholder="e.g., Vanilla Vodka (leave empty for root)"
+                               class="w-full px-3 py-2 border rounded-lg"
+                               list="bulk-parent-suggestions">
+                        <datalist id="bulk-parent-suggestions">
+                            <template x-for="name in allIngredientNames" :key="name">
+                                <option :value="name"></option>
+                            </template>
+                        </datalist>
+                    </div>
+                    <button @click="doBulkSearch()"
+                            :disabled="bulkSearching || !bulkQuery.trim()"
+                            class="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                        <span x-text="bulkSearching ? 'Searching...' : 'Search'"></span>
+                    </button>
+                </div>
+
+                <!-- Results table -->
+                <div x-show="bulkResults.length > 0" class="mb-4">
+                    <h3 class="font-semibold text-gray-700 mb-2">Results - select which to import:</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-2 py-1 text-left"></th>
+                                    <th class="px-2 py-1 text-left">Name</th>
+                                    <th class="px-2 py-1 text-left">Cost</th>
+                                    <th class="px-2 py-1 text-left">ABV</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="(result, idx) in bulkResults" :key="idx">
+                                    <tr class="border-b hover:bg-gray-50">
+                                        <td class="px-2 py-1">
+                                            <input type="checkbox" x-model="result.selected">
+                                        </td>
+                                        <td class="px-2 py-1">
+                                            <input type="text" x-model="result.name" class="w-full px-1 py-0.5 border rounded text-sm">
+                                        </td>
+                                        <td class="px-2 py-1">
+                                            <input type="number" x-model.number="result.cost" step="0.01" class="w-20 px-1 py-0.5 border rounded text-sm">
+                                        </td>
+                                        <td class="px-2 py-1">
+                                            <input type="number" x-model.number="result.abv" step="0.1" class="w-16 px-1 py-0.5 border rounded text-sm">
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="flex gap-3 mt-4">
+                        <button @click="doBulkSave()"
+                                :disabled="bulkSaving"
+                                class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                            <span x-text="bulkSaving ? 'Saving...' : 'Save Selected'"></span>
+                        </button>
+                        <button @click="showBulkImport = false; bulkResults = []"
+                                class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Cancel</button>
+                    </div>
+                </div>
+
+                <div x-show="bulkError" class="p-3 bg-red-50 text-red-700 rounded-lg text-sm" x-text="bulkError"></div>
+                <div x-show="bulkSuccess" class="p-3 bg-green-50 text-green-700 rounded-lg text-sm" x-text="bulkSuccess"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function ingredientsApp() {
+    return {
+        tree: [],
+        treeVersion: 0,
+        loading: true,
+        searchQuery: '',
+        searchMode: false,
+        searchResults: [],
+        showViewForm: false,
+        showAddForm: false,
+        showEditForm: false,
+        saving: false,
+        formError: '',
+        editId: null,
+        addParent: null,
+        allIngredientNames: [],
+        viewData: {},
+        showBulkImport: false,
+        bulkQuery: '',
+        bulkParent: '',
+        bulkResults: [],
+        bulkSearching: false,
+        bulkSaving: false,
+        bulkError: '',
+        bulkSuccess: '',
+        formData: {
+            name: '',
+            parent: '',
+            cost: null,
+            volume_ml: null,
+            abv: null,
+            notes: ''
+        },
+
+        async init() {
+            await this.loadTree();
+        },
+
+        async loadTree() {
+            try {
+                this.loading = true;
+                const response = await fetch('/api/v1/ingredients');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                this.tree = await response.json();
+                this.treeVersion++; // Force re-render
+
+                // Build flat name list for parent suggestions
+                const names = [];
+                const walk = (nodes) => {
+                    for (const n of nodes) {
+                        names.push(n.name);
+                        if (n.children) walk(n.children);
+                    }
+                };
+                walk(this.tree);
+                this.allIngredientNames = names;
+            } catch (error) {
+                console.error('Failed to load ingredients:', error);
+            } finally {
+                this.loading = false;
+                // Expand tree after DOM renders (happens on every tree load)
+                this.$nextTick(() => {
+                    setTimeout(() => this.expandAll(), 50);
+                });
+            }
+        },
+
+        async doSearch() {
+            if (!this.searchQuery.trim()) {
+                this.searchMode = false;
+                this.searchResults = [];
+                return;
+            }
+            this.searchMode = true;
+            try {
+                const response = await fetch(`/api/v1/ingredients/search?q=${encodeURIComponent(this.searchQuery)}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                this.searchResults = await response.json();
+            } catch (error) {
+                console.error('Search failed:', error);
+            }
+        },
+
+        renderNode(node, el, depth) {
+            el.innerHTML = '';
+            const container = document.createElement('div');
+
+            // Node row
+            const row = document.createElement('div');
+            row.className = 'p-3 hover:bg-gray-50 flex items-center justify-between border-b border-gray-100 cursor-pointer';
+            row.style.paddingLeft = (16 + depth * 24) + 'px';
+            row.addEventListener('click', (e) => {
+                // Don't trigger if clicking on action buttons
+                if (e.target.closest('button')) return;
+                this.viewIngredient(node);
+            });
+
+            const left = document.createElement('div');
+            left.className = 'flex items-center gap-2';
+
+            // Expand/collapse toggle
+            if (node.children && node.children.length > 0) {
+                const toggle = document.createElement('button');
+                toggle.className = 'text-gray-400 hover:text-gray-600 w-5 text-center';
+                toggle.textContent = '▶';
+                toggle.dataset.expanded = 'false';
+                const childContainer = document.createElement('div');
+                childContainer.style.display = 'none';
+                toggle.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const expanded = toggle.dataset.expanded === 'true';
+                    toggle.dataset.expanded = expanded ? 'false' : 'true';
+                    toggle.textContent = expanded ? '▶' : '▼';
+                    childContainer.style.display = expanded ? 'none' : 'block';
+                });
+                left.appendChild(toggle);
+
+                // Children
+                for (const child of node.children) {
+                    const childEl = document.createElement('div');
+                    this.renderNode(child, childEl, depth + 1);
+                    childContainer.appendChild(childEl);
+                }
+                container.appendChild(childContainer);
+            } else {
+                const spacer = document.createElement('span');
+                spacer.className = 'w-5 inline-block';
+                spacer.textContent = '·';
+                left.appendChild(spacer);
+            }
+
+            // Icon
+            const icon = document.createElement('span');
+            icon.textContent = node.is_product ? '🏷️' : '📁';
+            left.appendChild(icon);
+
+            // Name
+            const name = document.createElement('span');
+            name.className = 'font-medium text-gray-800';
+            name.textContent = node.name;
+            left.appendChild(name);
+
+            // Cost badge
+            if (node.cost) {
+                const cost = document.createElement('span');
+                cost.className = 'text-green-700 text-sm font-medium';
+                cost.textContent = `$${node.cost}`;
+                left.appendChild(cost);
+            }
+
+            row.appendChild(left);
+
+            // Action buttons
+            const actions = document.createElement('div');
+            actions.className = 'flex gap-2';
+
+            const addChild = document.createElement('button');
+            addChild.className = 'text-green-600 hover:text-green-800 text-sm px-2 py-1';
+            addChild.textContent = '+ Child';
+            addChild.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.openAddForm(node.name);
+            });
+            actions.appendChild(addChild);
+
+            const editBtn = document.createElement('button');
+            editBtn.className = 'text-blue-600 hover:text-blue-800 text-sm px-2 py-1';
+            editBtn.textContent = 'Edit';
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.editIngredient(node);
+            });
+            actions.appendChild(editBtn);
+
+            row.appendChild(actions);
+
+            // Insert row at the beginning (before child container)
+            container.insertBefore(row, container.firstChild);
+            el.appendChild(container);
+        },
+
+        viewIngredient(ing) {
+            this.viewData = { ...ing };
+            this.showViewForm = true;
+        },
+
+        editIngredient(ing) {
+            this.editId = ing.id;
+            this.formData = {
+                name: ing.name || '',
+                parent: ing.parent || '',
+                cost: ing.cost || null,
+                volume_ml: ing.volume_ml || null,
+                abv: ing.abv || null,
+                notes: ing.notes || ''
+            };
+            this.formError = '';
+            this.showEditForm = true;
+            // Focus name input after modal is visible
+            this.$nextTick(() => {
+                if (this.$refs.nameInput) {
+                    this.$refs.nameInput.focus();
+                }
+            });
+        },
+
+        editFromView() {
+            const ing = this.viewData;
+            this.showViewForm = false;
+            this.editIngredient(ing);
+        },
+
+        resetForm() {
+            this.formData = {
+                name: '',
+                parent: '',
+                cost: null,
+                volume_ml: null,
+                abv: null,
+                notes: ''
+            };
+            this.formError = '';
+            this.editId = null;
+        },
+
+        openAddForm(parent) {
+            this.addParent = parent;
+            this.resetForm();
+            if (parent) {
+                this.formData.parent = parent;
+            }
+            this.showAddForm = true;
+            // Focus name input after modal is visible
+            this.$nextTick(() => {
+                if (this.$refs.nameInput) {
+                    this.$refs.nameInput.focus();
+                }
+            });
+        },
+
+        openBulkImport() {
+            this.showBulkImport = true;
+            // Focus search query input after modal is visible
+            this.$nextTick(() => {
+                if (this.$refs.bulkQueryInput) {
+                    this.$refs.bulkQueryInput.focus();
+                }
+            });
+        },
+
+        closeModal() {
+            this.showAddForm = false;
+            this.showEditForm = false;
+            this.resetForm();
+        },
+
+        async saveIngredient() {
+            if (!this.formData.name.trim()) {
+                this.formError = 'Name is required';
+                return;
+            }
+
+            this.saving = true;
+            this.formError = '';
+
+            try {
+                // Clean up empty strings to null
+                const payload = { ...this.formData };
+                if (!payload.parent) payload.parent = null;
+                if (!payload.cost) payload.cost = null;
+                if (!payload.volume_ml) payload.volume_ml = null;
+                if (!payload.abv) payload.abv = null;
+                if (!payload.notes) payload.notes = null;
+
+                let response;
+                if (this.showEditForm && this.editId) {
+                    response = await fetch(`/api/v1/ingredients/${this.editId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                } else {
+                    response = await fetch('/api/v1/ingredients', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                }
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    this.formError = error.detail || 'Failed to save';
+                    return;
+                }
+
+                this.closeModal();
+                await this.loadTree();
+            } catch (error) {
+                this.formError = error.message;
+            } finally {
+                this.saving = false;
+            }
+        },
+
+        async deleteIngredient() {
+            if (!this.editId) return;
+            if (!confirm('Delete this ingredient? This cannot be undone.')) return;
+
+            try {
+                const response = await fetch(`/api/v1/ingredients/${this.editId}`, { method: 'DELETE' });
+                if (!response.ok) {
+                    const error = await response.json();
+                    this.formError = error.detail || 'Failed to delete';
+                    return;
+                }
+                this.closeModal();
+                await this.loadTree();
+            } catch (error) {
+                this.formError = error.message;
+            }
+        },
+
+        async doBulkSearch() {
+            if (!this.bulkQuery.trim()) return;
+            this.bulkSearching = true;
+            this.bulkError = '';
+            this.bulkSuccess = '';
+            this.bulkResults = [];
+
+            try {
+                const response = await fetch('/api/v1/ingredients/bulk-search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: this.bulkQuery,
+                        parent: this.bulkParent || null,
+                    })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    this.bulkError = error.detail || 'Search failed';
+                    return;
+                }
+                const data = await response.json();
+                this.bulkResults = data.results || [];
+                if (this.bulkResults.length === 0) {
+                    this.bulkError = 'No results found. Try a different query.';
+                }
+            } catch (error) {
+                this.bulkError = error.message;
+            } finally {
+                this.bulkSearching = false;
+            }
+        },
+
+        async doBulkSave() {
+            const selected = this.bulkResults.filter(r => r.selected);
+            if (selected.length === 0) {
+                this.bulkError = 'No items selected';
+                return;
+            }
+
+            this.bulkSaving = true;
+            this.bulkError = '';
+            this.bulkSuccess = '';
+
+            try {
+                const response = await fetch('/api/v1/ingredients/bulk-save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        parent: this.bulkParent || null,
+                        ingredients: this.bulkResults,
+                    })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    this.bulkError = error.detail || 'Save failed';
+                    return;
+                }
+                const data = await response.json();
+                const savedCount = data.saved ? data.saved.length : 0;
+                const skippedCount = data.skipped ? data.skipped.length : 0;
+                this.bulkSuccess = `Saved ${savedCount} ingredients` + (skippedCount > 0 ? `, skipped ${skippedCount}` : '');
+                this.bulkResults = [];
+                await this.loadTree();
+            } catch (error) {
+                this.bulkError = error.message;
+            } finally {
+                this.bulkSaving = false;
+            }
+        },
+
+        expandAll() {
+            // Find all toggle buttons and expand them
+            const toggles = document.querySelectorAll('button[data-expanded]');
+            toggles.forEach(toggle => {
+                if (toggle.dataset.expanded === 'false') {
+                    toggle.click();
+                }
+            });
+        },
+
+        collapseAll() {
+            // Find all toggle buttons and collapse them
+            const toggles = document.querySelectorAll('button[data-expanded]');
+            toggles.forEach(toggle => {
+                if (toggle.dataset.expanded === 'true') {
+                    toggle.click();
+                }
+            });
+        }
+    };
+}
+</script>
+{% endblock %}
