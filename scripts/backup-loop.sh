@@ -21,10 +21,10 @@ while true; do
 
     # Commit and push if anything was staged
     if ! git diff --cached --quiet; then
-        echo "$(date '%Y-%m-%d %H:%M:%S') - Changes detected, backing up..."
+        echo "$(date +'%Y-%m-%d %H:%M:%S') - Changes detected, backing up..."
         TIMESTAMP=$(date +"%Y-%m-%d %H:%M")
         git commit -m "Auto-backup bottles - $TIMESTAMP"
         git push origin tastings-backup
-        echo "$(date '%Y-%m-%d %H:%M:%S') - Backup complete"
+        echo "$(date +'%Y-%m-%d %H:%M:%S') - Backup complete"
     fi
 done
