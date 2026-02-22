@@ -22,10 +22,16 @@
                 <a href="/cocktails" class="text-blue-600 hover:text-blue-800 text-sm mb-2 inline-block">Back to cocktails</a>
                 <h1 class="text-3xl font-bold text-gray-800" x-text="cocktail.name"></h1>
                 <p x-show="cocktail.description" class="text-gray-600 mt-1" x-text="cocktail.description"></p>
+                <p x-show="cocktail.parent_cocktail" class="text-sm text-gray-500 mt-1">
+                    <span class="font-medium">Variation of:</span> <span x-text="cocktail.parent_cocktail"></span>
+                </p>
             </div>
             <div class="flex gap-2">
                 <button @click="showTastingForm = true" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg">
                     Rate This
+                </button>
+                <button @click="openEditForm()" class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">
+                    Edit
                 </button>
                 <button @click="deleteCocktail()" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm">
                     Delete
@@ -89,7 +95,8 @@
                                 <th class="text-left py-2 pr-4">Taster</th>
                                 <th class="text-left py-2 pr-4">Score</th>
                                 <th class="text-left py-2 pr-4">Bartender</th>
-                                <th class="text-left py-2">Notes</th>
+                                <th class="text-left py-2 pr-4">Notes</th>
+                                <th class="text-left py-2"></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -102,7 +109,11 @@
                                         <span x-show="!t.score" class="text-gray-400">--</span>
                                     </td>
                                     <td class="py-2 pr-4" x-text="t.bartender || '--'"></td>
-                                    <td class="py-2 text-gray-600" x-text="t.notes || ''"></td>
+                                    <td class="py-2 pr-4 text-gray-600" x-text="t.notes || ''"></td>
+                                    <td class="py-2">
+                                        <button @click="deleteTasting(t.vault_path)"
+                                                class="text-red-600 hover:text-red-800 text-xs">Delete</button>
+                                    </td>
                                 </tr>
                             </template>
                         </tbody>
@@ -214,6 +225,110 @@
                 </div>
             </div>
         </div>
+
+        <!-- Edit Cocktail Modal -->
+        <div x-show="showEditForm" x-transition
+             class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+             @click.self="showEditForm = false">
+            <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <div class="p-6">
+                    <h2 class="text-xl font-bold mb-4">Edit Cocktail Recipe</h2>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                            <input type="text" x-model="editData.name" class="w-full px-3 py-2 border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                            <input type="text" x-model="editData.description" class="w-full px-3 py-2 border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Parent Cocktail (for variations/riffs)</label>
+                            <input type="text" x-model="editData.parent_cocktail" placeholder="e.g., Martini"
+                                   list="edit-cocktail-names" class="w-full px-3 py-2 border rounded-lg">
+                            <datalist id="edit-cocktail-names">
+                                <template x-for="name in cocktailNames" :key="name">
+                                    <option :value="name"></option>
+                                </template>
+                            </datalist>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Method</label>
+                                <select x-model="editData.method" class="w-full px-3 py-2 border rounded-lg">
+                                    <option value="">--</option>
+                                    <option>shaken</option><option>stirred</option><option>built</option><option>blended</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Style</label>
+                                <select x-model="editData.style" class="w-full px-3 py-2 border rounded-lg">
+                                    <option value="">--</option>
+                                    <option>classic</option><option>tiki</option><option>modern</option><option>sour</option><option>highball</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Glassware</label>
+                                <input type="text" x-model="editData.glassware" class="w-full px-3 py-2 border rounded-lg">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Garnish</label>
+                            <input type="text" x-model="editData.garnish" class="w-full px-3 py-2 border rounded-lg">
+                        </div>
+
+                        <!-- Ingredients -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Ingredients</label>
+                            <template x-for="(ing, idx) in editData.ingredients" :key="idx">
+                                <div class="flex gap-2 mb-2 items-center">
+                                    <input type="number" x-model.number="ing.amount" placeholder="Amt" step="0.25" class="w-16 px-2 py-1 border rounded text-sm">
+                                    <select x-model="ing.unit" class="w-20 px-1 py-1 border rounded text-sm">
+                                        <option value="">--</option>
+                                        <option>oz</option><option>ml</option><option>dash</option><option>splash</option>
+                                        <option>piece</option><option>wedge</option><option>barspoon</option>
+                                    </select>
+                                    <input type="text" x-model="ing.ingredient" placeholder="Ingredient name" list="edit-ingredient-names"
+                                           class="flex-1 px-2 py-1 border rounded text-sm">
+                                    <button @click="editData.ingredients.splice(idx, 1)" class="text-red-500 hover:text-red-700 text-sm px-1">x</button>
+                                </div>
+                            </template>
+                            <button @click="editData.ingredients.push({ingredient:'',amount:null,unit:'oz',notes:'',optional:false})"
+                                    class="text-blue-600 hover:text-blue-800 text-sm">+ Add ingredient</button>
+                            <datalist id="edit-ingredient-names">
+                                <template x-for="name in ingredientNames" :key="name">
+                                    <option :value="name"></option>
+                                </template>
+                            </datalist>
+                        </div>
+
+                        <!-- Instructions -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Instructions</label>
+                            <template x-for="(step, idx) in editData.instructions" :key="idx">
+                                <div class="flex gap-2 mb-2 items-center">
+                                    <span class="text-gray-400 text-sm w-6" x-text="(idx+1) + '.'"></span>
+                                    <input type="text" x-model="editData.instructions[idx]" class="flex-1 px-2 py-1 border rounded text-sm">
+                                    <button @click="editData.instructions.splice(idx, 1)" class="text-red-500 hover:text-red-700 text-sm px-1">x</button>
+                                </div>
+                            </template>
+                            <button @click="editData.instructions.push('')" class="text-blue-600 hover:text-blue-800 text-sm">+ Add step</button>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3 mt-6">
+                        <button @click="saveEdit()" :disabled="editSaving"
+                                class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                            <span x-text="editSaving ? 'Saving...' : 'Save Changes'"></span>
+                        </button>
+                        <button @click="showEditForm = false; editError = ''" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Cancel</button>
+                    </div>
+
+                    <div x-show="editError" class="mt-3 p-3 bg-red-50 text-red-700 rounded-lg text-sm" x-text="editError"></div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -238,6 +353,16 @@ function cocktailDetailApp(cocktailId) {
         },
         bottleSearchQueries: {},
         bottleResults: {},
+        showEditForm: false,
+        editSaving: false,
+        editError: '',
+        ingredientNames: [],
+        cocktailNames: [],
+        editData: {
+            name: '', description: '', parent_cocktail: '', method: '', style: '', glassware: '', garnish: '',
+            ingredients: [],
+            instructions: [],
+        },
 
         async loadCocktail() {
             try {
@@ -245,6 +370,12 @@ function cocktailDetailApp(cocktailId) {
                 if (response.ok) {
                     this.cocktail = await response.json();
                     await this.loadTastings();
+                    // Load cocktail names for parent selection
+                    const cocktailsResponse = await fetch('/api/v1/cocktails');
+                    if (cocktailsResponse.ok) {
+                        const allCocktails = await cocktailsResponse.json();
+                        this.cocktailNames = allCocktails.map(c => c.name).filter(n => n !== this.cocktail.name);
+                    }
                 }
             } catch (e) {
                 console.error('Failed to load cocktail:', e);
@@ -353,11 +484,104 @@ function cocktailDetailApp(cocktailId) {
             }
         },
 
+        async loadIngredientNames() {
+            try {
+                const response = await fetch('/api/v1/ingredients?flat=true');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.ingredientNames = data.map(i => i.name);
+                }
+            } catch (e) {}
+        },
+
+        openEditForm() {
+            // Load ingredient names if not already loaded
+            if (this.ingredientNames.length === 0) {
+                this.loadIngredientNames();
+            }
+            // Populate edit form with current cocktail data
+            this.editData = {
+                name: this.cocktail.name,
+                description: this.cocktail.description || '',
+                parent_cocktail: this.cocktail.parent_cocktail || '',
+                method: this.cocktail.method || '',
+                style: this.cocktail.style || '',
+                glassware: this.cocktail.glassware || '',
+                garnish: this.cocktail.garnish || '',
+                ingredients: JSON.parse(JSON.stringify(this.cocktail.ingredients || [])),
+                instructions: JSON.parse(JSON.stringify(this.cocktail.instructions || [])),
+            };
+            // Ensure at least one ingredient and instruction row
+            if (this.editData.ingredients.length === 0) {
+                this.editData.ingredients.push({ingredient: '', amount: null, unit: 'oz', notes: '', optional: false});
+            }
+            if (this.editData.instructions.length === 0) {
+                this.editData.instructions.push('');
+            }
+            this.showEditForm = true;
+        },
+
+        async saveEdit() {
+            if (!this.editData.name.trim()) {
+                this.editError = 'Name is required';
+                return;
+            }
+            this.editSaving = true;
+            this.editError = '';
+            try {
+                const payload = {
+                    ...this.editData,
+                    ingredients: this.editData.ingredients.filter(i => i.ingredient && i.ingredient.trim()),
+                    instructions: this.editData.instructions.filter(s => s && s.trim()),
+                    method: this.editData.method || null,
+                    style: this.editData.style || null,
+                    glassware: this.editData.glassware || null,
+                    garnish: this.editData.garnish || null,
+                    description: this.editData.description || null,
+                    parent_cocktail: this.editData.parent_cocktail || null,
+                };
+                const response = await fetch(`/api/v1/cocktails/${this.cocktailId}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    this.editError = error.detail || 'Failed to save';
+                    return;
+                }
+                this.showEditForm = false;
+                await this.loadCocktail(); // Reload to show updated data
+            } catch (e) {
+                this.editError = e.message;
+            } finally {
+                this.editSaving = false;
+            }
+        },
+
         async deleteCocktail() {
             if (!confirm('Delete this cocktail recipe? This cannot be undone.')) return;
             try {
                 const response = await fetch(`/api/v1/cocktails/${this.cocktailId}`, {method: 'DELETE'});
                 if (response.ok) window.location.href = '/cocktails';
+            } catch (e) {
+                alert('Failed to delete: ' + e.message);
+            }
+        },
+
+        async deleteTasting(tastingPath) {
+            if (!confirm('Delete this tasting? This cannot be undone.')) return;
+            try {
+                // Extract filename from path
+                const filename = tastingPath.split('/').pop();
+                const response = await fetch(`/api/v1/cocktails/${this.cocktailId}/tastings/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                if (response.ok) {
+                    await this.loadTastings();
+                } else {
+                    alert('Failed to delete tasting');
+                }
             } catch (e) {
                 alert('Failed to delete: ' + e.message);
             }

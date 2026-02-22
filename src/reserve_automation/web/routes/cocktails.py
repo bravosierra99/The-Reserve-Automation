@@ -441,3 +441,39 @@ async def list_cocktail_tastings(cocktail_id: str):
     except Exception as e:
         logger.error(f"Failed to list cocktail tastings: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/api/v1/cocktails/{cocktail_id}/tastings/{tasting_file}")
+async def delete_cocktail_tasting(cocktail_id: str, tasting_file: str):
+    """Delete a cocktail tasting note.
+
+    Args:
+        cocktail_id: The cocktail ID
+        tasting_file: The tasting filename (e.g., "Tasting-2025-01-15-Ben.md")
+    """
+    core_config, bottle_registry = _get_services()
+
+    try:
+        cocktails = _read_cocktails(core_config, bottle_registry)
+        cocktail = _find_cocktail_by_id(cocktails, cocktail_id)
+        if not cocktail:
+            raise HTTPException(status_code=404, detail="Cocktail not found")
+
+        # Find the tasting file
+        cocktail_folder = Path(cocktail.vault_path).parent
+        tasting_path = cocktail_folder / tasting_file
+
+        if not tasting_path.exists():
+            raise HTTPException(status_code=404, detail="Tasting not found")
+
+        # Delete the tasting file
+        tasting_path.unlink()
+        logger.info(f"Deleted cocktail tasting: {tasting_path}")
+
+        return {"status": "deleted", "file": tasting_file}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete cocktail tasting: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

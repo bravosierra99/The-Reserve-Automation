@@ -26,6 +26,7 @@ class CocktailRecipe(BaseModel):
     """A cocktail recipe."""
     name: str = Field(..., description="Cocktail name")
     description: Optional[str] = Field(None, description="Brief description")
+    parent_cocktail: Optional[str] = Field(None, description="Parent cocktail (for variations/riffs)")
     ingredients: list[RecipeIngredient] = Field(default_factory=list)
     instructions: list[str] = Field(default_factory=list, description="Ordered preparation steps")
     garnish: Optional[str] = Field(None, description="Garnish description")
@@ -58,6 +59,7 @@ class CocktailRecipe(BaseModel):
         return {
             "name": self.name,
             "description": self.description,
+            "parent_cocktail": self.parent_cocktail,
             "ingredients": ingredients_list,
             "instructions": self.instructions,
             "garnish": self.garnish,
@@ -74,6 +76,7 @@ class CreateCocktailRequest(BaseModel):
     """Request to create a new cocktail recipe."""
     name: str = Field(..., min_length=1)
     description: Optional[str] = None
+    parent_cocktail: Optional[str] = None
     ingredients: list[RecipeIngredient] = Field(default_factory=list)
     instructions: list[str] = Field(default_factory=list)
     garnish: Optional[str] = None
@@ -87,6 +90,7 @@ class UpdateCocktailRequest(BaseModel):
     """Request to update a cocktail recipe."""
     name: Optional[str] = Field(None, min_length=1)
     description: Optional[str] = None
+    parent_cocktail: Optional[str] = None
     ingredients: Optional[list[RecipeIngredient]] = None
     instructions: Optional[list[str]] = None
     garnish: Optional[str] = None
