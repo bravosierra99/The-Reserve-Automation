@@ -246,6 +246,7 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Parent Cocktail (for variations/riffs)</label>
                             <input type="text" x-model="editData.parent_cocktail" placeholder="e.g., Martini"
+                                   @keydown="handleAutocomplete($event, cocktailNames)"
                                    list="edit-cocktail-names" class="w-full px-3 py-2 border rounded-lg">
                             <datalist id="edit-cocktail-names">
                                 <template x-for="name in cocktailNames" :key="name">
@@ -290,6 +291,7 @@
                                         <option>piece</option><option>wedge</option><option>barspoon</option>
                                     </select>
                                     <input type="text" x-model="ing.ingredient" placeholder="Ingredient name" list="edit-ingredient-names"
+                                           @keydown="handleAutocomplete($event, ingredientNames)"
                                            class="flex-1 px-2 py-1 border rounded text-sm">
                                     <button @click="editData.ingredients.splice(idx, 1)" class="text-red-500 hover:text-red-700 text-sm px-1">x</button>
                                 </div>
@@ -591,6 +593,27 @@ function cocktailDetailApp(cocktailId) {
             // Find ingredient by name, then navigate to ingredients page with pre-filled search and auto-open
             // Using a hash to trigger the ingredients page to auto-search and open
             window.location.href = `/ingredients#search=${encodeURIComponent(ingredientName)}`;
+        },
+
+        handleAutocomplete(event, options) {
+            // Auto-complete with first matching option on Tab or Enter
+            if (event.key !== 'Tab' && event.key !== 'Enter') return;
+
+            const input = event.target.value.toLowerCase().trim();
+            if (!input) return;
+
+            // Find best match: prioritize starts-with, then contains
+            let match = options.find(opt => opt.toLowerCase().startsWith(input));
+            if (!match) {
+                match = options.find(opt => opt.toLowerCase().includes(input));
+            }
+
+            if (match) {
+                event.preventDefault();
+                event.target.value = match;
+                // Trigger input event to update x-model
+                event.target.dispatchEvent(new Event('input'));
+            }
         }
     };
 }
