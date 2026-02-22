@@ -527,7 +527,7 @@ function ingredientsApp() {
         },
 
         async viewIngredientByName(name) {
-            // Search for ingredient by name and open it
+            // Search for ingredient by name and open it, also navigate tree
             try {
                 const response = await fetch(`/api/v1/ingredients/search?q=${encodeURIComponent(name)}`);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -539,6 +539,15 @@ function ingredientsApp() {
                     const detailResponse = await fetch(`/api/v1/ingredients/${match.id}`);
                     if (detailResponse.ok) {
                         const details = await detailResponse.json();
+
+                        // Exit search mode and go to tree view
+                        this.searchMode = false;
+                        this.searchQuery = '';
+
+                        // Reload tree to ensure we have latest data
+                        await this.loadTree();
+
+                        // Open the ingredient detail modal
                         this.viewIngredient(details);
                     } else {
                         // Fallback to match data
@@ -661,6 +670,10 @@ function ingredientsApp() {
 
                 this.closeModal();
                 await this.loadTree();
+                // If in search mode, re-run the search to update results
+                if (this.searchMode && this.searchQuery) {
+                    await this.doSearch();
+                }
             } catch (error) {
                 this.formError = error.message;
             } finally {
@@ -681,6 +694,10 @@ function ingredientsApp() {
                 }
                 this.closeModal();
                 await this.loadTree();
+                // If in search mode, re-run the search to update results
+                if (this.searchMode && this.searchQuery) {
+                    await this.doSearch();
+                }
             } catch (error) {
                 this.formError = error.message;
             }
