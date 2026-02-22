@@ -152,7 +152,7 @@ async def list_ingredients(flat: bool = False):
 
 @router.get("/api/v1/ingredients/search")
 async def search_ingredients(q: str = ""):
-    """Search ingredients by name."""
+    """Search ingredients by name. Returns tree structures with children."""
     core_config, bottle_registry = _get_services()
 
     if not q.strip():
@@ -169,7 +169,9 @@ async def search_ingredients(q: str = ""):
             ing for ing in all_flat
             if query_lower in ing.name.lower()
         ]
-        return [_ingredient_flat_dict(ing) for ing in matches]
+
+        # Return tree structures (with children) instead of flat list
+        return _tree_to_dicts(matches)
     except Exception as e:
         logger.error(f"Failed to search ingredients: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

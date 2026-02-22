@@ -364,8 +364,9 @@ function cocktailDetailApp(cocktailId) {
         },
 
         async viewIngredient(ingredientName) {
-            // Find ingredient by name and redirect to ingredients page with search
-            window.location.href = `/ingredients?search=${encodeURIComponent(ingredientName)}`;
+            // Find ingredient by name, then navigate to ingredients page with pre-filled search and auto-open
+            // Using a hash to trigger the ingredients page to auto-search and open
+            window.location.href = `/ingredients#search=${encodeURIComponent(ingredientName)}`;
         }
     };
 }

@@ -46,18 +46,13 @@
 
     <!-- Search results -->
     <div x-show="!loading && searchMode && searchResults.length > 0" class="mb-6">
-        <h2 class="text-lg font-semibold text-gray-700 mb-3">Search Results</h2>
-        <div class="bg-white rounded-lg shadow-md divide-y">
-            <template x-for="ing in searchResults" :key="ing.id">
-                <div class="p-4 hover:bg-gray-50 flex justify-between items-center">
-                    <div>
-                        <span class="font-semibold" x-text="ing.name"></span>
-                        <span x-show="ing.is_product" class="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded">Product</span>
-                        <div x-show="ing.ancestors && ing.ancestors.length > 0" class="text-xs text-gray-400 mt-1">
-                            <span x-text="ing.ancestors.join(' > ') + ' > ' + ing.name"></span>
-                        </div>
-                    </div>
-                    <button @click="editIngredient(ing)" class="text-blue-600 hover:text-blue-800 text-sm">Edit</button>
+        <h2 class="text-lg font-semibold text-gray-700 mb-3">
+            <span x-text="searchResults.length + ' result' + (searchResults.length === 1 ? '' : 's')"></span>
+        </h2>
+        <div class="bg-white rounded-lg shadow-md">
+            <template x-for="node in searchResults" :key="`search-${node.id}-${treeVersion}`">
+                <div>
+                    <div x-data="{ treeNode: node }" x-init="$nextTick(() => renderNode(treeNode, $el, 0))"></div>
                 </div>
             </template>
         </div>
@@ -106,7 +101,9 @@
                 <div class="space-y-3 text-sm">
                     <div x-show="viewData.parent">
                         <span class="font-medium text-gray-700">Parent:</span>
-                        <span class="text-gray-900 ml-2" x-text="viewData.parent"></span>
+                        <a href="#" @click.prevent="viewIngredientByName(viewData.parent)"
+                           class="text-blue-600 hover:text-blue-800 hover:underline ml-2"
+                           x-text="viewData.parent"></a>
                     </div>
                     <div x-show="viewData.ancestors && viewData.ancestors.length > 0" class="text-xs text-gray-500">
                         <span x-text="viewData.ancestors.join(' > ')"></span>
@@ -366,6 +363,19 @@ function ingredientsApp() {
 
         async init() {
             await this.loadTree();
+            // Check for hash parameter (e.g., #search=Vodka from cocktail ingredient link)
+            const hash = window.location.hash;
+            if (hash && hash.startsWith('#search=')) {
+                const searchTerm = decodeURIComponent(hash.substring(8));
+                this.searchQuery = searchTerm;
+                await this.doSearch();
+                // If only one result, auto-open it
+                if (this.searchResults.length === 1) {
+                    this.viewIngredient(this.searchResults[0]);
+                }
+                // Clear the hash
+                window.history.replaceState(null, '', window.location.pathname);
+            }
         },
 
         async loadTree() {
@@ -514,6 +524,30 @@ function ingredientsApp() {
         viewIngredient(ing) {
             this.viewData = { ...ing };
             this.showViewForm = true;
+        },
+
+        async viewIngredientByName(name) {
+            // Search for ingredient by name and open it
+            try {
+                const response = await fetch(`/api/v1/ingredients/search?q=${encodeURIComponent(name)}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const results = await response.json();
+                // Find exact match (search now returns tree structures)
+                const match = results.find(r => r.name === name);
+                if (match) {
+                    // Fetch full details to ensure we have all fields
+                    const detailResponse = await fetch(`/api/v1/ingredients/${match.id}`);
+                    if (detailResponse.ok) {
+                        const details = await detailResponse.json();
+                        this.viewIngredient(details);
+                    } else {
+                        // Fallback to match data
+                        this.viewIngredient(match);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load ingredient:', error);
+            }
         },
 
         editIngredient(ing) {
