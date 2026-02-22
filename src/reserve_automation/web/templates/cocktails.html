@@ -112,8 +112,12 @@
                                 <button @click="newCocktail.ingredients.splice(idx, 1)" class="text-red-500 hover:text-red-700 text-sm px-1">x</button>
                             </div>
                         </template>
-                        <button @click="newCocktail.ingredients.push({ingredient:'',amount:null,unit:'oz',notes:'',optional:false})"
-                                class="text-blue-600 hover:text-blue-800 text-sm">+ Add ingredient</button>
+                        <div class="flex gap-3 items-center">
+                            <button @click="newCocktail.ingredients.push({ingredient:'',amount:null,unit:'oz',notes:'',optional:false})"
+                                    class="text-blue-600 hover:text-blue-800 text-sm">+ Add ingredient</button>
+                            <button @click="showNewIngredientForm = true"
+                                    class="text-green-600 hover:text-green-800 text-sm font-medium">+ Create new ingredient</button>
+                        </div>
                         <datalist id="ingredient-names">
                             <template x-for="name in ingredientNames" :key="name">
                                 <option :value="name"></option>
@@ -147,6 +151,51 @@
             </div>
         </div>
     </div>
+
+    <!-- Inline New Ingredient Modal -->
+    <div x-show="showNewIngredientForm" x-transition
+         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+         @click.self="showNewIngredientForm = false">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
+            <div class="p-6">
+                <h2 class="text-xl font-bold mb-4">Quick Add Ingredient</h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                        <input type="text" x-model="newIngredientData.name"
+                               @keydown.enter="saveNewIngredient()"
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Parent (optional)</label>
+                        <input type="text" x-model="newIngredientData.parent"
+                               @keydown.enter="saveNewIngredient()"
+                               placeholder="Leave empty for root ingredient"
+                               list="ingredient-names-quick"
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500">
+                        <datalist id="ingredient-names-quick">
+                            <template x-for="name in ingredientNames" :key="name">
+                                <option :value="name"></option>
+                            </template>
+                        </datalist>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button @click="saveNewIngredient()" :disabled="savingNewIngredient"
+                            class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                        <span x-text="savingNewIngredient ? 'Saving...' : 'Create & Add to Recipe'"></span>
+                    </button>
+                    <button @click="showNewIngredientForm = false; newIngredientError = ''"
+                            class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Cancel</button>
+                </div>
+
+                <div x-show="newIngredientError" class="mt-3 p-3 bg-red-50 text-red-700 rounded-lg text-sm" x-text="newIngredientError"></div>
+                <div x-show="newIngredientSuccess" class="mt-3 p-3 bg-green-50 text-green-700 rounded-lg text-sm" x-text="newIngredientSuccess"></div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -159,6 +208,11 @@ function cocktailsApp() {
         saving: false,
         formError: '',
         ingredientNames: [],
+        showNewIngredientForm: false,
+        savingNewIngredient: false,
+        newIngredientError: '',
+        newIngredientSuccess: '',
+        newIngredientData: { name: '', parent: '' },
         newCocktail: {
             name: '', description: '', method: '', style: '', glassware: '', garnish: '',
             ingredients: [{ingredient: '', amount: null, unit: 'oz', notes: '', optional: false}],
@@ -228,6 +282,62 @@ function cocktailsApp() {
                 this.formError = e.message;
             } finally {
                 this.saving = false;
+            }
+        },
+
+        async saveNewIngredient() {
+            if (!this.newIngredientData.name.trim()) {
+                this.newIngredientError = 'Name is required';
+                return;
+            }
+            this.savingNewIngredient = true;
+            this.newIngredientError = '';
+            this.newIngredientSuccess = '';
+            try {
+                const payload = {
+                    name: this.newIngredientData.name.trim(),
+                    parent: this.newIngredientData.parent.trim() || null,
+                };
+                const response = await fetch('/api/v1/ingredients', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    this.newIngredientError = error.detail || 'Failed to save ingredient';
+                    return;
+                }
+                const created = await response.json();
+                this.newIngredientSuccess = `Created "${created.name}"!`;
+
+                // Reload ingredient names
+                await this.loadIngredientNames();
+
+                // Add to the last ingredient row if it's empty, or create new row
+                const lastIng = this.newCocktail.ingredients[this.newCocktail.ingredients.length - 1];
+                if (lastIng && !lastIng.ingredient) {
+                    lastIng.ingredient = created.name;
+                } else {
+                    this.newCocktail.ingredients.push({
+                        ingredient: created.name,
+                        amount: null,
+                        unit: 'oz',
+                        notes: '',
+                        optional: false
+                    });
+                }
+
+                // Close form after brief delay
+                setTimeout(() => {
+                    this.showNewIngredientForm = false;
+                    this.newIngredientData = { name: '', parent: '' };
+                    this.newIngredientSuccess = '';
+                }, 1000);
+            } catch (e) {
+                this.newIngredientError = e.message;
+            } finally {
+                this.savingNewIngredient = false;
             }
         }
     };
