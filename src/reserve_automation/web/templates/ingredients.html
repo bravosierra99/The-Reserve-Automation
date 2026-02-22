@@ -527,26 +527,19 @@ function ingredientsApp() {
         },
 
         async viewIngredientByName(name) {
-            // Search for ingredient by name and open it, also navigate tree
+            // Search for ingredient and show focused tree view with it as root
             try {
-                const response = await fetch(`/api/v1/ingredients/search?q=${encodeURIComponent(name)}`);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const results = await response.json();
-                // Find exact match (search now returns tree structures)
-                const match = results.find(r => r.name === name);
+                // Set search to the ingredient name - this will show it + children
+                this.searchQuery = name;
+                await this.doSearch();
+
+                // Find exact match in search results
+                const match = this.searchResults.find(r => r.name === name);
                 if (match) {
                     // Fetch full details to ensure we have all fields
                     const detailResponse = await fetch(`/api/v1/ingredients/${match.id}`);
                     if (detailResponse.ok) {
                         const details = await detailResponse.json();
-
-                        // Exit search mode and go to tree view
-                        this.searchMode = false;
-                        this.searchQuery = '';
-
-                        // Reload tree to ensure we have latest data
-                        await this.loadTree();
-
                         // Open the ingredient detail modal
                         this.viewIngredient(details);
                     } else {
