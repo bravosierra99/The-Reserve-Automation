@@ -472,7 +472,7 @@ async def bulk_search_ingredients(request_data: BulkSearchRequest):
         from ...llm.tool_executor import ToolExecutor
         from ...core.config import Config
 
-        config = Config()
+        config = Config.load()
         tool_executor = ToolExecutor()
 
         # Step 1: Web search for the query
@@ -503,7 +503,7 @@ Return a JSON array of products. Each product should have:
 Return ONLY the JSON array, no other text. Example:
 [{{"name": "Svedka Vanilla Vodka", "cost": 12.99, "volume_ml": 750, "abv": 35.0, "notes": "Swedish vanilla flavored vodka"}}]"""
 
-        gateway = LLMGateway(config)
+        gateway = LLMGateway(config.llm)
         response = await gateway.complete(
             task_type="metadata_enrichment",
             prompt=prompt,
