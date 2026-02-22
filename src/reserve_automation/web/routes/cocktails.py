@@ -11,6 +11,7 @@
 #CLAUDE_REQ: - Vault structure: 3_Cocktails/{Name}/Tasting-{date}-{taster}.md for tastings
 """Cocktail recipe management endpoints."""
 
+import json
 import re
 import shutil
 from pathlib import Path
@@ -18,6 +19,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.templating import Jinja2Templates
 from loguru import logger
+from pydantic import BaseModel, Field
 
 from ...core.bottle_registry import BottleRegistry
 from ...core.cocktail import (
@@ -476,4 +478,78 @@ async def delete_cocktail_tasting(cocktail_id: str, tasting_file: str):
         raise
     except Exception as e:
         logger.error(f"Failed to delete cocktail tasting: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# RECIPE SEARCH
+# ============================================================================
+
+class RecipeSearchRequest(BaseModel):
+    """Request to search for a cocktail recipe."""
+    query: str = Field(..., min_length=1, description="Cocktail name to search for")
+
+
+@router.post("/api/v1/cocktails/search-recipe")
+async def search_cocktail_recipe(request_data: RecipeSearchRequest):
+    """
+    Search for a cocktail recipe using LLM.
+
+    Accepts a cocktail name and returns a structured recipe.
+    """
+    try:
+        from ...llm.gateway import LLMGateway
+        from ...core.config import Config
+
+        config = Config.load()
+
+        prompt = f"""Provide a classic recipe for the cocktail: {request_data.query}
+
+Return a JSON object with the following structure:
+{{
+  "name": "Cocktail Name",
+  "description": "Brief description of the cocktail",
+  "method": "shaken/stirred/built/blended",
+  "style": "classic/modern/tiki/sour/highball",
+  "glassware": "Type of glass (e.g., coupe, rocks, highball)",
+  "garnish": "Garnish description",
+  "ingredients": [
+    {{"ingredient": "Ingredient name", "amount": 2.0, "unit": "oz", "notes": "optional notes"}},
+    {{"ingredient": "Ingredient name", "amount": 0.75, "unit": "oz"}}
+  ],
+  "instructions": [
+    "Step 1",
+    "Step 2"
+  ]
+}}
+
+Use standard measurements (oz for spirits, dash for bitters). Return ONLY valid JSON, no other text."""
+
+        gateway = LLMGateway(config.llm)
+        response = await gateway.complete(
+            task_type="metadata_enrichment",
+            prompt=prompt,
+            temperature=0.3,
+            max_tokens=1500,
+        )
+
+        # Parse JSON response
+        import json
+        recipe_text = response.content.strip()
+        # Remove markdown code blocks if present
+        if recipe_text.startswith("```"):
+            recipe_text = recipe_text.split("```")[1]
+            if recipe_text.startswith("json"):
+                recipe_text = recipe_text[4:]
+            recipe_text = recipe_text.strip()
+
+        recipe_data = json.loads(recipe_text)
+
+        return recipe_data
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse recipe JSON: {e}")
+        raise HTTPException(status_code=500, detail="Failed to parse recipe from LLM response")
+    except Exception as e:
+        logger.error(f"Failed to search recipe: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

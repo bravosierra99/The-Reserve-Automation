@@ -60,7 +60,13 @@
          @click.self="showCreateForm = false">
         <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div class="p-6">
-                <h2 class="text-xl font-bold mb-4">New Cocktail Recipe</h2>
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold">New Cocktail Recipe</h2>
+                    <button @click="showRecipeSearch = true" type="button"
+                            class="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg">
+                        🔍 Search Recipe
+                    </button>
+                </div>
 
                 <div class="space-y-4">
                     <div>
@@ -208,6 +214,39 @@
             </div>
         </div>
     </div>
+
+    <!-- Recipe Search Modal -->
+    <div x-show="showRecipeSearch" x-transition
+         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+         @click.self="showRecipeSearch = false">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
+            <div class="p-6">
+                <h2 class="text-xl font-bold mb-4">Search Recipe</h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Cocktail Name</label>
+                        <input type="text" x-model="recipeSearchQuery"
+                               @keydown.enter="searchRecipe()"
+                               placeholder="e.g., Margarita, Old Fashioned"
+                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500">
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button @click="searchRecipe()" :disabled="recipeSearching"
+                            class="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                        <span x-text="recipeSearching ? 'Searching...' : 'Search'"></span>
+                    </button>
+                    <button @click="showRecipeSearch = false; recipeSearchError = ''"
+                            class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Cancel</button>
+                </div>
+
+                <div x-show="recipeSearchError" class="mt-3 p-3 bg-red-50 text-red-700 rounded-lg text-sm" x-text="recipeSearchError"></div>
+                <div x-show="recipeSearchSuccess" class="mt-3 p-3 bg-green-50 text-green-700 rounded-lg text-sm" x-text="recipeSearchSuccess"></div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -226,6 +265,11 @@ function cocktailsApp() {
         newIngredientError: '',
         newIngredientSuccess: '',
         newIngredientData: { name: '', parent: '' },
+        showRecipeSearch: false,
+        recipeSearchQuery: '',
+        recipeSearching: false,
+        recipeSearchError: '',
+        recipeSearchSuccess: '',
         newCocktail: {
             name: '', description: '', parent_cocktail: '', method: '', style: '', glassware: '', garnish: '',
             ingredients: [{ingredient: '', amount: null, unit: 'oz', notes: '', optional: false}],
@@ -354,6 +398,53 @@ function cocktailsApp() {
                 this.newIngredientError = e.message;
             } finally {
                 this.savingNewIngredient = false;
+            }
+        },
+
+        async searchRecipe() {
+            if (!this.recipeSearchQuery.trim()) {
+                this.recipeSearchError = 'Please enter a cocktail name';
+                return;
+            }
+            this.recipeSearching = true;
+            this.recipeSearchError = '';
+            this.recipeSearchSuccess = '';
+            try {
+                const response = await fetch('/api/v1/cocktails/search-recipe', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({query: this.recipeSearchQuery})
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    this.recipeSearchError = error.detail || 'Failed to find recipe';
+                    return;
+                }
+                const recipe = await response.json();
+
+                // Populate the form with the found recipe
+                this.newCocktail = {
+                    name: recipe.name || this.recipeSearchQuery,
+                    description: recipe.description || '',
+                    parent_cocktail: recipe.parent_cocktail || '',
+                    method: recipe.method || '',
+                    style: recipe.style || '',
+                    glassware: recipe.glassware || '',
+                    garnish: recipe.garnish || '',
+                    ingredients: recipe.ingredients || [{ingredient: '', amount: null, unit: 'oz', notes: '', optional: false}],
+                    instructions: recipe.instructions || [''],
+                };
+
+                this.recipeSearchSuccess = `Recipe loaded! Review and edit before saving.`;
+                setTimeout(() => {
+                    this.showRecipeSearch = false;
+                    this.recipeSearchQuery = '';
+                    this.recipeSearchSuccess = '';
+                }, 1500);
+            } catch (e) {
+                this.recipeSearchError = e.message;
+            } finally {
+                this.recipeSearching = false;
             }
         },
 
