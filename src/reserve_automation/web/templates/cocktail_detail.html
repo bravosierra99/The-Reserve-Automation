@@ -49,7 +49,8 @@
                     <li class="flex items-center gap-2">
                         <span class="text-gray-400 w-6 text-right" x-text="ing.amount || ''"></span>
                         <span class="text-gray-500 text-sm w-16" x-text="ing.unit || ''"></span>
-                        <span class="font-medium" x-text="ing.ingredient"></span>
+                        <a href="#" @click.prevent="viewIngredient(ing.ingredient)"
+                           class="font-medium text-blue-600 hover:text-blue-800 hover:underline" x-text="ing.ingredient"></a>
                         <span x-show="ing.notes" class="text-gray-500 text-sm" x-text="'(' + ing.notes + ')'"></span>
                         <span x-show="ing.optional" class="text-gray-400 text-xs italic">optional</span>
                     </li>
@@ -114,12 +115,76 @@
         <div x-show="showTastingForm" x-transition
              class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
              @click.self="showTastingForm = false">
-            <div class="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
                 <div class="p-6">
-                    <h2 class="text-xl font-bold mb-4">Rate This Cocktail</h2>
-                    <div class="space-y-4">
+                    <!-- Multi-step wizard -->
+                    <div class="mb-4 flex items-center justify-between">
+                        <h2 class="text-xl font-bold">
+                            <span x-show="tastingStep === 1">Step 1: Select Products Used</span>
+                            <span x-show="tastingStep === 2">Step 2: Rate & Notes</span>
+                        </h2>
+                        <div class="text-sm text-gray-500">Step <span x-text="tastingStep"></span> of 2</div>
+                    </div>
+
+                    <!-- Step 1: Bottle Selection -->
+                    <div x-show="tastingStep === 1" class="space-y-4">
+                        <p class="text-sm text-gray-600 mb-4">Select the specific products you used for each ingredient. You can stick to the recipe or experiment!</p>
+                        <template x-for="(ing, idx) in cocktail.ingredients" :key="idx">
+                            <div class="border rounded-lg p-4 bg-gray-50">
+                                <div class="font-medium text-gray-800 mb-2">
+                                    <span x-text="ing.amount || ''"></span>
+                                    <span x-text="ing.unit || ''"></span>
+                                    <span class="text-blue-600" x-text="ing.ingredient"></span>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="block text-xs text-gray-600 mb-1">Product used:</label>
+                                    <div class="relative">
+                                        <input type="text"
+                                               x-model="bottleSearchQueries[idx]"
+                                               @input.debounce.300ms="searchBottles(idx, ing.ingredient)"
+                                               @focus="searchBottles(idx, ing.ingredient)"
+                                               :placeholder="'Search or select ' + ing.ingredient"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
+
+                                        <!-- Dropdown with search results -->
+                                        <div x-show="bottleResults[idx] && bottleResults[idx].length > 0"
+                                             class="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                            <template x-for="(result, ridx) in bottleResults[idx]" :key="ridx">
+                                                <div @click="selectBottle(idx, result, ing.ingredient)"
+                                                     class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b last:border-0">
+                                                    <div class="font-medium text-sm" x-text="result.name"></div>
+                                                    <div x-show="result.ancestors && result.ancestors.length > 0"
+                                                         class="text-xs text-gray-400"
+                                                         x-text="result.ancestors.join(' > ')"></div>
+                                                    <div x-show="result.is_product" class="text-xs text-blue-600 mt-0.5">
+                                                        Product
+                                                        <span x-show="result.abv" x-text="'• ' + result.abv + '% ABV'"></span>
+                                                        <span x-show="result.cost" x-text="'• $' + result.cost"></span>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div x-show="tastingData.bottles_used[idx]" class="text-sm text-gray-600">
+                                    Selected: <span class="font-medium text-green-700" x-text="tastingData.bottles_used[idx]?.actual_product"></span>
+                                </div>
+                            </div>
+                        </template>
+
+                        <div class="flex gap-3 mt-6">
+                            <button @click="tastingStep = 2"
+                                    class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
+                                Next: Rate It
+                            </button>
+                            <button @click="closeTastingForm()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Cancel</button>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Rating & Notes -->
+                    <div x-show="tastingStep === 2" class="space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Your Name</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Your Name *</label>
                             <input type="text" x-model="tastingData.taster_name" class="w-full px-3 py-2 border rounded-lg">
                         </div>
                         <div>
@@ -129,21 +194,23 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                            <textarea x-model="tastingData.notes" rows="3" class="w-full px-3 py-2 border rounded-lg"></textarea>
+                            <textarea x-model="tastingData.notes" rows="3" class="w-full px-3 py-2 border rounded-lg" placeholder="How did it taste? Any thoughts?"></textarea>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Bartender</label>
-                            <input type="text" x-model="tastingData.bartender" class="w-full px-3 py-2 border rounded-lg">
+                            <input type="text" x-model="tastingData.bartender" class="w-full px-3 py-2 border rounded-lg" placeholder="Who made this?">
                         </div>
+
+                        <div class="flex gap-3 mt-6">
+                            <button @click="tastingStep = 1" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Back</button>
+                            <button @click="saveTasting()" :disabled="tastingSaving"
+                                    class="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg">
+                                <span x-text="tastingSaving ? 'Saving...' : 'Save Tasting'"></span>
+                            </button>
+                            <button @click="closeTastingForm()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Cancel</button>
+                        </div>
+                        <div x-show="tastingError" class="mt-3 p-3 bg-red-50 text-red-700 rounded-lg text-sm" x-text="tastingError"></div>
                     </div>
-                    <div class="flex gap-3 mt-6">
-                        <button @click="saveTasting()" :disabled="tastingSaving"
-                                class="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg">
-                            <span x-text="tastingSaving ? 'Saving...' : 'Save Rating'"></span>
-                        </button>
-                        <button @click="showTastingForm = false" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Cancel</button>
-                    </div>
-                    <div x-show="tastingError" class="mt-3 p-3 bg-red-50 text-red-700 rounded-lg text-sm" x-text="tastingError"></div>
                 </div>
             </div>
         </div>
@@ -159,6 +226,7 @@ function cocktailDetailApp(cocktailId) {
         tastings: [],
         avgScore: null,
         showTastingForm: false,
+        tastingStep: 1,
         tastingSaving: false,
         tastingError: '',
         tastingData: {
@@ -166,7 +234,10 @@ function cocktailDetailApp(cocktailId) {
             score: 7,
             notes: '',
             bartender: '',
+            bottles_used: [],
         },
+        bottleSearchQueries: {},
+        bottleResults: {},
 
         async loadCocktail() {
             try {
@@ -199,6 +270,62 @@ function cocktailDetailApp(cocktailId) {
             }
         },
 
+        async searchBottles(ingredientIndex, recipeIngredient) {
+            const query = this.bottleSearchQueries[ingredientIndex] || '';
+            try {
+                // Search ingredients - smart filter by default shows descendants of recipe ingredient
+                // But also allows full search if user types something different
+                const response = await fetch(`/api/v1/ingredients/search?q=${encodeURIComponent(query || recipeIngredient)}`);
+                if (response.ok) {
+                    let results = await response.json();
+                    // If no query, filter to descendants of the recipe ingredient (smart defaults)
+                    // If query is provided, show all results (full flexibility)
+                    if (!query) {
+                        // Find the recipe ingredient node and its descendants
+                        const allIngResponse = await fetch('/api/v1/ingredients?flat=true');
+                        if (allIngResponse.ok) {
+                            const allIng = await allIngResponse.json();
+                            const recipeNode = allIng.find(i => i.name.toLowerCase() === recipeIngredient.toLowerCase());
+                            if (recipeNode) {
+                                // Get descendants
+                                const descResponse = await fetch(`/api/v1/ingredients/${recipeNode.id}/descendants`);
+                                if (descResponse.ok) {
+                                    const descendants = await descResponse.json();
+                                    results = [recipeNode, ...descendants];
+                                }
+                            }
+                        }
+                    }
+                    // Prioritize products (items with cost/abv/etc)
+                    results.sort((a, b) => {
+                        if (a.is_product && !b.is_product) return -1;
+                        if (!a.is_product && b.is_product) return 1;
+                        return 0;
+                    });
+                    this.bottleResults[ingredientIndex] = results;
+                }
+            } catch (e) {
+                console.error('Failed to search bottles:', e);
+            }
+        },
+
+        selectBottle(ingredientIndex, bottle, recipeIngredient) {
+            this.tastingData.bottles_used[ingredientIndex] = {
+                recipe_ingredient: recipeIngredient,
+                actual_product: bottle.name
+            };
+            this.bottleSearchQueries[ingredientIndex] = bottle.name;
+            this.bottleResults[ingredientIndex] = [];
+        },
+
+        closeTastingForm() {
+            this.showTastingForm = false;
+            this.tastingStep = 1;
+            this.tastingData = {taster_name: '', score: 7, notes: '', bartender: '', bottles_used: []};
+            this.bottleSearchQueries = {};
+            this.bottleResults = {};
+        },
+
         async saveTasting() {
             if (!this.tastingData.taster_name.trim()) {
                 this.tastingError = 'Name is required';
@@ -217,8 +344,7 @@ function cocktailDetailApp(cocktailId) {
                     this.tastingError = error.detail || 'Failed to save';
                     return;
                 }
-                this.showTastingForm = false;
-                this.tastingData = {taster_name: '', score: 7, notes: '', bartender: ''};
+                this.closeTastingForm();
                 await this.loadTastings();
             } catch (e) {
                 this.tastingError = e.message;
@@ -235,6 +361,11 @@ function cocktailDetailApp(cocktailId) {
             } catch (e) {
                 alert('Failed to delete: ' + e.message);
             }
+        },
+
+        async viewIngredient(ingredientName) {
+            // Find ingredient by name and redirect to ingredients page with search
+            window.location.href = `/ingredients?search=${encodeURIComponent(ingredientName)}`;
         }
     };
 }
