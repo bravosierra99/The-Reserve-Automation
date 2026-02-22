@@ -12,13 +12,20 @@ from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from ..schemas.events import (
+    AddEventCocktailRequest,
+    CocktailRating,
+    CreateCocktailEventRequest,
     CreateEventRequest,
     Event,
     EventBottle,
+    EventCocktail,
+    EventMode,
     EventStatus,
+    EventType,
     JoinEventRequest,
     Participant,
     ParticipantSession,
+    SubmitCocktailRatingRequest,
 )
 
 router = APIRouter()
@@ -364,4 +371,196 @@ async def delete_event(event_id: str):
         raise
     except Exception as e:
         logger.error(f"Failed to delete event: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# API ROUTES - COCKTAIL EVENTS
+# ============================================================================
+
+@router.post("/api/v1/events/cocktail")
+async def create_cocktail_event(request_data: CreateCocktailEventRequest):
+    """Create a cocktail tasting event (blind or flight mode)."""
+    from .. import app as app_module
+    event_store = app_module.event_store
+
+    if event_store is None:
+        raise HTTPException(status_code=500, detail="Service not initialized")
+
+    try:
+        # Validate: blind mode requires cocktails upfront
+        if request_data.event_mode == EventMode.BLIND:
+            if not request_data.cocktails:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cocktails required for blind mode"
+                )
+            # Ensure blind numbers are set
+            for i, c in enumerate(request_data.cocktails):
+                if c.blind_number is None:
+                    c.blind_number = i + 1
+
+        event_id = str(uuid.uuid4())
+        event = Event(
+            event_id=event_id,
+            name=request_data.name,
+            beverage_type="cocktail",
+            is_blind=(request_data.event_mode == EventMode.BLIND),
+            status=EventStatus.OPEN,
+            host_name=request_data.host_name,
+            created_at=datetime.now(),
+            bottles=[],
+            participants={},
+            event_type=EventType.COCKTAIL,
+            event_mode=request_data.event_mode,
+            cocktails=request_data.cocktails,
+        )
+
+        event_store[event_id] = event.model_dump()
+        logger.info(
+            f"Created cocktail event: {event_id} - {request_data.name} "
+            f"({request_data.event_mode.value} mode, "
+            f"{len(request_data.cocktails)} cocktails)"
+        )
+
+        return event
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create cocktail event: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/events/{event_id}/cocktails")
+async def add_event_cocktail(event_id: str, request_data: AddEventCocktailRequest):
+    """Add a cocktail to a flight event (flight mode only)."""
+    from ..app import event_store
+
+    if event_store is None:
+        raise HTTPException(status_code=500, detail="Service not initialized")
+
+    try:
+        if event_id not in event_store:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        event = event_store[event_id]
+
+        if event.get("event_type") != EventType.COCKTAIL:
+            raise HTTPException(status_code=400, detail="Not a cocktail event")
+
+        if event.get("event_mode") != EventMode.FLIGHT:
+            raise HTTPException(
+                status_code=400,
+                detail="Can only add cocktails to flight mode events"
+            )
+
+        if event["status"] == EventStatus.CLOSED:
+            raise HTTPException(status_code=400, detail="Event is closed")
+
+        cocktail = EventCocktail(
+            cocktail_name=request_data.cocktail_name,
+            recipe_id=request_data.recipe_id,
+            bartender=request_data.bartender,
+            added_at=datetime.now(),
+        )
+
+        event["cocktails"].append(cocktail.model_dump())
+        logger.info(
+            f"Added cocktail '{request_data.cocktail_name}' to event {event_id}"
+        )
+
+        return {"message": "Cocktail added", "cocktail": cocktail}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to add cocktail to event: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/events/{event_id}/cocktail-ratings")
+async def submit_cocktail_rating(
+    event_id: str,
+    request_data: SubmitCocktailRatingRequest,
+    request: Request,
+):
+    """Submit a rating for a cocktail in an event."""
+    from ..app import event_store
+
+    if event_store is None:
+        raise HTTPException(status_code=500, detail="Service not initialized")
+
+    try:
+        if event_id not in event_store:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        event = event_store[event_id]
+
+        if event.get("event_type") != EventType.COCKTAIL:
+            raise HTTPException(status_code=400, detail="Not a cocktail event")
+
+        if event["status"] == EventStatus.CLOSED:
+            raise HTTPException(status_code=400, detail="Event is closed")
+
+        # Find participant from cookie
+        participant_id = None
+        if "participant_sessions" in request.cookies:
+            try:
+                decoded = unquote(request.cookies["participant_sessions"])
+                sessions = json.loads(decoded)
+                session = sessions.get(event_id)
+                if session:
+                    participant_id = session.get("participant_id")
+            except Exception:
+                pass
+
+        if not participant_id or participant_id not in event["participants"]:
+            raise HTTPException(
+                status_code=403, detail="Must join event first"
+            )
+
+        # Verify the cocktail exists in the event
+        cocktail_names = [c["cocktail_name"] for c in event["cocktails"]]
+        if request_data.cocktail_name not in cocktail_names:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Cocktail '{request_data.cocktail_name}' not in this event"
+            )
+
+        # Add rating to participant
+        participant = event["participants"][participant_id]
+        rating = CocktailRating(
+            cocktail_name=request_data.cocktail_name,
+            score=request_data.score,
+            notes=request_data.notes,
+        )
+
+        # Initialize cocktail_ratings list if missing (backward compat)
+        if "cocktail_ratings" not in participant:
+            participant["cocktail_ratings"] = []
+
+        # Replace existing rating for same cocktail, or add new
+        existing_idx = None
+        for i, r in enumerate(participant["cocktail_ratings"]):
+            if r.get("cocktail_name") == request_data.cocktail_name:
+                existing_idx = i
+                break
+
+        if existing_idx is not None:
+            participant["cocktail_ratings"][existing_idx] = rating.model_dump()
+        else:
+            participant["cocktail_ratings"].append(rating.model_dump())
+
+        logger.info(
+            f"Rating submitted for '{request_data.cocktail_name}' "
+            f"in event {event_id} by participant {participant_id}"
+        )
+
+        return {"message": "Rating submitted", "rating": rating}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to submit cocktail rating: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

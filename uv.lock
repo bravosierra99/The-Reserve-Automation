@@ -2136,7 +2136,7 @@ wheels = [
 
 [[package]]
 name = "reserve-automation"
-version = "0.3.5"
+version = "0.3.10"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },

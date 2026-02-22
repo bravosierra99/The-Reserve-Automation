@@ -1,0 +1,65 @@
+{# NOTE: Use inline conditionals {{ x if x else '' }} not block tags {% if %}{% endif %} #}
+{# Block tags with trim_blocks=True cause newlines to be stripped, breaking frontmatter #}
+---
+fileClass: Ingredient
+IngredientName: {{ name }}
+Parent: {{ parent if parent else '' }}
+Cost: {{ cost if cost else '' }}
+VolumeMl: {{ volume_ml if volume_ml else '' }}
+ABV: {{ abv if abv else '' }}
+Notes: {{ notes if notes else '' }}
+---
+
+## {{ name }}
+
+### Children
+
+{% raw %}
+```dataviewjs
+const currentName = dv.current().IngredientName;
+const ingredients = dv.pages('"2_Ingredients"')
+    .where(p => p.fileClass === "Ingredient" && p.Parent === currentName);
+
+if (ingredients.length === 0) {
+    dv.paragraph("No child ingredients.");
+} else {
+    dv.table(
+        ["Name", "Cost"],
+        ingredients.map(p => [
+            p.file.link,
+            p.Cost ? "$" + p.Cost : ""
+        ])
+    );
+}
+```
+{% endraw %}
+
+### Ancestors
+
+{% raw %}
+```dataviewjs
+const parent = dv.current().Parent;
+if (!parent) {
+    dv.paragraph("Root ingredient.");
+} else {
+    const parts = [];
+    let current = parent;
+    while (current) {
+        const page = dv.pages('"2_Ingredients"')
+            .where(p => p.fileClass === "Ingredient" && p.IngredientName === current)
+            .first();
+        if (page) {
+            parts.unshift(page.file.link);
+            current = page.Parent;
+        } else {
+            parts.unshift(current);
+            break;
+        }
+    }
+    dv.paragraph("Path: " + parts.join(" > "));
+}
+```
+{% endraw %}
+
+## Label
+Label:: ![[labels/label.jpg]]

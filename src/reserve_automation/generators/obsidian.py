@@ -22,6 +22,9 @@ from typing import Optional
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
 from ..core.exceptions import GenerationError
+from ..core.cocktail import CocktailRecipe
+from ..core.cocktail_tasting import CocktailTastingNote
+from ..core.ingredient import Ingredient
 from ..core.models import BottleMetadata
 from ..utils.logging import logger
 
@@ -29,14 +32,14 @@ from ..utils.logging import logger
 class ObsidianFile:
     """Generated Obsidian markdown file."""
 
-    def __init__(self, file_path: Path, content: str, bottle: BottleMetadata):
+    def __init__(self, file_path: Path, content: str, bottle: Optional[BottleMetadata] = None):
         """
         Initialize Obsidian file.
 
         Args:
             file_path: Path where file will be written
             content: Markdown content
-            bottle: Source bottle metadata
+            bottle: Source bottle metadata (None for non-bottle files like ingredients)
         """
         self.file_path = file_path
         self.content = content
@@ -270,6 +273,254 @@ class ObsidianGenerator:
         }
 
         return context
+
+    # ========================================================================
+    # INGREDIENT GENERATION
+    # ========================================================================
+
+    def generate_ingredient_file(self, ingredient: Ingredient) -> ObsidianFile:
+        """
+        Generate markdown file for an ingredient.
+
+        Args:
+            ingredient: Ingredient to generate file for.
+
+        Returns:
+            ObsidianFile with path and content.
+
+        Raises:
+            GenerationError: If file generation fails.
+        """
+        try:
+            # Ingredients go in 2_Ingredients/{Name}/{Name}.md
+            folder_name = self._sanitize_filename(ingredient.name)
+            folder_path = self.vault_path / "2_Ingredients" / folder_name
+            file_path = folder_path / f"{folder_name}.md"
+
+            # Render template
+            content = self._render_ingredient_template(ingredient)
+
+            logger.info(f"Generated ingredient file for {ingredient.name}")
+
+            return ObsidianFile(
+                file_path=file_path,
+                content=content,
+                bottle=None,  # Not a bottle
+            )
+        except Exception as e:
+            logger.error(f"Failed to generate ingredient file for {ingredient.name}: {e}")
+            raise GenerationError(f"Failed to generate ingredient file: {e}") from e
+
+    def _render_ingredient_template(self, ingredient: Ingredient) -> str:
+        """
+        Render Jinja2 template for an ingredient.
+
+        Args:
+            ingredient: Ingredient data.
+
+        Returns:
+            Rendered markdown content.
+
+        Raises:
+            GenerationError: If template rendering fails.
+        """
+        try:
+            try:
+                template = self.env.get_template("ingredient.md.j2")
+            except TemplateNotFound:
+                raise GenerationError("Template not found: ingredient.md.j2")
+
+            context = self._prepare_ingredient_context(ingredient)
+            return template.render(**context)
+
+        except Exception as e:
+            raise GenerationError(f"Ingredient template rendering failed: {e}") from e
+
+    def _prepare_ingredient_context(self, ingredient: Ingredient) -> dict:
+        """
+        Prepare Jinja2 template context from ingredient data.
+
+        Args:
+            ingredient: Ingredient data.
+
+        Returns:
+            Dictionary of template variables.
+        """
+        return {
+            "name": ingredient.name,
+            "parent": ingredient.parent,
+            "cost": ingredient.cost,
+            "volume_ml": ingredient.volume_ml,
+            "abv": ingredient.abv,
+            "notes": ingredient.notes,
+        }
+
+    # ========================================================================
+    # COCKTAIL GENERATION
+    # ========================================================================
+
+    def generate_cocktail_file(self, cocktail: CocktailRecipe) -> ObsidianFile:
+        """Generate markdown file for a cocktail recipe."""
+        try:
+            folder_name = self._sanitize_filename(cocktail.name)
+            folder_path = self.vault_path / "3_Cocktails" / folder_name
+            file_path = folder_path / f"{folder_name}.md"
+
+            content = self._render_cocktail_template(cocktail)
+
+            logger.info(f"Generated cocktail file for {cocktail.name}")
+
+            return ObsidianFile(
+                file_path=file_path,
+                content=content,
+            )
+        except Exception as e:
+            logger.error(f"Failed to generate cocktail file for {cocktail.name}: {e}")
+            raise GenerationError(f"Failed to generate cocktail file: {e}") from e
+
+    def _render_cocktail_template(self, cocktail: CocktailRecipe) -> str:
+        """Render Jinja2 template for a cocktail."""
+        try:
+            try:
+                template = self.env.get_template("cocktail.md.j2")
+            except TemplateNotFound:
+                raise GenerationError("Template not found: cocktail.md.j2")
+
+            context = self._prepare_cocktail_context(cocktail)
+            return template.render(**context)
+
+        except Exception as e:
+            raise GenerationError(f"Cocktail template rendering failed: {e}") from e
+
+    def _prepare_cocktail_context(self, cocktail: CocktailRecipe) -> dict:
+        """Prepare Jinja2 context for cocktail template."""
+        # Build YAML for ingredients array (indented for frontmatter)
+        ingredients_yaml = ""
+        for ing in cocktail.ingredients:
+            ingredients_yaml += f"  - ingredient: {ing.ingredient}\n"
+            if ing.amount is not None:
+                ingredients_yaml += f"    amount: {ing.amount}\n"
+            if ing.unit:
+                ingredients_yaml += f"    unit: {ing.unit}\n"
+            if ing.notes:
+                ingredients_yaml += f"    notes: {ing.notes}\n"
+            if ing.optional:
+                ingredients_yaml += f"    optional: true\n"
+
+        # Build YAML for instructions array
+        instructions_yaml = ""
+        for step in cocktail.instructions:
+            # Escape YAML special chars in instructions
+            safe_step = step.replace('"', '\\"')
+            instructions_yaml += f'  - "{safe_step}"\n'
+
+        # Build display-friendly ingredients list
+        ingredients_display = []
+        for ing in cocktail.ingredients:
+            parts = []
+            if ing.amount is not None:
+                parts.append(str(ing.amount))
+            if ing.unit:
+                parts.append(ing.unit)
+            parts.append(ing.ingredient)
+            if ing.notes:
+                parts.append(f"({ing.notes})")
+            if ing.optional:
+                parts.append("*(optional)*")
+            ingredients_display.append(" ".join(parts))
+
+        return {
+            "name": cocktail.name,
+            "description": cocktail.description,
+            "ingredients_yaml": ingredients_yaml,
+            "instructions_yaml": instructions_yaml,
+            "ingredients_display": ingredients_display,
+            "instructions": cocktail.instructions,
+            "garnish": cocktail.garnish,
+            "glassware": cocktail.glassware,
+            "method": cocktail.method,
+            "style": cocktail.style,
+            "serving_size": cocktail.serving_size,
+            "stars": cocktail.stars,
+            "photo": cocktail.photo,
+        }
+
+    # ========================================================================
+    # COCKTAIL TASTING GENERATION
+    # ========================================================================
+
+    def generate_cocktail_tasting_file(
+        self, tasting: CocktailTastingNote
+    ) -> ObsidianFile:
+        """Generate markdown file for a cocktail tasting note."""
+        try:
+            # Tasting files go in 3_Cocktails/{RecipeName}/Tasting-{date}-{taster}.md
+            cocktail_folder = self._sanitize_filename(tasting.recipe_name)
+            taster_safe = self._sanitize_filename(tasting.taster_name)
+            filename = f"Tasting-{tasting.tasting_date}-{taster_safe}"
+
+            folder_path = self.vault_path / "3_Cocktails" / cocktail_folder
+            file_path = folder_path / f"{filename}.md"
+
+            content = self._render_cocktail_tasting_template(tasting)
+
+            logger.info(
+                f"Generated cocktail tasting file for {tasting.recipe_name} "
+                f"by {tasting.taster_name}"
+            )
+
+            return ObsidianFile(
+                file_path=file_path,
+                content=content,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to generate cocktail tasting for "
+                f"{tasting.recipe_name}: {e}"
+            )
+            raise GenerationError(
+                f"Failed to generate cocktail tasting file: {e}"
+            ) from e
+
+    def _render_cocktail_tasting_template(
+        self, tasting: CocktailTastingNote
+    ) -> str:
+        """Render Jinja2 template for a cocktail tasting."""
+        try:
+            try:
+                template = self.env.get_template("cocktail_tasting.md.j2")
+            except TemplateNotFound:
+                raise GenerationError(
+                    "Template not found: cocktail_tasting.md.j2"
+                )
+
+            context = self._prepare_cocktail_tasting_context(tasting)
+            return template.render(**context)
+
+        except Exception as e:
+            raise GenerationError(
+                f"Cocktail tasting template rendering failed: {e}"
+            ) from e
+
+    def _prepare_cocktail_tasting_context(
+        self, tasting: CocktailTastingNote
+    ) -> dict:
+        """Prepare Jinja2 context for cocktail tasting template."""
+        # Build YAML for bottles_used array
+        bottles_used_yaml = ""
+        for bu in tasting.bottles_used:
+            bottles_used_yaml += f"  - recipe_ingredient: {bu.recipe_ingredient}\n"
+            bottles_used_yaml += f"    actual_product: {bu.actual_product}\n"
+
+        return {
+            "recipe_name": tasting.recipe_name,
+            "taster_name": tasting.taster_name,
+            "tasting_date": tasting.tasting_date,
+            "bartender": tasting.bartender,
+            "score": tasting.score,
+            "notes": tasting.notes,
+            "bottles_used_yaml": bottles_used_yaml,
+        }
 
     def write_file(self, obsidian_file: ObsidianFile, dry_run: bool = False) -> None:
         """

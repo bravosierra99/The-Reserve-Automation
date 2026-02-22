@@ -11,7 +11,7 @@ from loguru import logger
 
 from .config import load_web_config
 from .logging_config import setup_web_logging
-from .routes import upload, review, health, bottles, tastings, management, events
+from .routes import upload, review, health, bottles, tastings, management, events, ingredients, cocktails
 from .services.upload_service import UploadService
 from ..core.bottle_registry import BottleRegistry
 
@@ -104,6 +104,8 @@ app.include_router(bottles.router, tags=["bottles"])  # Bottle API endpoints (/a
 app.include_router(tastings.router, tags=["tastings"])  # New tasting review workflow
 app.include_router(management.router, tags=["management"])  # Management page for metadata updates
 app.include_router(events.router, tags=["events"])  # Event system for multi-user tastings
+app.include_router(ingredients.router, tags=["ingredients"])  # Ingredient tree management
+app.include_router(cocktails.router, tags=["cocktails"])  # Cocktail recipe management
 
 
 @app.get("/")

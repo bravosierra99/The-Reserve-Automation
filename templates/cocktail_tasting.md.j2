@@ -1,0 +1,21 @@
+{# NOTE: Use inline conditionals {{ x if x else '' }} not block tags {% if %}{% endif %} #}
+{# BottlesUsed is a YAML array - rendered by the generator, not inline #}
+---
+fileClass: Cocktail Tasting
+Date: {{ tasting_date }}
+TasterName: {{ taster_name }}
+Bartender: {{ bartender if bartender else '' }}
+Score: {{ score if score is not none else '' }}
+BottlesUsed:
+{{ bottles_used_yaml }}LinkedCocktail: "[[{{ recipe_name }}]]"
+Notes: {{ notes if notes else '' }}
+---
+
+## Tasting Notes
+{% if notes %}
+
+{{ notes }}
+{% endif %}
+
+### Overall Impression
+
