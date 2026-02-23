@@ -180,6 +180,14 @@ function eventDetailApp(eventId) {
 
         async init() {
             this.eventUrl = window.location.origin + '/events/' + this.eventId;
+            // Pre-fill participant name from auth identity
+            try {
+                const meResp = await fetch('/api/v1/me');
+                if (meResp.ok) {
+                    const me = await meResp.json();
+                    if (me.display_name) this.participantName = me.display_name;
+                }
+            } catch (e) { /* ignore */ }
             await this.loadEvent();
             await this.checkParticipantSession();
             // Refresh every 5 seconds

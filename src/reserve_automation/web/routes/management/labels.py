@@ -4,8 +4,9 @@ import hashlib
 from pathlib import Path
 from shutil import copyfile
 from typing import Optional
-from fastapi import APIRouter, HTTPException, UploadFile, Form, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form, BackgroundTasks
 from fastapi.responses import FileResponse, Response
+from ...auth.dependencies import require
 from loguru import logger
 from PIL import Image
 import io
@@ -15,6 +16,8 @@ from ....core.models import BottleMetadata
 # Thumbnail cache directory
 THUMBNAIL_CACHE_DIR = Path("/tmp/reserve-automation/thumbnails")
 
+# Management label routes get labels.edit permission
+# View/thumbnail routes get labels.view permission
 router = APIRouter()
 
 
@@ -63,7 +66,7 @@ def get_temp_label_dir(vault_path: str) -> Path:
     temp_dir = Path("/tmp/reserve-automation/labels") / safe_path
     temp_dir.mkdir(parents=True, exist_ok=True)
     return temp_dir
-@router.post("/api/v1/management/labels/crop-current")
+@router.post("/api/v1/management/labels/crop-current", dependencies=[Depends(require("labels.edit"))])
 async def crop_current_label(data: dict):
     """
     Crop the current label using improved detection.
@@ -128,7 +131,7 @@ async def crop_current_label(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/management/labels/accept-crop")
+@router.post("/api/v1/management/labels/accept-crop", dependencies=[Depends(require("labels.edit"))])
 async def accept_label_crop(data: dict):
     """
     Accept the cropped preview and replace the original label.
@@ -188,7 +191,7 @@ async def accept_label_crop(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/management/labels/download-image")
+@router.post("/api/v1/management/labels/download-image", dependencies=[Depends(require("labels.edit"))])
 async def download_label_image(data: dict):
     """
     Download image from URL and save as label_download.jpg (no cropping yet).
@@ -258,7 +261,7 @@ async def download_label_image(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/management/labels/crop-download")
+@router.post("/api/v1/management/labels/crop-download", dependencies=[Depends(require("labels.edit"))])
 async def crop_downloaded_image(data: dict):
     """
     Crop the downloaded image and save as label_download_cropped.jpg.
@@ -313,7 +316,7 @@ async def crop_downloaded_image(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/management/labels/use-downloaded")
+@router.post("/api/v1/management/labels/use-downloaded", dependencies=[Depends(require("labels.edit"))])
 async def use_downloaded_label(data: dict):
     """
     Use either the original downloaded or cropped version as the final label.
@@ -384,7 +387,7 @@ async def use_downloaded_label(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/management/labels/manual-crop")
+@router.post("/api/v1/management/labels/manual-crop", dependencies=[Depends(require("labels.edit"))])
 async def manual_crop_label(data: dict):
     """
     Crop label using exact pixel coordinates from manual selection.
@@ -476,7 +479,7 @@ async def manual_crop_label(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/management/labels/upload-manual")
+@router.post("/api/v1/management/labels/upload-manual", dependencies=[Depends(require("labels.edit"))])
 async def upload_manual_label(file: UploadFile, bottle: str = Form()):
     """
     Upload a manual label image file for a bottle.
@@ -520,7 +523,7 @@ async def upload_manual_label(file: UploadFile, bottle: str = Form()):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/management/labels/manual-crop-downloaded")
+@router.post("/api/v1/management/labels/manual-crop-downloaded", dependencies=[Depends(require("labels.edit"))])
 async def manual_crop_downloaded_label(data: dict):
     """
     Crop downloaded label image using exact pixel coordinates from manual selection.
@@ -598,7 +601,7 @@ async def manual_crop_downloaded_label(data: dict):
 
 
 # Legacy routes (keep for compatibility but may remove later)
-@router.post("/api/v1/management/labels/scan")
+@router.post("/api/v1/management/labels/scan", dependencies=[Depends(require("labels.edit"))])
 async def scan_label_quality(
     background_tasks: BackgroundTasks,
     show_all: bool = False,
@@ -657,7 +660,7 @@ async def scan_label_quality(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/management/labels/accept")
+@router.post("/api/v1/management/labels/accept", dependencies=[Depends(require("labels.edit"))])
 async def accept_improved_label(data: dict):
     """
     Accept improved label crop and replace original.
@@ -699,7 +702,7 @@ async def accept_improved_label(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/management/labels/keep")
+@router.post("/api/v1/management/labels/keep", dependencies=[Depends(require("labels.edit"))])
 async def keep_original_label(data: dict):
     """
     Keep original label and discard improved version.
@@ -741,7 +744,7 @@ async def keep_original_label(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/v1/labels/view")
+@router.get("/api/v1/labels/view", dependencies=[Depends(require("labels.view"))])
 async def view_label_image(path: Optional[str] = None, id: Optional[str] = None, file: Optional[str] = None):
     """
     Serve a label image for viewing.
@@ -849,7 +852,7 @@ async def view_label_image(path: Optional[str] = None, id: Optional[str] = None,
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/v1/labels/thumbnail")
+@router.get("/api/v1/labels/thumbnail", dependencies=[Depends(require("labels.view"))])
 async def get_label_thumbnail(path: Optional[str] = None, id: Optional[str] = None, size: int = 400, file: Optional[str] = None):
     """
     Serve a resized thumbnail of a label image.

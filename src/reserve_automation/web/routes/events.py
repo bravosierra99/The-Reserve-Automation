@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import quote, unquote
 
-from fastapi import APIRouter, HTTPException, Request, Response, Cookie
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Cookie
+from ..auth.dependencies import require
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
@@ -39,13 +40,13 @@ templates = Jinja2Templates(directory=templates_dir)
 # PAGE ROUTES
 # ============================================================================
 
-@router.get("/events", include_in_schema=False)
+@router.get("/events", include_in_schema=False, dependencies=[Depends(require("events.view"))])
 async def events_list_page(request: Request):
     """Browse all available events."""
     return templates.TemplateResponse(request, "events.html")
 
 
-@router.get("/events/{event_id}", include_in_schema=False)
+@router.get("/events/{event_id}", include_in_schema=False, dependencies=[Depends(require("events.view"))])
 async def event_detail_page(event_id: str, request: Request):
     """Event detail and participation page."""
     return templates.TemplateResponse(request, "event_detail.html", {
@@ -53,7 +54,7 @@ async def event_detail_page(event_id: str, request: Request):
     })
 
 
-@router.get("/events/{event_id}/results", include_in_schema=False)
+@router.get("/events/{event_id}/results", include_in_schema=False, dependencies=[Depends(require("events.view"))])
 async def event_results_page(event_id: str, request: Request):
     """Event results and rankings page."""
     return templates.TemplateResponse(request, "event_results.html", {
@@ -65,7 +66,7 @@ async def event_results_page(event_id: str, request: Request):
 # API ROUTES - EVENT CRUD
 # ============================================================================
 
-@router.post("/api/v1/events")
+@router.post("/api/v1/events", dependencies=[Depends(require("events.create"))])
 async def create_event(request_data: CreateEventRequest):
     """Create a new tasting event."""
     from .. import app as app_module
@@ -150,7 +151,7 @@ async def create_event(request_data: CreateEventRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/v1/events")
+@router.get("/api/v1/events", dependencies=[Depends(require("events.view"))])
 async def list_events():
     """Get all events."""
     from ..app import event_store
@@ -169,7 +170,7 @@ async def list_events():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/v1/events/{event_id}")
+@router.get("/api/v1/events/{event_id}", dependencies=[Depends(require("events.view"))])
 async def get_event(event_id: str):
     """Get event details."""
     from ..app import event_store
@@ -196,7 +197,7 @@ async def get_event(event_id: str):
 # API ROUTES - PARTICIPANT MANAGEMENT
 # ============================================================================
 
-@router.post("/api/v1/events/{event_id}/join")
+@router.post("/api/v1/events/{event_id}/join", dependencies=[Depends(require("events.participate"))])
 async def join_event(
     event_id: str,
     request_data: JoinEventRequest,
@@ -280,7 +281,7 @@ async def join_event(
 # API ROUTES - EVENT STATUS MANAGEMENT
 # ============================================================================
 
-@router.put("/api/v1/events/{event_id}/reveal")
+@router.put("/api/v1/events/{event_id}/reveal", dependencies=[Depends(require("events.manage"))])
 async def reveal_event(event_id: str):
     """Reveal bottle names (transition from blind to revealed)."""
     from ..app import event_store
@@ -318,7 +319,7 @@ async def reveal_event(event_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/api/v1/events/{event_id}/close")
+@router.put("/api/v1/events/{event_id}/close", dependencies=[Depends(require("events.manage"))])
 async def close_event(event_id: str):
     """Close an event (no more tastings allowed)."""
     from ..app import event_store
@@ -349,7 +350,7 @@ async def close_event(event_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/api/v1/events/{event_id}")
+@router.delete("/api/v1/events/{event_id}", dependencies=[Depends(require("events.manage"))])
 async def delete_event(event_id: str):
     """Delete an event."""
     from ..app import event_store
@@ -378,7 +379,7 @@ async def delete_event(event_id: str):
 # API ROUTES - COCKTAIL EVENTS
 # ============================================================================
 
-@router.post("/api/v1/events/cocktail")
+@router.post("/api/v1/events/cocktail", dependencies=[Depends(require("events.create"))])
 async def create_cocktail_event(request_data: CreateCocktailEventRequest):
     """Create a cocktail tasting event (blind or flight mode)."""
     from .. import app as app_module
@@ -432,7 +433,7 @@ async def create_cocktail_event(request_data: CreateCocktailEventRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/events/{event_id}/cocktails")
+@router.post("/api/v1/events/{event_id}/cocktails", dependencies=[Depends(require("events.participate"))])
 async def add_event_cocktail(event_id: str, request_data: AddEventCocktailRequest):
     """Add a cocktail to a flight event (flight mode only)."""
     from ..app import event_store
@@ -479,7 +480,7 @@ async def add_event_cocktail(event_id: str, request_data: AddEventCocktailReques
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/events/{event_id}/cocktail-ratings")
+@router.post("/api/v1/events/{event_id}/cocktail-ratings", dependencies=[Depends(require("events.participate"))])
 async def submit_cocktail_rating(
     event_id: str,
     request_data: SubmitCocktailRatingRequest,

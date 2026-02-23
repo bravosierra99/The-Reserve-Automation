@@ -10,7 +10,8 @@ import re
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from ..auth.dependencies import require
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
@@ -115,7 +116,7 @@ def _sanitize_filename(name: str) -> str:
 # PAGE ROUTES
 # ============================================================================
 
-@router.get("/ingredients", include_in_schema=False)
+@router.get("/ingredients", include_in_schema=False, dependencies=[Depends(require("ingredients.view"))])
 async def ingredients_page(request: Request):
     """Ingredients management page."""
     return templates.TemplateResponse(request, "ingredients.html")
@@ -125,7 +126,7 @@ async def ingredients_page(request: Request):
 # API ROUTES
 # ============================================================================
 
-@router.get("/api/v1/ingredients")
+@router.get("/api/v1/ingredients", dependencies=[Depends(require("ingredients.view"))])
 async def list_ingredients(flat: bool = False):
     """
     Get all ingredients.
@@ -150,7 +151,7 @@ async def list_ingredients(flat: bool = False):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/v1/ingredients/search")
+@router.get("/api/v1/ingredients/search", dependencies=[Depends(require("ingredients.view"))])
 async def search_ingredients(q: str = ""):
     """Search ingredients by name. Returns tree structures with children."""
     core_config, bottle_registry = _get_services()
@@ -177,7 +178,7 @@ async def search_ingredients(q: str = ""):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/v1/ingredients/{ingredient_id}")
+@router.get("/api/v1/ingredients/{ingredient_id}", dependencies=[Depends(require("ingredients.view"))])
 async def get_ingredient(ingredient_id: str):
     """Get a single ingredient with ancestors and children."""
     core_config, bottle_registry = _get_services()
@@ -199,7 +200,7 @@ async def get_ingredient(ingredient_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/v1/ingredients/{ingredient_id}/descendants")
+@router.get("/api/v1/ingredients/{ingredient_id}/descendants", dependencies=[Depends(require("ingredients.view"))])
 async def get_ingredient_descendants(ingredient_id: str):
     """Get all descendants of an ingredient (for tasting bottle selection)."""
     core_config, bottle_registry = _get_services()
@@ -222,7 +223,7 @@ async def get_ingredient_descendants(ingredient_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/ingredients")
+@router.post("/api/v1/ingredients", dependencies=[Depends(require("ingredients.create"))])
 async def create_ingredient(request_data: CreateIngredientRequest):
     """Create a new ingredient."""
     core_config, bottle_registry = _get_services()
@@ -289,7 +290,7 @@ async def create_ingredient(request_data: CreateIngredientRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/api/v1/ingredients/{ingredient_id}")
+@router.put("/api/v1/ingredients/{ingredient_id}", dependencies=[Depends(require("ingredients.edit"))])
 async def update_ingredient(ingredient_id: str, request_data: UpdateIngredientRequest):
     """Update an existing ingredient."""
     core_config, bottle_registry = _get_services()
@@ -384,7 +385,7 @@ async def update_ingredient(ingredient_id: str, request_data: UpdateIngredientRe
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/api/v1/ingredients/{ingredient_id}")
+@router.delete("/api/v1/ingredients/{ingredient_id}", dependencies=[Depends(require("ingredients.delete"))])
 async def delete_ingredient(ingredient_id: str):
     """
     Delete an ingredient.
@@ -459,7 +460,7 @@ async def delete_ingredient(ingredient_id: str):
 # BULK IMPORT ENDPOINTS
 # ============================================================================
 
-@router.post("/api/v1/ingredients/bulk-search")
+@router.post("/api/v1/ingredients/bulk-search", dependencies=[Depends(require("ingredients.create"))])
 async def bulk_search_ingredients(request_data: BulkSearchRequest):
     """
     Search for ingredients using web search + LLM.
@@ -554,7 +555,7 @@ Return ONLY the JSON array, no other text. Example:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/ingredients/bulk-save")
+@router.post("/api/v1/ingredients/bulk-save", dependencies=[Depends(require("ingredients.create"))])
 async def bulk_save_ingredients(request_data: BulkSaveRequest):
     """Save reviewed bulk search results as ingredients in the vault."""
     core_config, bottle_registry = _get_services()

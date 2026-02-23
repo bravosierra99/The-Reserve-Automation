@@ -16,7 +16,8 @@ import re
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from ..auth.dependencies import require
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -103,13 +104,13 @@ def _sanitize_filename(name: str) -> str:
 # PAGE ROUTES
 # ============================================================================
 
-@router.get("/cocktails", include_in_schema=False)
+@router.get("/cocktails", include_in_schema=False, dependencies=[Depends(require("cocktails.view"))])
 async def cocktails_page(request: Request):
     """Cocktail recipes page."""
     return templates.TemplateResponse(request, "cocktails.html")
 
 
-@router.get("/cocktails/{cocktail_id}/detail", include_in_schema=False)
+@router.get("/cocktails/{cocktail_id}/detail", include_in_schema=False, dependencies=[Depends(require("cocktails.view"))])
 async def cocktail_detail_page(cocktail_id: str, request: Request):
     """Cocktail detail page."""
     return templates.TemplateResponse(request, "cocktail_detail.html", {
@@ -121,7 +122,7 @@ async def cocktail_detail_page(cocktail_id: str, request: Request):
 # API ROUTES
 # ============================================================================
 
-@router.get("/api/v1/cocktails")
+@router.get("/api/v1/cocktails", dependencies=[Depends(require("cocktails.view"))])
 async def list_cocktails(q: str = None):
     """List all cocktails, optionally filtered by search query."""
     core_config, bottle_registry = _get_services()
@@ -145,7 +146,7 @@ async def list_cocktails(q: str = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/v1/cocktails/search")
+@router.get("/api/v1/cocktails/search", dependencies=[Depends(require("cocktails.view"))])
 async def search_cocktails(q: str = ""):
     """Search cocktails by name or ingredient."""
     if not q.strip():
@@ -166,7 +167,7 @@ async def search_cocktails(q: str = ""):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/v1/cocktails/{cocktail_id}")
+@router.get("/api/v1/cocktails/{cocktail_id}", dependencies=[Depends(require("cocktails.view"))])
 async def get_cocktail(cocktail_id: str):
     """Get a single cocktail recipe."""
     core_config, bottle_registry = _get_services()
@@ -185,7 +186,7 @@ async def get_cocktail(cocktail_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/cocktails")
+@router.post("/api/v1/cocktails", dependencies=[Depends(require("cocktails.create"))])
 async def create_cocktail(request_data: CreateCocktailRequest):
     """Create a new cocktail recipe."""
     core_config, bottle_registry = _get_services()
@@ -238,7 +239,7 @@ async def create_cocktail(request_data: CreateCocktailRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/api/v1/cocktails/{cocktail_id}")
+@router.put("/api/v1/cocktails/{cocktail_id}", dependencies=[Depends(require("cocktails.edit"))])
 async def update_cocktail(cocktail_id: str, request_data: UpdateCocktailRequest):
     """Update a cocktail recipe."""
     core_config, bottle_registry = _get_services()
@@ -311,7 +312,7 @@ async def update_cocktail(cocktail_id: str, request_data: UpdateCocktailRequest)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/api/v1/cocktails/{cocktail_id}")
+@router.delete("/api/v1/cocktails/{cocktail_id}", dependencies=[Depends(require("cocktails.delete"))])
 async def delete_cocktail(cocktail_id: str):
     """Delete a cocktail recipe."""
     core_config, bottle_registry = _get_services()
@@ -364,7 +365,7 @@ def _tasting_to_dict(t: CocktailTastingNote) -> dict:
     }
 
 
-@router.post("/api/v1/cocktails/{cocktail_id}/tastings")
+@router.post("/api/v1/cocktails/{cocktail_id}/tastings", dependencies=[Depends(require("cocktail_tastings.submit"))])
 async def create_cocktail_tasting(
     cocktail_id: str, request_data: CreateCocktailTastingRequest
 ):
@@ -422,7 +423,7 @@ async def create_cocktail_tasting(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/v1/cocktails/{cocktail_id}/tastings")
+@router.get("/api/v1/cocktails/{cocktail_id}/tastings", dependencies=[Depends(require("cocktail_tastings.view"))])
 async def list_cocktail_tastings(cocktail_id: str):
     """List all tasting notes for a cocktail."""
     core_config, bottle_registry = _get_services()
@@ -445,7 +446,7 @@ async def list_cocktail_tastings(cocktail_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/api/v1/cocktails/{cocktail_id}/tastings/{tasting_file}")
+@router.delete("/api/v1/cocktails/{cocktail_id}/tastings/{tasting_file}", dependencies=[Depends(require("cocktail_tastings.delete"))])
 async def delete_cocktail_tasting(cocktail_id: str, tasting_file: str):
     """Delete a cocktail tasting note.
 
@@ -490,7 +491,7 @@ class RecipeSearchRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Cocktail name to search for")
 
 
-@router.post("/api/v1/cocktails/search-recipe")
+@router.post("/api/v1/cocktails/search-recipe", dependencies=[Depends(require("cocktails.create"))])
 async def search_cocktail_recipe(request_data: RecipeSearchRequest):
     """
     Search for a cocktail recipe using LLM.

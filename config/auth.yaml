@@ -1,0 +1,45 @@
+cloudflare:
+  team_domain: "yourteam.cloudflareaccess.com"
+  audience_tag: "your-audience-tag"
+  jwt_header: "Cf-Access-Jwt-Assertion"
+
+dev:
+  enabled: true
+  mock_user_email: "admin@localhost"
+  mock_user_role: "admin"
+  toolbar_subnets: ["192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12", "127.0.0.0/8"]
+
+roles:
+  admin:
+    emails: ["bravosierra99@gmail.com", "sjnoreen@gmail.com"]
+  family:
+    emails: ["kmnoreen@gmail.com"]
+  # guest: implicit catch-all (any authenticated user not above)
+
+permissions:
+  bottles.view:             [admin, family, guest]
+  bottles.create:           [admin]
+  bottles.edit:             [admin]
+  bottles.delete:           [admin]
+  tastings.view:            [admin, family, guest]
+  tastings.submit:          [admin, family]
+  tastings.delete:          [admin]
+  cocktails.view:           [admin, family, guest]
+  cocktails.create:         [admin, family]
+  cocktails.edit:           [admin, family]
+  cocktails.delete:         [admin]
+  cocktail_tastings.view:   [admin, family, guest]
+  cocktail_tastings.submit: [admin, family, guest]
+  cocktail_tastings.delete: [admin]
+  ingredients.view:         [admin, family, guest]
+  ingredients.create:       [admin]
+  ingredients.edit:         [admin]
+  ingredients.delete:       [admin]
+  events.view:              [admin, family, guest]
+  events.create:            [admin, family]
+  events.manage:            [admin]
+  events.participate:       [admin, family, guest]
+  management.access:        [admin]
+  upload.access:            [admin]
+  labels.view:              [admin, family, guest]
+  labels.edit:              [admin]

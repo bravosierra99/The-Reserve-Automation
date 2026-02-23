@@ -20,33 +20,67 @@
     {% block head %}{% endblock %}
 </head>
 <body class="bg-gray-50 min-h-screen">
-    <nav class="bg-blue-600 text-white p-4 shadow-lg">
+    <style>[x-cloak] { display: none !important; }</style>
+    <nav class="bg-blue-600 text-white p-4 shadow-lg" x-data="authNav()" x-cloak>
         <div class="container mx-auto">
             <div class="flex justify-between items-center">
                 <div>
-                    <h1 class="text-2xl font-bold">🍷 The Reserve</h1>
+                    <h1 class="text-2xl font-bold">The Reserve</h1>
                     <p class="text-sm text-blue-100">Bottle & Tasting Management</p>
                 </div>
-                <div class="flex gap-4">
-                    <a href="/upload" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
+                <div class="flex gap-4 items-center">
+                    <a x-show="p.upload_access" href="/upload" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
                         Upload
                     </a>
-                    <a href="/manual-tasting" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-colors">
+                    <a x-show="p.tastings_submit" href="/manual-tasting" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-colors">
                         New Tasting
                     </a>
-                    <a href="/ingredients" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
+                    <a x-show="p.ingredients_view" href="/ingredients" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
                         Ingredients
                     </a>
-                    <a href="/cocktails" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
+                    <a x-show="p.cocktails_view" href="/cocktails" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
                         Cocktails
                     </a>
-                    <a href="/management" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
+                    <a x-show="p.events_view" href="/events" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
+                        Events
+                    </a>
+                    <a x-show="p.management_access" href="/management" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
                         Management
                     </a>
+                    <!-- Identity display -->
+                    <div x-show="displayName" class="ml-2 text-sm text-blue-100 border-l border-blue-400 pl-4">
+                        <span x-text="displayName"></span>
+                        <span x-show="role" class="text-blue-200">(<span x-text="role"></span>)</span>
+                    </div>
                 </div>
             </div>
         </div>
     </nav>
+    <script>
+    function authNav() {
+        return {
+            displayName: '',
+            role: '',
+            p: {},  // permissions
+            async init() {
+                try {
+                    const resp = await fetch('/api/v1/me');
+                    const data = await resp.json();
+                    this.displayName = data.display_name || '';
+                    this.role = data.role || '';
+                    this.p = data.permissions || {};
+                } catch (e) {
+                    // Default: show all links if /me fails
+                    this.p = {
+                        upload_access: true, tastings_submit: true,
+                        ingredients_view: true, cocktails_view: true,
+                        events_view: true, management_access: true,
+                    };
+                }
+            }
+        };
+    }
+    </script>
 
     <main class="container mx-auto px-4 py-6 max-w-4xl">
         {% block content %}{% endblock %}
@@ -57,5 +91,7 @@
     </footer>
 
     {% block scripts %}{% endblock %}
+
+    {% include 'components/dev_toolbar.html' %}
 </body>
 </html>

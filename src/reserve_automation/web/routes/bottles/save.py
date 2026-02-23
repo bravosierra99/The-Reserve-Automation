@@ -4,7 +4,8 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from ...auth.dependencies import require
 from pydantic import BaseModel
 from loguru import logger
 
@@ -15,7 +16,7 @@ from ....utils.vault_reader import VaultReader
 from ...services.duplicate_service import DuplicateDetectionService
 
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require("bottles.create"))])
 
 
 def clean_bottle_data(bottle_data: dict) -> dict:

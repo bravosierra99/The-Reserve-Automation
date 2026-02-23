@@ -2,11 +2,12 @@
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from ...auth.dependencies import require
 from fastapi.responses import FileResponse
 from loguru import logger
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require("bottles.view"))])
 
 
 @router.get("/api/v1/bottle-label/{bottle_path:path}")

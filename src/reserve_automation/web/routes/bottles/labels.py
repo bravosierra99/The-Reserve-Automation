@@ -2,13 +2,14 @@
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from ...auth.dependencies import require
 from pydantic import BaseModel
 from PIL import Image, ImageOps
 from loguru import logger
 
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require("bottles.create"))])
 
 
 def clean_bottle_data(bottle_data: dict) -> dict:

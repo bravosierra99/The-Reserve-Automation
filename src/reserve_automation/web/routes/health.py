@@ -1,4 +1,4 @@
-"""Health check endpoints."""
+"""Health check and identity endpoints."""
 
 import json
 import subprocess
@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from loguru import logger
 
 router = APIRouter()
@@ -159,3 +159,37 @@ async def health_check():
     )
 
     return response
+
+
+@router.get("/me")
+async def get_current_user_info(request: Request):
+    """Return the current authenticated user's identity and permissions.
+
+    Used by the frontend to display identity and filter UI elements.
+    """
+    user = getattr(request.state, "user", None)
+    if user is None:
+        return {
+            "authenticated": False,
+            "email": None,
+            "role": None,
+            "display_name": None,
+            "permissions": {},
+            "dev_mode": False,
+        }
+
+    auth_config = getattr(request.app.state, "auth_config", None)
+    permissions = {}
+    dev_mode = False
+    if auth_config:
+        permissions = auth_config.get_permissions_dict(user.role)
+        dev_mode = auth_config.dev.enabled
+
+    return {
+        "authenticated": True,
+        "email": user.email,
+        "role": user.role,
+        "display_name": user.display_name,
+        "permissions": permissions,
+        "dev_mode": dev_mode,
+    }

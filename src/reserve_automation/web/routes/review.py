@@ -3,7 +3,8 @@
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Cookie, HTTPException, Response, Request
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, Request
+from ..auth.dependencies import require
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import BaseModel
@@ -13,7 +14,7 @@ from ..services.extraction_service import ExtractionService
 from ..services.review_service import ReviewService
 from ..services.upload_service import UploadService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require("upload.access"))])
 
 # Templates
 templates_dir = Path(__file__).parent.parent / "templates"

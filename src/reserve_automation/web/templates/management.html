@@ -716,6 +716,17 @@ function managementApp() {
             return bottles;
         },
 
+        async init() {
+            // Pre-fill host name from auth identity
+            try {
+                const resp = await fetch('/api/v1/me');
+                if (resp.ok) {
+                    const me = await resp.json();
+                    if (me.display_name) this.eventHostName = me.display_name;
+                }
+            } catch (e) { /* ignore */ }
+        },
+
         selectMode(m) {
             this.mode = m;
             if (m === 'manage-events') {

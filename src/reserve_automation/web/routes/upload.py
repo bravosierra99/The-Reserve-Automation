@@ -4,7 +4,8 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, UploadFile, File, Form, Response, Cookie, HTTPException, Request
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Response, Cookie, HTTPException, Request
+from ..auth.dependencies import require
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 from sse_starlette.sse import EventSourceResponse
@@ -13,7 +14,7 @@ from ..sessions import SessionManager
 from ..services.upload_service import UploadService
 from ..services.extraction_service import ExtractionService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require("upload.access"))])
 
 # Templates
 templates_dir = Path(__file__).parent.parent / "templates"

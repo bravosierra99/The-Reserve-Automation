@@ -86,3 +86,13 @@ def load_web_config() -> tuple[CoreConfig, WebConfig]:
     )
 
     return core_config, web_config
+
+
+def load_auth_config():
+    """Load auth configuration from YAML file.
+
+    Returns:
+        AuthConfig instance, or None if auth.yaml doesn't exist.
+    """
+    from .auth.config import load_auth_config as _load_auth_config
+    return _load_auth_config()

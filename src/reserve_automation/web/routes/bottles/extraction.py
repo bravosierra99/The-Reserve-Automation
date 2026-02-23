@@ -4,7 +4,8 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request, Cookie
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Request, Cookie
+from ...auth.dependencies import require
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
@@ -19,7 +20,7 @@ templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=templates_dir)
 
 
-@router.post("/api/v1/bottles/upload")
+@router.post("/api/v1/bottles/upload", dependencies=[Depends(require("bottles.create"))])
 async def upload_bottle(
     file: UploadFile = File(...),
     upload_type: str = Form("bottle_image"),  # bottle_image or manifest
@@ -132,7 +133,7 @@ async def upload_bottle(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/v1/bottles/search")
+@router.get("/api/v1/bottles/search", dependencies=[Depends(require("bottles.view"))])
 async def search_bottles(
     q: str,
     beverage_type: Optional[str] = None,

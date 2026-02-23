@@ -3,7 +3,8 @@
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Cookie, HTTPException, Response, Request
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, Request
+from ..auth.dependencies import require
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import BaseModel
@@ -23,7 +24,7 @@ from ..schemas.tasting import (
     SaveManualTastingRequest,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require("tastings.view"))])
 
 # Templates
 templates_dir = Path(__file__).parent.parent / "templates"
@@ -225,7 +226,7 @@ class UpdateTastingDataRequest(BaseModel):
     tasting_data: dict
 
 
-@router.put("/api/v1/tastings/{extraction_id}/{index}")
+@router.put("/api/v1/tastings/{extraction_id}/{index}", dependencies=[Depends(require("tastings.submit"))])
 async def update_tasting(
     extraction_id: str,
     index: int,
@@ -287,7 +288,7 @@ async def update_tasting(
     return {"status": "updated", "tasting": tastings[index]}
 
 
-@router.post("/api/v1/tastings/{extraction_id}/{index}/match")
+@router.post("/api/v1/tastings/{extraction_id}/{index}/match", dependencies=[Depends(require("tastings.submit"))])
 async def select_match(
     extraction_id: str,
     index: int,
@@ -382,7 +383,7 @@ async def select_match(
 # API Routes - Approve/Skip
 # ============================================================================
 
-@router.post("/api/v1/tastings/{extraction_id}/{index}/approve")
+@router.post("/api/v1/tastings/{extraction_id}/{index}/approve", dependencies=[Depends(require("tastings.submit"))])
 async def approve_tasting(
     extraction_id: str,
     index: int,
@@ -686,7 +687,7 @@ async def manual_tasting_page(request: Request):
     return templates.TemplateResponse(request, "manual_tasting.html")
 
 
-@router.post("/api/v1/manual-tasting/save")
+@router.post("/api/v1/manual-tasting/save", dependencies=[Depends(require("tastings.submit"))])
 async def save_manual_tasting(
     request_data: SaveManualTastingRequest,
     request: Request,

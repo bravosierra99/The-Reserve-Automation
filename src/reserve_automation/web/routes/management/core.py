@@ -12,14 +12,15 @@ import re
 from pathlib import Path
 from shutil import copyfile
 from typing import Dict, Optional
-from fastapi import APIRouter, Request, HTTPException, BackgroundTasks, UploadFile, Form
+from fastapi import APIRouter, Depends, Request, HTTPException, BackgroundTasks, UploadFile, Form
+from ...auth.dependencies import require
 from fastapi.responses import HTMLResponse, FileResponse
 from loguru import logger
 
 from ....utils.vault_reader import VaultReader
 from ...services.extraction_service import ExtractionService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require("management.access"))])
 
 # In-memory storage for verification results
 # In production, this should be Redis or a database

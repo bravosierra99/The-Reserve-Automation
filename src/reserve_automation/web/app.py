@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from .config import load_web_config
+from .config import load_web_config, load_auth_config
 from .logging_config import setup_web_logging
 from .routes import upload, review, health, bottles, tastings, management, events, ingredients, cocktails
 from .services.upload_service import UploadService
@@ -20,6 +20,7 @@ from ..core.bottle_registry import BottleRegistry
 upload_service: UploadService = None
 core_config = None
 web_config = None
+auth_config = None
 event_store: dict[str, dict] = {}
 bottle_registry: BottleRegistry = None
 
@@ -27,7 +28,7 @@ bottle_registry: BottleRegistry = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    global upload_service, core_config, web_config, event_store, bottle_registry
+    global upload_service, core_config, web_config, auth_config, event_store, bottle_registry
 
     # Startup - Initialize logging first
     # Read log level from environment variable, default to INFO for production
@@ -38,6 +39,14 @@ async def lifespan(app: FastAPI):
     # Load configuration
     core_config, web_config = load_web_config()
     logger.info(f"Loaded configuration: vault={core_config.vault_path}")
+
+    # Load auth configuration
+    auth_config = load_auth_config()
+    app.state.auth_config = auth_config
+    if auth_config.dev.enabled:
+        logger.info("Auth: dev mode enabled (mock user bypass)")
+    else:
+        logger.info(f"Auth: Cloudflare Access mode (team={auth_config.cloudflare.team_domain})")
 
     # Initialize services
     upload_service = UploadService(
@@ -82,6 +91,11 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
+
+# Register auth middleware (must be done before app starts, not in lifespan)
+from .auth.middleware import AuthMiddleware
+_auth_config_for_middleware = load_auth_config()
+app.add_middleware(AuthMiddleware, auth_config=_auth_config_for_middleware)
 
 # Mount static files
 static_path = Path(__file__).parent / "static"

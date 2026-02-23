@@ -1,0 +1,58 @@
+<!-- Dev Mode Toolbar - Only visible when auth dev mode is enabled -->
+<div x-data="devToolbar()" x-show="visible" x-cloak
+     class="fixed bottom-0 left-0 right-0 bg-yellow-400 text-yellow-900 px-4 py-2 shadow-lg z-50 flex items-center justify-between text-sm">
+    <div class="flex items-center gap-3">
+        <span class="font-bold">DEV MODE</span>
+        <span class="text-yellow-800">|</span>
+        <span>Role:</span>
+        <div class="flex gap-1">
+            <button @click="switchRole('admin')"
+                    :class="currentRole === 'admin' ? 'bg-yellow-700 text-white' : 'bg-yellow-200 hover:bg-yellow-300'"
+                    class="px-3 py-1 rounded font-semibold transition-colors">
+                Admin
+            </button>
+            <button @click="switchRole('family')"
+                    :class="currentRole === 'family' ? 'bg-yellow-700 text-white' : 'bg-yellow-200 hover:bg-yellow-300'"
+                    class="px-3 py-1 rounded font-semibold transition-colors">
+                Family
+            </button>
+            <button @click="switchRole('guest')"
+                    :class="currentRole === 'guest' ? 'bg-yellow-700 text-white' : 'bg-yellow-200 hover:bg-yellow-300'"
+                    class="px-3 py-1 rounded font-semibold transition-colors">
+                Guest
+            </button>
+        </div>
+    </div>
+    <div class="flex items-center gap-2 text-yellow-800">
+        <span x-text="userEmail"></span>
+    </div>
+</div>
+
+<script>
+function devToolbar() {
+    return {
+        visible: false,
+        currentRole: '',
+        userEmail: '',
+
+        async init() {
+            try {
+                const resp = await fetch('/api/v1/me');
+                const data = await resp.json();
+                if (data.dev_mode) {
+                    this.visible = true;
+                    this.currentRole = data.role || 'admin';
+                    this.userEmail = data.email || '';
+                }
+            } catch (e) {
+                // Silently ignore - toolbar just won't show
+            }
+        },
+
+        switchRole(role) {
+            document.cookie = `dev_role_override=${role};path=/;max-age=${7 * 24 * 3600}`;
+            window.location.reload();
+        }
+    };
+}
+</script>
