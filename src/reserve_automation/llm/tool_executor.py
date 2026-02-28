@@ -11,7 +11,7 @@ from loguru import logger
 class ToolExecutor:
     """Execute tool calls from LLM responses."""
 
-    def __init__(self):
+    def __init__(self, max_results: int = 10):
         # Add User-Agent to avoid blocking
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -21,6 +21,8 @@ class ToolExecutor:
             follow_redirects=True,
             headers=headers
         )
+        self.max_results = max_results
+        self.call_count = 0  # Total execute() calls (useful for benchmarking)
 
     def execute(self, tool_name: str, arguments: dict) -> dict:
         """
@@ -34,6 +36,7 @@ class ToolExecutor:
             Dict with tool execution results
         """
         logger.info(f"Executing tool: {tool_name} with args: {arguments}")
+        self.call_count += 1
 
         try:
             if tool_name == "web_search":
@@ -65,8 +68,7 @@ class ToolExecutor:
 
         try:
             with DDGS() as ddgs:
-                # Get top 10 results
-                results = list(ddgs.text(query, max_results=10))
+                results = list(ddgs.text(query, max_results=self.max_results))
 
             # Format results
             formatted_results = []

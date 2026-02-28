@@ -1,5 +1,6 @@
 """Metadata enrichment service using LLM knowledge."""
 
+import asyncio
 import json
 from typing import Optional
 
@@ -8,6 +9,7 @@ from loguru import logger
 from ..core.models import BottleMetadata
 from ..llm import LLMGateway
 from ..llm.response_parser import LLMResponseParser
+from ..llm.tool_executor import ToolExecutor
 from ..llm.tools import get_tools_for_task
 
 
@@ -19,14 +21,16 @@ class MetadataEnricher:
     region, and variety based on the producer name, wine name, and context.
     """
 
-    def __init__(self, llm_gateway: LLMGateway):
+    def __init__(self, llm_gateway: LLMGateway, max_results: int = 5):
         """
         Initialize metadata enricher.
 
         Args:
             llm_gateway: LLM gateway for making requests
+            max_results: Number of DuckDuckGo results to fetch and pass to the LLM
         """
         self.llm_gateway = llm_gateway
+        self._searcher = ToolExecutor(max_results=max_results)
 
     async def enrich_bottle(
         self, bottle: BottleMetadata, fields: Optional[list[str]] = None
@@ -483,14 +487,36 @@ Only include fields that were requested. Use web search to find real data - don'
 
         return sanitized
 
+    def _build_search_query(self, bottle: BottleMetadata) -> str:
+        """Build a targeted search query from bottle data."""
+        parts = [bottle.producer, bottle.name]
+        if bottle.year:
+            parts.append(str(bottle.year))
+        parts.append(bottle.beverage_type or bottle.type)
+        return " ".join(filter(None, parts))
+
+    def _format_search_results(self, search_result: dict) -> str:
+        """Format DuckDuckGo results into readable text for the prompt."""
+        results = search_result.get("results", [])
+        if not results:
+            return "No search results found."
+        lines = []
+        for i, r in enumerate(results, 1):
+            lines.append(f"[{i}] {r.get('title', '')}")
+            lines.append(f"    URL: {r.get('url', '')}")
+            lines.append(f"    {r.get('snippet', '')}")
+        return "\n".join(lines)
+
     async def verify_bottle(
         self, bottle: BottleMetadata
     ) -> tuple[BottleMetadata, dict]:
         """
         Verify and correct ALL bottle metadata using web search.
 
-        Unlike enrich_bottle which only fills missing fields, this method
-        verifies existing data and corrects any inaccuracies.
+        Searches DuckDuckGo directly, then makes a single LLM call with the
+        results embedded in the prompt. This avoids two LLM round trips (the
+        old tool-calling approach needed one call to decide to search and a
+        second to process results).
 
         Args:
             bottle: Bottle to verify
@@ -499,11 +525,8 @@ Only include fields that were requested. Use web search to find real data - don'
             Tuple of (corrected bottle, verification metadata dict)
         """
         # Determine which fields to verify based on beverage type
-        # Common fields for all beverages
         # Note: year is NOT verified - it's user-provided and used as context
         verify_fields = ["producer", "name", "beverage_type", "country", "region"]
-
-        # Type-specific fields
         if bottle.type == "wine":
             verify_fields.extend(["abv", "variety", "vineyard"])
         else:  # whiskey and other spirits
@@ -514,89 +537,83 @@ Only include fields that were requested. Use web search to find real data - don'
             f"{', '.join(verify_fields)}"
         )
 
-        # Build verification prompt with current values
+        # Step 1: search ourselves — no LLM needed to decide what to search for
+        query = self._build_search_query(bottle)
+        logger.info(f"Searching: {query}")
+        try:
+            search_result = await asyncio.wait_for(
+                asyncio.to_thread(self._searcher._web_search, {"query": query}),
+                timeout=30.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"DuckDuckGo search timed out for: {query}")
+            search_result = {"results": [], "query": query}
+        results_text = self._format_search_results(search_result)
+
+        # Step 2: build current-values block
         current_data = []
         for field in verify_fields:
             value = getattr(bottle, field, None)
-            current_data.append(f"{field.title()}: {value or 'MISSING'}")
+            current_data.append(f"  {field}: {value if value is not None else 'MISSING'}")
 
         beverage_type = "wine" if bottle.type == "wine" else "whiskey"
 
-        prompt = f"""You are a {beverage_type} expert. Use web search to verify and correct the metadata for this bottle.
+        type_specific_fields = (
+            '"abv": 14.5, "variety": "...", "vineyard": "...",'
+            if bottle.type == "wine"
+            else '"age_statement": 12, "proof": 90, "mash_bill": "...", "barrel_type": "...",'
+        )
 
-**Bottle Information:**
+        prompt = f"""You are a {beverage_type} expert. Using the web search results below, verify and correct the extracted metadata for this bottle.
+
+**Web Search Results:**
+{results_text}
+
+**Extracted Metadata (may contain errors — verify against search results above):**
 Producer: {bottle.producer}
 Name: {bottle.name}
 Vintage: {bottle.year or 'NV'}
 Type: {bottle.beverage_type or bottle.type}
 
-**Current Metadata (TO BE VERIFIED):**
+Fields to verify/complete:
 {chr(10).join(current_data)}
 
-**Task:**
-1. Search the web for this specific {beverage_type} bottle
-2. Find official sources (producer website, wine-searcher, vivino, reputable retailers)
-3. Verify EACH field above is correct
-4. Return the correct value for EVERY field (even if already correct)
-
 **Instructions:**
-- Use web_search to find authoritative information
-- **CRITICAL FOR PRODUCER AND NAME**: These fields are often SWAPPED or INCORRECT!
-  * Producer = the actual winery/distillery (e.g., "Caymus Vineyards", "Buffalo Trace")
-  * Name = the product/brand/label name (e.g., "1858 Cabernet Sauvignon", "George T. Stagg")
-  * For whiskey: "George T. Stagg" is the NAME made by "Buffalo Trace" (the PRODUCER)
-  * For wine: "1858 Cabernet Sauvignon" is the NAME made by "Caymus Vineyards" (the PRODUCER)
-  * If the current data has these swapped, correct BOTH producer AND name fields
-  * Name should NOT be just the grape variety - it should include the product line
-- For wine: Use the vintage year as context to find the bottle, then verify producer/winery, name, beverage_type (Red wine/White wine/etc.), country, region (appellation/DOC), grape variety/blend, vineyard/estate, and ABV
-- For whiskey: Use the release year as context to find the bottle, then verify actual distillery, name, beverage_type (Bourbon/Rye/Scotch/etc.), country, region/state, age statement, proof, ABV, mash bill, and barrel type
-- beverage_type should be specific: "Red wine", "Bourbon", "Rye", "Single Malt Scotch", etc.
-- For proof and ABV: both are often available, ABV is universal, proof is US-specific
-- Cross-reference multiple sources when possible
-- Be precise: "Napa Valley" is different from "California"
-- Return ALL fields with accurate values (even if already correct)
-- Fill out as many fields as possible - don't leave fields empty if you can find the information
+- Use the search results to verify EACH field and correct any errors
+- Fill in any MISSING fields using information from the results
+- Return ALL fields, even ones that are already correct
+- **CRITICAL — Producer vs Name are often swapped by OCR extraction:**
+  * Producer = the winery/distillery (e.g., "Caymus Vineyards", "Buffalo Trace")
+  * Name = the product label (e.g., "1858 Cabernet Sauvignon", "Eagle Rare 10 Year")
+  * If they look swapped, correct BOTH fields
+- beverage_type must be specific: "Red wine", "White wine", "Rosé", "Bourbon", "Rye", "Single Malt Scotch", etc.
+- For wine: verify country, region/appellation, grape variety/blend, vineyard/estate, ABV
+- For whiskey: verify distillery, beverage_type, country, state/region, age statement, proof, mash bill, barrel type
+- Be precise: "Napa Valley" not "California"; "Burgundy" not "France"
+- Do NOT return or modify the year field
 
-**Return JSON:**
+**Return JSON only (no explanations before or after):**
 {{
-  "producer": "correct producer/distillery/winery name",
-  "name": "correct product name (NOT just grape variety or whiskey type)",
-  "beverage_type": "specific beverage type (Red wine, Bourbon, etc.)",
-  "country": "correct country name",
-  "region": "correct region/appellation",
-  "abv": 14.5,
-  {"\"variety\": \"grape variety or blend\"," if bottle.type == "wine" else ""}
-  {"\"vineyard\": \"vineyard or estate name\"," if bottle.type == "wine" else ""}
-  {"\"age_statement\": 12," if bottle.type == "whiskey" else ""}
-  {"\"proof\": 90," if bottle.type == "whiskey" else ""}
-  {"\"mash_bill\": \"mash bill composition\"," if bottle.type == "whiskey" else ""}
-  {"\"barrel_type\": \"barrel type\"," if bottle.type == "whiskey" else ""}
+  "producer": "correct producer/winery/distillery",
+  "name": "correct product name (not just grape variety)",
+  "beverage_type": "specific type",
+  "country": "country",
+  "region": "region/appellation",
+  {type_specific_fields}
   "confidence": "high/medium/low",
-  "reasoning": "Brief explanation citing your sources"
+  "reasoning": "brief explanation of corrections made"
 }}
 
-**CRITICAL - Name vs Producer vs Variety:**
-- Producer: The winery/distillery that makes it (e.g., "Caymus Vineyards", "Buffalo Trace")
-- Name: The specific product/brand name (e.g., "1858 Cabernet Sauvignon", "George T. Stagg")
-- Variety: The grape type or whiskey category (e.g., "Cabernet Sauvignon", "Bourbon")
-- If current data has producer/name swapped, correct BOTH fields
-- Name should be the product line/label name, NOT just the grape variety alone
+/no_think"""
 
-**IMPORTANT**: Do NOT return or modify the year field - use the provided year as context only.
-
-Use web search to find accurate, current data - don't guess."""
-
-        # Get web search tools
-        tools = get_tools_for_task("metadata_enrichment")
-
-        # Call LLM with web search
+        # Step 3: single LLM call — no tools, results already in prompt
         try:
             response = await self.llm_gateway.complete(
                 task_type="metadata_enrichment",
                 prompt=prompt,
-                tools=tools,
-                temperature=0.1,  # Very deterministic for verification
-                max_tokens=1500,  # Increased to handle verification of all fields (now includes beverage_type, year, age_statement, proof, abv)
+                tools=None,
+                temperature=0.1,
+                max_tokens=1500,
             )
 
             # Parse response
