@@ -74,15 +74,21 @@ class CloudflareJWTValidator:
                 logger.warning(f"No matching key found for kid={kid}")
                 return None
 
-            # Decode and verify
-            claims = jwt.decode(
-                token,
-                signing_key.key,
-                algorithms=["RS256"],
-                audience=self.config.audience_tag,
-            )
+            # Decode and verify against any configured audience tag
+            for aud in self.config.audience_tags:
+                try:
+                    claims = jwt.decode(
+                        token,
+                        signing_key.key,
+                        algorithms=["RS256"],
+                        audience=aud,
+                    )
+                    return claims
+                except jwt.InvalidAudienceError:
+                    continue
 
-            return claims
+            logger.debug("JWT audience did not match any configured audience tags")
+            return None
 
         except jwt.ExpiredSignatureError:
             logger.debug("JWT token expired")

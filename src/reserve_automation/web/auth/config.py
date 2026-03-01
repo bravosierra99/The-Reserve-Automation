@@ -10,8 +10,15 @@ from pydantic import BaseModel, Field
 class CloudflareConfig(BaseModel):
     """Cloudflare Access configuration."""
     team_domain: str = "yourteam.cloudflareaccess.com"
-    audience_tag: str = ""
+    audience_tag: str | list[str] = ""
     jwt_header: str = "Cf-Access-Jwt-Assertion"
+
+    @property
+    def audience_tags(self) -> list[str]:
+        """Return audience tags as a list (supports single string or list)."""
+        if isinstance(self.audience_tag, list):
+            return self.audience_tag
+        return [self.audience_tag] if self.audience_tag else []
 
 
 class DevConfig(BaseModel):

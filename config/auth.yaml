@@ -1,6 +1,8 @@
 cloudflare:
-  team_domain: "yourteam.cloudflareaccess.com"
-  audience_tag: "your-audience-tag"
+  team_domain: "teamsmith9.cloudflareaccess.com"
+  audience_tag:
+    - "7d6c78147cc7cbaaad7bc8cf911f7e8de7d9c0ad0923bf194ea4f27699849da3"  # prod: reserve.teamsmith.xyz
+    - "d3bb91814bb8c9beb1a38c5d9459fea2c5b13b495668d58a573e67da977b6e7b"  # staging: reserve-staging.teamsmith.xyz
   jwt_header: "Cf-Access-Jwt-Assertion"
 
 dev:
