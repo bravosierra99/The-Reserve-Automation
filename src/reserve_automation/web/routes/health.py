@@ -180,10 +180,11 @@ async def get_current_user_info(request: Request):
 
     auth_config = getattr(request.app.state, "auth_config", None)
     permissions = {}
-    dev_mode = False
+    # Only report dev_mode if this request actually used dev mode
+    # (not when accessing through Cloudflare, even if dev.enabled is true in config)
+    dev_mode = getattr(request.state, "used_dev_mode", False)
     if auth_config:
         permissions = auth_config.get_permissions_dict(user.role)
-        dev_mode = auth_config.dev.enabled
 
     return {
         "authenticated": True,

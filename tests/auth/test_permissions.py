@@ -86,8 +86,8 @@ class TestAdminOnlyEndpoints:
 
     @pytest.mark.parametrize("role,expected", [
         ("admin", 200),
-        ("family", 403),
-        ("guest", 403),
+        ("family", 303),  # Page 403s redirect to /events
+        ("guest", 303),
     ])
     def test_management_page(self, perm_client, role, expected):
         resp = _request(perm_client, "get", "/management", role=role)
@@ -95,8 +95,8 @@ class TestAdminOnlyEndpoints:
 
     @pytest.mark.parametrize("role,expected", [
         ("admin", 200),
-        ("family", 403),
-        ("guest", 403),
+        ("family", 303),  # Page 403s redirect to /events
+        ("guest", 303),
     ])
     def test_upload_page(self, perm_client, role, expected):
         resp = _request(perm_client, "get", "/upload", role=role)

@@ -41,11 +41,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         user = None
+        used_dev_mode = False
 
-        if self.auth_config.dev.enabled:
-            user = self._get_dev_user(request)
-        else:
+        # If a Cloudflare JWT is present, ALWAYS use real auth
+        # (even if dev mode is enabled in config — dev mode is for direct access only)
+        jwt_header = self.auth_config.cloudflare.jwt_header
+        has_cf_jwt = bool(request.headers.get(jwt_header))
+
+        if has_cf_jwt:
             user = await self._get_cloudflare_user(request)
+        elif self.auth_config.dev.enabled:
+            user = self._get_dev_user(request)
+            used_dev_mode = True
 
         if user is None:
             # No valid auth - return 401 for API, redirect for pages
@@ -54,15 +61,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     status_code=401,
                     content={"detail": "Authentication required"},
                 )
-            # For page requests, Cloudflare Access handles the redirect
-            # If we get here without a user, something is wrong
+            # For page requests, Cloudflare Access handles the login redirect
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Authentication required"},
             )
 
-        # Set user on request state
+        # Set user and auth mode on request state
         request.state.user = user
+        request.state.used_dev_mode = used_dev_mode
         return await call_next(request)
 
     def _is_public_path(self, path: str) -> bool:
