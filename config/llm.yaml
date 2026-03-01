@@ -2,25 +2,42 @@
 # Configure LLM providers and task routing
 
 providers:
-  # Local LM Studio (primary - requires LM Studio running on your PC)
-  # IMPORTANT: Load the model in LM Studio with at least 16384 context length
+  # ── Vision model (for OCR and image extraction) ───────────────────────────
+  # IMPORTANT: Load with at least 16384 context length in LM Studio UI
   # (Settings > Context Length). Vision models need large context for images.
   lm_studio_vision:
     provider: lm_studio
     base_url: "http://localhost:1234/v1"  # UPDATE with your PC's IP
-    model: "llava-v1.6-34b"  # or whatever vision model you have loaded
+    model: "qwen/qwen3-vl-8b"            # Vision-language model for OCR tasks
     timeout: 180
     max_retries: 2
-    context_length: 16384  # Requested context length (must also be set in LM Studio UI)
+    context_length: 16384
 
+  # ── Text model (for enrichment, extraction, type detection) ───────────────
+  # Option A: Share the vision model port (simpler, works if only one model loaded)
   lm_studio_text:
     provider: lm_studio
     base_url: "http://localhost:1234/v1"  # UPDATE with your PC's IP
-    model: "llama-3.1-70b-instruct"  # or your preferred text model
+    model: "qwen/qwen3-vl-8b"
     timeout: 120
     max_retries: 2
+    # max_results: 5   # DuckDuckGo results per enrichment search (benchmark default)
+    # max_iterations: 5  # Max tool-call loops (only used for non-enrichment tool calls)
 
-  # Cloud fallbacks (optional - requires API keys in environment)
+  # Option B: Dedicated pure-text model for faster enrichment
+  # LM Studio can serve two models simultaneously on different ports.
+  # A pure text model (no vision transformer) is faster for enrichment tasks.
+  # Load a second model in LM Studio on port 1235, then uncomment below
+  # and change routing.metadata_enrichment to lm_studio_text_fast.
+  #
+  # lm_studio_text_fast:
+  #   provider: lm_studio
+  #   base_url: "http://localhost:1235/v1"  # Second LM Studio instance
+  #   model: "qwen/qwen2.5-7b-instruct"    # Pure text model — faster than VL for enrichment
+  #   timeout: 60
+  #   max_retries: 2
+
+  # ── Cloud fallbacks (optional — requires API keys in environment) ──────────
   anthropic_sonnet:
     provider: anthropic
     api_key_env: "ANTHROPIC_API_KEY"
@@ -38,13 +55,13 @@ providers:
 # Task routing rules
 # Maps task types to provider names
 routing:
-  ocr: lm_studio_vision  # OCR from images
-  extraction: lm_studio_text  # Extract bottle data from text
+  ocr: lm_studio_vision             # OCR from images
+  extraction: lm_studio_text        # Extract bottle data from text
   structured_extraction: lm_studio_vision  # Extract structured data from tasting cards
-  type_detection: lm_studio_text  # Detect wine vs whiskey
-  metadata_enrichment: lm_studio_text  # Lookup missing metadata
-  web_research: lm_studio_text  # Web scraping analysis (future)
-  quality_check: lm_studio_text  # Validate extraction quality
+  type_detection: lm_studio_text    # Detect wine vs whiskey
+  metadata_enrichment: lm_studio_text  # Verify/enrich bottle metadata (change to lm_studio_text_fast if configured)
+  web_research: lm_studio_text      # Web scraping analysis (future)
+  quality_check: lm_studio_text     # Validate extraction quality
 
 # Fallback configuration
 fallback:

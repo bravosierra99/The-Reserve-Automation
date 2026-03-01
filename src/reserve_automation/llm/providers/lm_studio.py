@@ -28,7 +28,8 @@ class LMStudioProvider(BaseLLMProvider):
         self.base_url = config.get("base_url", "http://localhost:1234/v1")
         self.client = None
         self._client_loop = None
-        self.tool_executor = ToolExecutor()
+        self.max_iterations = config.get("max_iterations", 10)
+        self.tool_executor = ToolExecutor(max_results=config.get("max_results", 10))
         self._model_load_attempted = False  # Track if we've tried loading the model
 
     def _ensure_client(self):
@@ -219,7 +220,7 @@ class LMStudioProvider(BaseLLMProvider):
             # We rely on prompt engineering instead (safer for compatibility)
 
             # Tool calling loop - keep going until LLM returns content (not tool calls)
-            max_iterations = 10  # Allow more iterations for complex searches
+            max_iterations = self.max_iterations
             iteration = 0
             total_tokens = 0
 

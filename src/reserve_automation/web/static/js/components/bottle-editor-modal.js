@@ -20,6 +20,8 @@ window.bottleEditorModal = function() {
         bottleId: null,          // For management mode (opaque bottle ID)
         uploadId: null,          // For upload mode
         manifestContext: null,   // { bottles: [...], currentIndex: 0 }
+        _onSaveCallback: null,   // Called after successful save (manifest panel integration)
+        _onSkipCallback: null,   // Called after skip in duplicate dialog (manifest panel integration)
 
         // Label operations
         tempLabelPath: null,
@@ -98,7 +100,7 @@ window.bottleEditorModal = function() {
         /**
          * Open modal in upload mode (new bottle, client-side data)
          */
-        async openUpload(bottle, uploadId, manifestContext = null) {
+        async openUpload(bottle, uploadId, manifestContext = null, preloadedEnrichResult = null) {
             console.log('openUpload called with uploadId:', uploadId);
             this.mode = 'upload';
             this.bottle = { ...bottle };
@@ -116,6 +118,13 @@ window.bottleEditorModal = function() {
 
             // Reset state
             this.resetState();
+
+            // Pre-load enrichment result if provided (manifest panel enrichment)
+            if (preloadedEnrichResult) {
+                this.searchResult = preloadedEnrichResult;
+                this.hasChanges = preloadedEnrichResult.changes && Object.keys(preloadedEnrichResult.changes).length > 0;
+                this.approvedChanges = {};
+            }
 
             console.log('After opening, mode:', this.mode, 'uploadId:', this.uploadId);
 
@@ -179,6 +188,8 @@ window.bottleEditorModal = function() {
             this.searchResult = null;
             this.verifying = false;
             this.approvedChanges = {};
+            this._onSaveCallback = null;
+            this._onSkipCallback = null;
             this.saving = false;
             this.saveSuccess = false;
             this.labelActionInProgress = false;
@@ -294,6 +305,7 @@ window.bottleEditorModal = function() {
                     if (this.manifestContext) {
                         await this.nextBottle();
                     } else {
+                        if (this._onSkipCallback) { this._onSkipCallback(); this._onSkipCallback = null; }
                         this.close();
                     }
                     return;
@@ -351,9 +363,10 @@ window.bottleEditorModal = function() {
                 const result = await response.json();
 
                 if (result.status === 'duplicate_found') {
-                    // Show duplicate dialog
+                    // Show duplicate dialog, pre-selecting "Save as New" as the safest default
                     this.duplicates = result.duplicates;
                     this.showDuplicateDialog = true;
+                    this.duplicateAction = 'save_new';  // Pre-select radio button
                     this.saving = false;
                     return;
                 }
@@ -369,8 +382,15 @@ window.bottleEditorModal = function() {
                 if (this.manifestContext) {
                     await this.nextBottle();
                 } else {
-                    // Wait briefly for user to see success, then close
-                    setTimeout(() => this.close(), 800);
+                    // Fire save callback if set (manifest panel integration)
+                    if (this._onSaveCallback) {
+                        this._onSaveCallback(this.bottle);
+                        this._onSaveCallback = null;
+                        // advanceToNextReady (called from callback) handles close and navigation
+                    } else {
+                        // Wait briefly for user to see success, then close
+                        setTimeout(() => this.close(), 800);
+                    }
                 }
 
             } catch (error) {
@@ -394,6 +414,7 @@ window.bottleEditorModal = function() {
                 if (this.manifestContext) {
                     await this.nextBottle();
                 } else {
+                    if (this._onSkipCallback) { this._onSkipCallback(); this._onSkipCallback = null; }
                     this.close();
                 }
                 return;
@@ -448,6 +469,8 @@ window.bottleEditorModal = function() {
                 if (this.manifestContext) {
                     await this.nextBottle();
                 } else {
+                    // Fire save callback if set (manifest panel integration)
+                    if (this._onSaveCallback) { this._onSaveCallback(this.bottle); this._onSaveCallback = null; }
                     this.close();
                 }
 
@@ -504,6 +527,7 @@ window.bottleEditorModal = function() {
                 this.duplicates = result.duplicates || [];
 
                 if (this.duplicates.length > 0) {
+                    this.duplicateAction = 'save_new';  // Pre-select safest default when inline panel appears
                     console.log(`Found ${this.duplicates.length} potential duplicates`);
                 } else {
                     console.log('No duplicates found');
