@@ -21,6 +21,7 @@ window.bottleEditorModal = function() {
         uploadId: null,          // For upload mode
         manifestContext: null,   // { bottles: [...], currentIndex: 0 }
         _onSaveCallback: null,   // Called after successful save (manifest panel integration)
+        _onSkipCallback: null,   // Called after skip in duplicate dialog (manifest panel integration)
 
         // Label operations
         tempLabelPath: null,
@@ -188,6 +189,7 @@ window.bottleEditorModal = function() {
             this.verifying = false;
             this.approvedChanges = {};
             this._onSaveCallback = null;
+            this._onSkipCallback = null;
             this.saving = false;
             this.saveSuccess = false;
             this.labelActionInProgress = false;
@@ -303,6 +305,7 @@ window.bottleEditorModal = function() {
                     if (this.manifestContext) {
                         await this.nextBottle();
                     } else {
+                        if (this._onSkipCallback) { this._onSkipCallback(); this._onSkipCallback = null; }
                         this.close();
                     }
                     return;
@@ -360,9 +363,10 @@ window.bottleEditorModal = function() {
                 const result = await response.json();
 
                 if (result.status === 'duplicate_found') {
-                    // Show duplicate dialog
+                    // Show duplicate dialog, pre-selecting "Save as New" as the safest default
                     this.duplicates = result.duplicates;
                     this.showDuplicateDialog = true;
+                    this.duplicateAction = 'save_new';  // Pre-select radio button
                     this.saving = false;
                     return;
                 }
@@ -379,9 +383,14 @@ window.bottleEditorModal = function() {
                     await this.nextBottle();
                 } else {
                     // Fire save callback if set (manifest panel integration)
-                    if (this._onSaveCallback) { this._onSaveCallback(this.bottle); this._onSaveCallback = null; }
-                    // Wait briefly for user to see success, then close
-                    setTimeout(() => this.close(), 800);
+                    if (this._onSaveCallback) {
+                        this._onSaveCallback(this.bottle);
+                        this._onSaveCallback = null;
+                        // advanceToNextReady (called from callback) handles close and navigation
+                    } else {
+                        // Wait briefly for user to see success, then close
+                        setTimeout(() => this.close(), 800);
+                    }
                 }
 
             } catch (error) {
@@ -405,6 +414,7 @@ window.bottleEditorModal = function() {
                 if (this.manifestContext) {
                     await this.nextBottle();
                 } else {
+                    if (this._onSkipCallback) { this._onSkipCallback(); this._onSkipCallback = null; }
                     this.close();
                 }
                 return;
@@ -517,6 +527,7 @@ window.bottleEditorModal = function() {
                 this.duplicates = result.duplicates || [];
 
                 if (this.duplicates.length > 0) {
+                    this.duplicateAction = 'save_new';  // Pre-select safest default when inline panel appears
                     console.log(`Found ${this.duplicates.length} potential duplicates`);
                 } else {
                     console.log('No duplicates found');

@@ -296,10 +296,13 @@
                       x-text="`✓ ${manifestBottles.filter(b => b._enrichStatus === 'ready').length} ready`"></span>
                 <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded-full"
                       x-show="manifestBottles.filter(b => b._enrichStatus === 'saved').length > 0"
-                      x-text="`✅ ${manifestBottles.filter(b => b._enrichStatus === 'saved').length} saved`"></span>
+                      x-text="`✅ ${manifestBottles.filter(b => b._enrichStatus === 'saved').length} reviewed`"></span>
                 <span class="px-2 py-1 bg-red-100 text-red-700 rounded-full"
                       x-show="manifestBottles.filter(b => b._enrichStatus === 'failed').length > 0"
                       x-text="`✗ ${manifestBottles.filter(b => b._enrichStatus === 'failed').length} failed`"></span>
+                <span class="px-2 py-1 bg-purple-100 text-purple-700 rounded-full"
+                      x-show="manifestBottles.filter(b => b._enrichStatus === 'skipped').length > 0"
+                      x-text="`↷ ${manifestBottles.filter(b => b._enrichStatus === 'skipped').length} skipped`"></span>
             </div>
         </div>
 
@@ -311,7 +314,8 @@
                          'border-yellow-300 opacity-75': bottle._enrichStatus === 'enriching',
                          'border-green-400': bottle._enrichStatus === 'ready',
                          'border-gray-200': bottle._enrichStatus === 'saved',
-                         'border-red-300': bottle._enrichStatus === 'failed'
+                         'border-red-300': bottle._enrichStatus === 'failed',
+                         'border-purple-300 opacity-75': bottle._enrichStatus === 'skipped'
                      }">
                     <!-- Status badge -->
                     <div class="flex justify-between items-start">
@@ -320,13 +324,15 @@
                                   'bg-yellow-100 text-yellow-800': bottle._enrichStatus === 'enriching',
                                   'bg-green-100 text-green-700': bottle._enrichStatus === 'ready',
                                   'bg-gray-100 text-gray-500': bottle._enrichStatus === 'saved',
-                                  'bg-red-100 text-red-700': bottle._enrichStatus === 'failed'
+                                  'bg-red-100 text-red-700': bottle._enrichStatus === 'failed',
+                                  'bg-purple-100 text-purple-700': bottle._enrichStatus === 'skipped'
                               }"
                               x-text="{
                                   enriching: '⟳ Enriching...',
                                   ready: '✓ Ready to review',
-                                  saved: '✅ Saved',
-                                  failed: '✗ Enrichment failed'
+                                  saved: '✅ Reviewed',
+                                  failed: '✗ Enrichment failed',
+                                  skipped: '↷ Skipped'
                               }[bottle._enrichStatus]">
                         </span>
                         <span class="text-xs text-gray-400" x-text="bottle.type || ''"></span>
@@ -358,12 +364,13 @@
                                 class="flex-1 py-1.5 px-3 text-sm font-semibold rounded-lg transition-colors"
                                 :class="bottle._enrichStatus === 'enriching'
                                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    : bottle._enrichStatus === 'saved'
+                                    : bottle._enrichStatus === 'saved' || bottle._enrichStatus === 'skipped'
                                         ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                                         : 'bg-blue-600 hover:bg-blue-700 text-white'">
                             <span x-show="bottle._enrichStatus === 'enriching'">Enriching...</span>
                             <span x-show="bottle._enrichStatus === 'ready'">Review →</span>
                             <span x-show="bottle._enrichStatus === 'saved'">Re-review</span>
+                            <span x-show="bottle._enrichStatus === 'skipped'">Re-review</span>
                             <span x-show="bottle._enrichStatus === 'failed'">Review anyway</span>
                         </button>
                         <!-- Retry button (failed only) -->
@@ -538,10 +545,31 @@ function uploadForm() {
             if (bottle._enrichStatus === 'enriching') return;
             // Open modal for single bottle (no manifestContext → no prev/next nav)
             this.bottleEditor.openUpload(bottle, this.uploadId, null, bottle._enrichResult || null);
-            // Set save callback so we can mark the card as saved
+            // Set save callback so we can mark the card as saved and advance to next
             this.bottleEditor._onSaveCallback = () => {
                 bottle._enrichStatus = 'saved';
+                this.advanceToNextReady(bottle);
             };
+            // Set skip callback so we can mark the card as skipped and advance to next
+            this.bottleEditor._onSkipCallback = () => {
+                bottle._enrichStatus = 'skipped';
+                this.advanceToNextReady(bottle);
+            };
+        },
+
+        advanceToNextReady(currentBottle) {
+            setTimeout(() => {
+                const next = this.manifestBottles.find(
+                    b => b !== currentBottle && b._enrichStatus === 'ready'
+                );
+                if (next) {
+                    this.openBottleForReview(next);
+                    const el = document.getElementById('bottle-editor-scroll');
+                    if (el) el.scrollTop = 0;
+                } else {
+                    this.bottleEditor.close();
+                }
+            }, 350);
         },
 
         resetManifest() {
