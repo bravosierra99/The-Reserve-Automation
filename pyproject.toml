@@ -1,6 +1,6 @@
 [project]
 name = "reserve-automation"
-version = "0.5.0"
+version = "0.6.0"
 description = "Bottle ingestion automation for The Reserve spirits collection"
 authors = [
     {name = "Ben Smith", email = "ben@example.com"}
