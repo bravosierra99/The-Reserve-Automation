@@ -23,7 +23,7 @@ permissions:
   bottles.create:           [admin]
   bottles.edit:             [admin]
   bottles.delete:           [admin]
-  tastings.view:            [admin, family, guest]
+  tastings.view:            [admin, family]
   tastings.submit:          [admin, family]
   tastings.delete:          [admin]
   cocktails.view:           [admin, family, guest]

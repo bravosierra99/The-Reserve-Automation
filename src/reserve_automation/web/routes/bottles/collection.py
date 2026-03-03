@@ -51,13 +51,13 @@ async def get_bottle_collection():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/v1/bottles/tastings-summary")
+@router.post("/api/v1/bottles/tastings-summary", dependencies=[Depends(require("tastings.view"))])
 async def bottles_tastings_summary(request: Request):
-    """Proxy to management tastings-summary with bottles.view permission."""
+    """Proxy to management tastings-summary, requires tastings.view (admin + family)."""
     return await get_bottle_tastings_summary(request)
 
 
-@router.post("/api/v1/bottles/tastings-list")
+@router.post("/api/v1/bottles/tastings-list", dependencies=[Depends(require("tastings.view"))])
 async def bottles_tastings_list(request: Request):
-    """Proxy to management tastings-list with bottles.view permission."""
+    """Proxy to management tastings-list, requires tastings.view (admin + family)."""
     return await get_bottle_tastings_list(request)
