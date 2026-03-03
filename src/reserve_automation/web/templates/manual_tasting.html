@@ -733,8 +733,12 @@ function manualTastingWizard() {
                 this._currentStep = 'bottle_selection';
             }
 
-            // No server session to load - we start fresh each time
-            // All state is managed locally in this component
+            // Restore cached preferences (non-event mode only)
+            if (!this.participantSession) {
+                this.tasterName = localStorage.getItem('tasting_taster_name') || '';
+                this.beverageType = localStorage.getItem('tasting_beverage_type') || 'wine';
+                this.tastingData.place = localStorage.getItem('tasting_place') || '';
+            }
         },
 
         getParticipantSession(eventId) {
@@ -897,6 +901,13 @@ function manualTastingWizard() {
                 }
 
                 const result = await response.json();
+
+                // Cache preferences for next time
+                localStorage.setItem('tasting_taster_name', this.tasterName);
+                localStorage.setItem('tasting_beverage_type', this.beverageType);
+                if (this.tastingData.place) {
+                    localStorage.setItem('tasting_place', this.tastingData.place);
+                }
 
                 if (result.event_id) {
                     // Event mode - redirect back to event page
