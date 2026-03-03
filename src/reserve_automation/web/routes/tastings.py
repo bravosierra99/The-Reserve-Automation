@@ -1,9 +1,10 @@
 """Routes for tasting upload and review workflow."""
 
+import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, Request
+from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, Response, Request, UploadFile
 from ..auth.dependencies import require
 from fastapi.templating import Jinja2Templates
 from loguru import logger
@@ -674,6 +675,87 @@ async def refresh_matches(
 
     logger.info(f"Refreshed matches for {extraction_id}")
     return {"status": "refreshed", "tastings": tastings}
+
+
+# ============================================================================
+# Tasting Card Upload (accessible to family + admin via tastings.submit)
+# ============================================================================
+
+
+@router.post("/api/v1/tastings/upload-card", dependencies=[Depends(require("tastings.submit"))])
+async def upload_tasting_card(
+    response: Response,
+    request: Request,
+    file: UploadFile = File(...),
+    expected_count: Optional[int] = Form(None),
+):
+    """
+    Upload a tasting card image for extraction.
+
+    This endpoint is separate from /api/v1/upload so that family members
+    (who have tastings.submit but not upload.access) can upload tasting cards.
+    """
+    from ..app import upload_service, core_config, web_config
+
+    if not upload_service or not core_config or not web_config:
+        raise HTTPException(status_code=500, detail="Service not initialized")
+
+    logger.info(f"Processing tasting card upload: {file.filename}")
+
+    try:
+        session_id = str(uuid.uuid4())
+
+        # Save uploaded file
+        file_path = await upload_service.save_upload(file, session_id)
+        logger.info(f"Saved tasting card upload to: {file_path}")
+
+        # Extract tasting notes
+        extraction_service = ExtractionService(core_config)
+        extraction_result = await extraction_service.extract_tasting_card(
+            image_path=file_path,
+            template_type=None  # Auto-detect
+        )
+
+        extraction_data = extraction_service.to_dict(extraction_result)
+
+        # Create session with extraction data
+        session_manager = SessionManager(
+            secret_key=web_config.sessions.secret_key,
+            max_age_hours=web_config.sessions.max_age_hours
+        )
+
+        session_data = {
+            "extraction_id": session_id,
+            "upload_filename": file.filename,
+            "temp_file_path": str(file_path),
+            "extraction_data": extraction_data,
+            "expected_count": expected_count,
+        }
+
+        session_token = session_manager.create_session(session_data)
+
+        response.set_cookie(
+            key="session",
+            value=session_token,
+            max_age=web_config.sessions.max_age_hours * 3600,
+            httponly=True,
+            samesite="lax"
+        )
+
+        logger.info(f"Tasting card extraction complete: {session_id}")
+
+        return {
+            "status": "completed",
+            "extraction_id": session_id,
+            "tastings_count": len(extraction_result.tastings),
+            "template_type": extraction_result.template_type,
+        }
+
+    except Exception as e:
+        logger.error(f"Tasting card upload failed: {e}", exc_info=True)
+        if 'session_id' in locals():
+            upload_service.cleanup_session_files(session_id)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================

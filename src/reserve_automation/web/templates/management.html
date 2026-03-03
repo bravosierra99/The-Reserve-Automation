@@ -46,13 +46,6 @@
             <h2 class="text-2xl font-bold mb-6 text-gray-800">Collection Management</h2>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <button @click="selectMode('review-labels')"
-                        class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-orange-50 hover:bg-orange-100">
-                    <div class="text-4xl mb-2">📊</div>
-                    <h3 class="font-bold text-lg mb-2">Bottle Grid View</h3>
-                    <p class="text-sm text-gray-600">Browse, search, and edit your entire collection</p>
-                </button>
-
                 <button @click="selectMode('manage-events')"
                         class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-yellow-50 hover:bg-yellow-100">
                     <div class="text-4xl mb-2">🎭</div>
@@ -76,6 +69,13 @@
                     <div class="text-4xl mb-2">📦</div>
                     <h3 class="font-bold text-lg mb-2">Batch Update All Bottles</h3>
                     <p class="text-sm text-gray-600">Verify all bottles in the background, approve as they complete</p>
+                </button>
+
+                <button @click="selectMode('bulk-import')"
+                        class="p-6 border-2 border-dashed border-gray-300 rounded-lg transition-all bg-gray-50 hover:bg-purple-50 hover:border-purple-300">
+                    <div class="text-4xl mb-2">🧪</div>
+                    <h3 class="font-bold text-lg mb-2">Bulk Import Ingredients</h3>
+                    <p class="text-sm text-gray-600">Use AI to search and bulk-add ingredients to your tree</p>
                 </button>
             </div>
         </div>
@@ -418,6 +418,98 @@
         </div>
     </div>
 
+    <!-- Bulk Import Ingredients Mode -->
+    <div x-show="mode === 'bulk-import'">
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">Bulk Import Ingredients</h2>
+                <button @click="mode = null" class="text-blue-600 hover:text-blue-800 font-semibold">
+                    ← Back
+                </button>
+            </div>
+
+            <p class="text-gray-600 mb-6">
+                Use AI to search for ingredients by category and bulk-add them to your ingredient tree.
+            </p>
+
+            <!-- Search form -->
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Search Query</label>
+                    <input type="text" x-model="bulkQuery"
+                           @keydown.enter="doBulkSearch()"
+                           x-ref="bulkQueryInput"
+                           placeholder="e.g., vanilla vodkas, craft gin brands"
+                           class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Add under parent</label>
+                    <input type="text" x-model="bulkParent"
+                           placeholder="e.g., Vodka (leave empty for root)"
+                           class="w-full px-3 py-2 border rounded-lg"
+                           list="bulk-parent-suggestions">
+                    <datalist id="bulk-parent-suggestions">
+                        <template x-for="name in bulkIngredientNames" :key="name">
+                            <option :value="name"></option>
+                        </template>
+                    </datalist>
+                </div>
+                <button @click="doBulkSearch()"
+                        :disabled="bulkSearching || !bulkQuery.trim()"
+                        class="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                    <span x-text="bulkSearching ? 'Searching...' : 'Search'"></span>
+                </button>
+            </div>
+
+            <!-- Results table -->
+            <div x-show="bulkResults.length > 0" class="mb-4">
+                <h3 class="font-semibold text-gray-700 mb-2">Results - select which to import:</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-2 py-1 text-left"></th>
+                                <th class="px-2 py-1 text-left">Name</th>
+                                <th class="px-2 py-1 text-left">Cost</th>
+                                <th class="px-2 py-1 text-left">ABV</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="(result, idx) in bulkResults" :key="idx">
+                                <tr class="border-b hover:bg-gray-50">
+                                    <td class="px-2 py-1">
+                                        <input type="checkbox" x-model="result.selected">
+                                    </td>
+                                    <td class="px-2 py-1">
+                                        <input type="text" x-model="result.name" class="w-full px-1 py-0.5 border rounded text-sm">
+                                    </td>
+                                    <td class="px-2 py-1">
+                                        <input type="number" x-model.number="result.cost" step="0.01" class="w-20 px-1 py-0.5 border rounded text-sm">
+                                    </td>
+                                    <td class="px-2 py-1">
+                                        <input type="number" x-model.number="result.abv" step="0.1" class="w-16 px-1 py-0.5 border rounded text-sm">
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="flex gap-3 mt-4">
+                    <button @click="doBulkSave()"
+                            :disabled="bulkSaving"
+                            class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
+                        <span x-text="bulkSaving ? 'Saving...' : 'Save Selected'"></span>
+                    </button>
+                    <button @click="bulkResults = []"
+                            class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Clear Results</button>
+                </div>
+            </div>
+
+            <div x-show="bulkError" class="p-3 bg-red-50 text-red-700 rounded-lg text-sm" x-text="bulkError"></div>
+            <div x-show="bulkSuccess" class="p-3 bg-green-50 text-green-700 rounded-lg text-sm" x-text="bulkSuccess"></div>
+        </div>
+    </div>
+
     <!-- Manage Events Mode -->
     <div x-show="mode === 'manage-events'">
         <div class="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -547,93 +639,8 @@
         </div>
     </div>
 
-    <!-- Review Labels Mode -->
-    <div x-show="mode === 'review-labels'">
-        <!-- Grid View -->
-        <div x-show="!selectedLabelBottle">
-            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                <div class="flex justify-between items-center mb-4">
-                    <div>
-                        <h2 class="text-2xl font-bold text-gray-800">Bottle Grid View</h2>
-                        <p class="text-gray-600 mt-1">
-                            Browse your collection, search, filter, and edit any bottle's details.
-                        </p>
-                    </div>
-                    <button @click="mode = null" class="text-blue-600 hover:text-blue-800 font-semibold whitespace-nowrap ml-4">
-                        ← Back to Menu
-                    </button>
-                </div>
-
-                <!-- Filters -->
-                <div class="mb-6 flex flex-col md:flex-row gap-4">
-                    <!-- Type Filter -->
-                    <div class="flex gap-2">
-                        <button @click="gridFilterType = 'all'"
-                                :class="gridFilterType === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'"
-                                class="px-4 py-2 rounded-lg font-semibold transition-colors">
-                            All
-                        </button>
-                        <button @click="gridFilterType = 'wine'"
-                                :class="gridFilterType === 'wine' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'"
-                                class="px-4 py-2 rounded-lg font-semibold transition-colors">
-                            🍷 Wine
-                        </button>
-                        <button @click="gridFilterType = 'whiskey'"
-                                :class="gridFilterType === 'whiskey' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'"
-                                class="px-4 py-2 rounded-lg font-semibold transition-colors">
-                            🥃 Whiskey
-                        </button>
-                    </div>
-
-                    <!-- Search Filter -->
-                    <div class="flex-1">
-                        <input type="text"
-                               x-model="gridSearchQuery"
-                               placeholder="Search by producer, name, or year..."
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                    </div>
-                </div>
-
-                <!-- Loading -->
-                <div x-show="labelsLoading" class="text-center py-12">
-                    <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-orange-600 mx-auto mb-4"></div>
-                    <p class="text-gray-600">Loading bottles...</p>
-                </div>
-
-                <!-- Bottle Grid -->
-                <div x-show="!labelsLoading && labelBottles.length > 0">
-                    <p class="text-sm text-gray-600 mb-4">
-                        Showing <span class="font-bold" x-text="filteredBottles.length"></span> of <span class="font-bold" x-text="labelBottles.length"></span> bottles.
-                    </p>
-
-                    <div class="grid grid-cols-3 md:grid-cols-4 gap-4">
-                        <template x-for="bottle in filteredBottles" :key="bottle.id">
-                            <div @click="bottleEditor.openManagement(bottle)"
-                                 class="cursor-pointer border-2 border-gray-200 hover:border-blue-500 rounded-lg p-3 transition-all hover:shadow-lg">
-                                <div class="bg-gray-100 rounded-lg mb-2 h-48 flex items-center justify-center overflow-hidden">
-                                    <img x-show="bottle.id"
-                                         :src="`/api/v1/labels/thumbnail?id=${encodeURIComponent(bottle.id)}&size=400`"
-                                         :alt="bottle.producer"
-                                         loading="lazy"
-                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
-                                         class="max-h-full max-w-full object-contain">
-                                    <div class="text-gray-400 text-4xl" style="display: none;">📷</div>
-                                </div>
-                                <p class="text-xs mt-2 line-clamp-3 text-gray-700 leading-tight"
-                                   :title="`${bottle.producer} - ${bottle.name} ${bottle.year ? '(' + bottle.year + ')' : ''}`"
-                                   x-text="`${bottle.producer} - ${bottle.name} ${bottle.year ? '(' + bottle.year + ')' : ''}`">
-                                </p>
-                            </div>
-                        </template>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Include Bottle Editor Modal Component -->
-        {% include 'components/bottle_editor_modal.html' %}
-
-        <!-- OLD inline detail view removed - now using modal component above -->
+    <!-- Include Bottle Editor Modal Component (used by batch mode) -->
+    {% include 'components/bottle_editor_modal.html' %}
 <script>
 function managementApp() {
     // Import label review module (if available)
@@ -684,6 +691,16 @@ function managementApp() {
         manageEventsLoading: false,
         peekingBottles: {},  // Track which events are showing bottle mapping
 
+        // Bulk import ingredients
+        bulkQuery: '',
+        bulkParent: '',
+        bulkResults: [],
+        bulkSearching: false,
+        bulkSaving: false,
+        bulkError: '',
+        bulkSuccess: '',
+        bulkIngredientNames: [],
+
         // Toast notifications
         toasts: [],
         toastIdCounter: 0,
@@ -731,8 +748,93 @@ function managementApp() {
             this.mode = m;
             if (m === 'manage-events') {
                 this.loadManagedEvents();
-            } else if (m === 'review-labels') {
-                this.loadLabelsForReview();
+            } else if (m === 'bulk-import') {
+                this.loadBulkIngredientNames();
+            }
+        },
+
+        // Bulk import ingredients
+        async loadBulkIngredientNames() {
+            try {
+                const response = await fetch('/api/v1/ingredients?flat=true');
+                if (response.ok) {
+                    const ingredients = await response.json();
+                    this.bulkIngredientNames = ingredients.map(i => i.name);
+                }
+            } catch (error) {
+                console.error('Failed to load ingredient names:', error);
+            }
+        },
+
+        async doBulkSearch() {
+            if (!this.bulkQuery.trim()) return;
+            this.bulkSearching = true;
+            this.bulkError = '';
+            this.bulkSuccess = '';
+            this.bulkResults = [];
+
+            try {
+                const response = await fetch('/api/v1/ingredients/bulk-search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: this.bulkQuery,
+                        parent: this.bulkParent || null,
+                    })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    this.bulkError = error.detail || 'Search failed';
+                    return;
+                }
+                const data = await response.json();
+                this.bulkResults = data.results || [];
+                if (this.bulkResults.length === 0) {
+                    this.bulkError = 'No results found. Try a different query.';
+                }
+            } catch (error) {
+                this.bulkError = error.message;
+            } finally {
+                this.bulkSearching = false;
+            }
+        },
+
+        async doBulkSave() {
+            const selected = this.bulkResults.filter(r => r.selected);
+            if (selected.length === 0) {
+                this.bulkError = 'No items selected';
+                return;
+            }
+
+            this.bulkSaving = true;
+            this.bulkError = '';
+            this.bulkSuccess = '';
+
+            try {
+                const response = await fetch('/api/v1/ingredients/bulk-save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        parent: this.bulkParent || null,
+                        ingredients: this.bulkResults,
+                    })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    this.bulkError = error.detail || 'Save failed';
+                    return;
+                }
+                const data = await response.json();
+                const savedCount = data.saved ? data.saved.length : 0;
+                const skippedCount = data.skipped ? data.skipped.length : 0;
+                this.bulkSuccess = `Saved ${savedCount} ingredients` + (skippedCount > 0 ? `, skipped ${skippedCount}` : '');
+                this.bulkResults = [];
+                // Refresh ingredient names for parent autocomplete
+                await this.loadBulkIngredientNames();
+            } catch (error) {
+                this.bulkError = error.message;
+            } finally {
+                this.bulkSaving = false;
             }
         },
 

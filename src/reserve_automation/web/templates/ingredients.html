@@ -18,10 +18,6 @@
                     class="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded-lg transition-colors">
                 Collapse All
             </button>
-            <button @click="openBulkImport()"
-                    class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-colors">
-                Bulk Import
-            </button>
             <button @click="openAddForm(null)"
                     class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-colors">
                 + Add Root
@@ -236,94 +232,6 @@
         </div>
     </div>
 
-    <!-- Bulk Import Modal -->
-    <div x-show="showBulkImport"
-         x-transition
-         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-         @click.self="showBulkImport = false">
-        <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <div class="p-6">
-                <h2 class="text-xl font-bold mb-4">Bulk Import Ingredients</h2>
-
-                <!-- Search form -->
-                <div class="space-y-4 mb-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Search Query</label>
-                        <input type="text" x-model="bulkQuery"
-                               @keydown.enter="doBulkSearch()"
-                               x-ref="bulkQueryInput"
-                               placeholder="e.g., vanilla vodkas, craft gin brands"
-                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Add under parent</label>
-                        <input type="text" x-model="bulkParent"
-                               @keydown="handleAutocomplete($event, allIngredientNames)"
-                               placeholder="e.g., Vanilla Vodka (leave empty for root)"
-                               class="w-full px-3 py-2 border rounded-lg"
-                               list="bulk-parent-suggestions">
-                        <datalist id="bulk-parent-suggestions">
-                            <template x-for="name in allIngredientNames" :key="name">
-                                <option :value="name"></option>
-                            </template>
-                        </datalist>
-                    </div>
-                    <button @click="doBulkSearch()"
-                            :disabled="bulkSearching || !bulkQuery.trim()"
-                            class="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                        <span x-text="bulkSearching ? 'Searching...' : 'Search'"></span>
-                    </button>
-                </div>
-
-                <!-- Results table -->
-                <div x-show="bulkResults.length > 0" class="mb-4">
-                    <h3 class="font-semibold text-gray-700 mb-2">Results - select which to import:</h3>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-2 py-1 text-left"></th>
-                                    <th class="px-2 py-1 text-left">Name</th>
-                                    <th class="px-2 py-1 text-left">Cost</th>
-                                    <th class="px-2 py-1 text-left">ABV</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <template x-for="(result, idx) in bulkResults" :key="idx">
-                                    <tr class="border-b hover:bg-gray-50">
-                                        <td class="px-2 py-1">
-                                            <input type="checkbox" x-model="result.selected">
-                                        </td>
-                                        <td class="px-2 py-1">
-                                            <input type="text" x-model="result.name" class="w-full px-1 py-0.5 border rounded text-sm">
-                                        </td>
-                                        <td class="px-2 py-1">
-                                            <input type="number" x-model.number="result.cost" step="0.01" class="w-20 px-1 py-0.5 border rounded text-sm">
-                                        </td>
-                                        <td class="px-2 py-1">
-                                            <input type="number" x-model.number="result.abv" step="0.1" class="w-16 px-1 py-0.5 border rounded text-sm">
-                                        </td>
-                                    </tr>
-                                </template>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="flex gap-3 mt-4">
-                        <button @click="doBulkSave()"
-                                :disabled="bulkSaving"
-                                class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
-                            <span x-text="bulkSaving ? 'Saving...' : 'Save Selected'"></span>
-                        </button>
-                        <button @click="showBulkImport = false; bulkResults = []"
-                                class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg">Cancel</button>
-                    </div>
-                </div>
-
-                <div x-show="bulkError" class="p-3 bg-red-50 text-red-700 rounded-lg text-sm" x-text="bulkError"></div>
-                <div x-show="bulkSuccess" class="p-3 bg-green-50 text-green-700 rounded-lg text-sm" x-text="bulkSuccess"></div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <script>
@@ -344,14 +252,6 @@ function ingredientsApp() {
         addParent: null,
         allIngredientNames: [],
         viewData: {},
-        showBulkImport: false,
-        bulkQuery: '',
-        bulkParent: '',
-        bulkResults: [],
-        bulkSearching: false,
-        bulkSaving: false,
-        bulkError: '',
-        bulkSuccess: '',
         formData: {
             name: '',
             parent: '',
@@ -610,16 +510,6 @@ function ingredientsApp() {
             });
         },
 
-        openBulkImport() {
-            this.showBulkImport = true;
-            // Focus search query input after modal is visible
-            this.$nextTick(() => {
-                if (this.$refs.bulkQueryInput) {
-                    this.$refs.bulkQueryInput.focus();
-                }
-            });
-        },
-
         closeModal() {
             this.showAddForm = false;
             this.showEditForm = false;
@@ -697,77 +587,6 @@ function ingredientsApp() {
                 }
             } catch (error) {
                 this.formError = error.message;
-            }
-        },
-
-        async doBulkSearch() {
-            if (!this.bulkQuery.trim()) return;
-            this.bulkSearching = true;
-            this.bulkError = '';
-            this.bulkSuccess = '';
-            this.bulkResults = [];
-
-            try {
-                const response = await fetch('/api/v1/ingredients/bulk-search', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        query: this.bulkQuery,
-                        parent: this.bulkParent || null,
-                    })
-                });
-                if (!response.ok) {
-                    const error = await response.json();
-                    this.bulkError = error.detail || 'Search failed';
-                    return;
-                }
-                const data = await response.json();
-                this.bulkResults = data.results || [];
-                if (this.bulkResults.length === 0) {
-                    this.bulkError = 'No results found. Try a different query.';
-                }
-            } catch (error) {
-                this.bulkError = error.message;
-            } finally {
-                this.bulkSearching = false;
-            }
-        },
-
-        async doBulkSave() {
-            const selected = this.bulkResults.filter(r => r.selected);
-            if (selected.length === 0) {
-                this.bulkError = 'No items selected';
-                return;
-            }
-
-            this.bulkSaving = true;
-            this.bulkError = '';
-            this.bulkSuccess = '';
-
-            try {
-                const response = await fetch('/api/v1/ingredients/bulk-save', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        parent: this.bulkParent || null,
-                        ingredients: this.bulkResults,
-                    })
-                });
-                if (!response.ok) {
-                    const error = await response.json();
-                    this.bulkError = error.detail || 'Save failed';
-                    return;
-                }
-                const data = await response.json();
-                const savedCount = data.saved ? data.saved.length : 0;
-                const skippedCount = data.skipped ? data.skipped.length : 0;
-                this.bulkSuccess = `Saved ${savedCount} ingredients` + (skippedCount > 0 ? `, skipped ${skippedCount}` : '');
-                this.bulkResults = [];
-                await this.loadTree();
-            } catch (error) {
-                this.bulkError = error.message;
-            } finally {
-                this.bulkSaving = false;
             }
         },
 

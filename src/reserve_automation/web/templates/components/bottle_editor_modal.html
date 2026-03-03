@@ -55,7 +55,7 @@
                 <div class="bg-gray-50 rounded-lg p-6 border-2 border-gray-300">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="text-xl font-bold text-gray-800">Bottle Metadata</h3>
-                        <div class="flex gap-2">
+                        <div class="flex gap-2" x-show="!bottleEditor.readOnly">
                             <button @click="bottleEditor.enrichMetadata()"
                                     :disabled="bottleEditor.verifying"
                                     class="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition-colors">
@@ -143,7 +143,8 @@
                             </label>
                             <input type="text"
                                    x-model="bottleEditor.editableBottle.producer"
-                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                   :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                         </div>
 
                         <!-- Name -->
@@ -153,7 +154,8 @@
                             </label>
                             <input type="text"
                                    x-model="bottleEditor.editableBottle.name"
-                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                   :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                         </div>
 
                         <!-- Year -->
@@ -163,7 +165,8 @@
                             </label>
                             <input type="text"
                                    x-model="bottleEditor.editableBottle.year"
-                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                   :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                         </div>
 
                         <!-- Type (Specific description like "Bourbon", "Cabernet Sauvignon") -->
@@ -172,7 +175,8 @@
                             <input type="text"
                                    x-model="bottleEditor.editableBottle.beverage_type"
                                    placeholder="e.g., Bourbon, Cabernet Sauvignon, Reposado Tequila"
-                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                   :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                         </div>
 
                         <!-- Wine-specific fields -->
@@ -181,32 +185,38 @@
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Country</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.country"
-                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                           :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Region</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.region"
-                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                           :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Variety</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.variety"
-                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                           :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Vineyard</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.vineyard"
-                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                           :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">ABV</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.abv"
-                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                           :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Style</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.style"
-                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                           :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                             </div>
                         </template>
@@ -217,32 +227,38 @@
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Region</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.region"
-                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                           :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Age Statement</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.age_statement"
-                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                           :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Proof</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.proof"
-                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                           :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Mash Bill</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.mash_bill"
-                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                           :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Barrel Type</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.barrel_type"
-                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                           :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Batch Number</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.batch_number"
-                                           class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                           :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                             </div>
                         </template>
@@ -251,12 +267,14 @@
                         <div>
                             <label class="block text-sm font-bold text-gray-700 mb-2">Price</label>
                             <input type="text" x-model="bottleEditor.editableBottle.price"
-                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                   :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                         </div>
                         <div>
                             <label class="block text-sm font-bold text-gray-700 mb-2">Inventory</label>
                             <input type="text" x-model="bottleEditor.editableBottle.inventory"
-                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+                                   :disabled="bottleEditor.readOnly"
+                                   class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                         </div>
                     </div>
                 </div>
@@ -594,8 +612,8 @@
                              @error="$el.src='/static/images/no-label.svg'">
                     </div>
 
-                    <!-- Label Action Buttons -->
-                    <div class="flex flex-wrap gap-3 justify-center">
+                    <!-- Label Action Buttons (hidden in readOnly mode) -->
+                    <div x-show="!bottleEditor.readOnly" class="flex flex-wrap gap-3 justify-center">
                         <button @click="bottleEditor.searchForLabelReplacement()"
                                 :disabled="bottleEditor.labelActionInProgress"
                                 class="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition-colors">
@@ -748,7 +766,8 @@
                         <span x-text="bottleEditor.mode === 'upload' ? 'Cancel' : 'Close'"></span>
                     </button>
 
-                    <button @click="bottleEditor.save()"
+                    <button x-show="!bottleEditor.readOnly"
+                            @click="bottleEditor.save()"
                             :disabled="bottleEditor.saving"
                             class="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold rounded-lg">
                         <span x-show="!bottleEditor.saving">💾 Save</span>

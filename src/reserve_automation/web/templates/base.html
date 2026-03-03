@@ -29,11 +29,14 @@
                     <p class="text-sm text-blue-100">Bottle & Tasting Management</p>
                 </div>
                 <div class="flex gap-4 items-center">
-                    <a x-show="p.upload_access" href="/upload" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
-                        Upload
+                    <a x-show="p.bottles_view" href="/bottles" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
+                        Bottles
                     </a>
                     <a x-show="p.tastings_submit" href="/manual-tasting" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-colors">
-                        New Tasting
+                        Tastings
+                    </a>
+                    <a x-show="p.upload_access" href="/upload" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
+                        Import
                     </a>
                     <a x-show="p.ingredients_view" href="/ingredients" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
                         Ingredients
@@ -72,7 +75,7 @@
                 } catch (e) {
                     // Default: show all links if /me fails
                     this.p = {
-                        upload_access: true, tastings_submit: true,
+                        bottles_view: true, upload_access: true, tastings_submit: true,
                         ingredients_view: true, cocktails_view: true,
                         events_view: true, management_access: true,
                     };

@@ -39,9 +39,9 @@ class TestBrowserUploadFlow:
             page.goto(f"{web_server}/upload")
 
             # Verify page title
-            expect(page).to_have_title("Upload - The Reserve")
+            expect(page).to_have_title("Import - The Reserve")
 
-            # Verify upload type buttons exist
+            # Verify upload type buttons exist (tasting card moved to Tastings page)
             expect(page.locator("button:has-text('Single Bottle')")).to_be_visible()
             expect(page.locator("button:has-text('Bottle Manifest')")).to_be_visible()
 
@@ -629,36 +629,29 @@ class TestBrowserUploadFlow:
 
 
 class TestBrowserManagementFlow:
-    """Test management grid workflow in browser."""
+    """Test bottle collection grid workflow in browser."""
 
     # Helper to enter bottle grid mode
     def _enter_grid_mode(self, page, web_server):
-        """Navigate to management and enter bottle grid view mode."""
-        page.goto(f"{web_server}/management")
-
-        # Management page shows mode selection first - click Bottle Grid View
-        page.wait_for_selector("text=Bottle Grid View", timeout=5000)
-        page.click("text=Bottle Grid View")
+        """Navigate to /bottles and wait for grid to load."""
+        page.goto(f"{web_server}/bottles")
 
         # Wait for grid to load with bottles
-        # The bottle grid uses divs with @click="bottleEditor.openManagement(bottle)"
         page.wait_for_selector("text=Showing", timeout=10000)
 
     def test_management_page_loads(self, web_server):
-        """Test management page loads and displays bottles."""
+        """Test bottles page loads and displays collection."""
         with sync_playwright() as p:
             browser = p.firefox.launch(headless=True)
             page = browser.new_page()
 
-            page.goto(f"{web_server}/management")
+            page.goto(f"{web_server}/bottles")
 
             # Verify page loaded
-            expect(page).to_have_title("Management - The Reserve")
+            expect(page).to_have_title("Bottles - The Reserve")
 
-            # Verify mode selection exists
-            expect(page.locator("h2:has-text('Collection Management')")).to_be_visible()
-            # Verify Bottle Grid View option is visible (it's inside a button)
-            expect(page.locator("h3:has-text('Bottle Grid View')").first).to_be_visible()
+            # Verify collection header
+            expect(page.locator("h2:has-text('Bottle Collection')")).to_be_visible()
 
             browser.close()
 

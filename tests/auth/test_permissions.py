@@ -86,7 +86,7 @@ class TestAdminOnlyEndpoints:
 
     @pytest.mark.parametrize("role,expected", [
         ("admin", 200),
-        ("family", 303),  # Page 403s redirect to /events
+        ("family", 303),  # Page 403s redirect to /bottles
         ("guest", 303),
     ])
     def test_management_page(self, perm_client, role, expected):
@@ -95,7 +95,7 @@ class TestAdminOnlyEndpoints:
 
     @pytest.mark.parametrize("role,expected", [
         ("admin", 200),
-        ("family", 303),  # Page 403s redirect to /events
+        ("family", 303),  # Page 403s redirect to /bottles
         ("guest", 303),
     ])
     def test_upload_page(self, perm_client, role, expected):
@@ -120,6 +120,24 @@ class TestFamilyEndpoints:
     """Endpoints accessible to admin + family but not guest."""
 
     @pytest.mark.parametrize("role,expected", [
+        ("admin", 500),   # 500 = reached handler (no LLM configured), not 403
+        ("family", 500),  # family has tastings.submit, so also reaches handler
+        ("guest", 403),
+    ])
+    def test_tasting_card_upload(self, perm_client, role, expected):
+        """POST /api/v1/tastings/upload-card requires tastings.submit."""
+        import io
+        # Send a minimal file upload to exercise the permission check.
+        # The endpoint will fail with 500 (no LLM) for allowed roles,
+        # but return 403 for denied roles.
+        resp = _request(
+            perm_client, "post", "/api/v1/tastings/upload-card",
+            role=role,
+            files={"file": ("card.jpg", io.BytesIO(b"\xff\xd8\xff\xe0"), "image/jpeg")},
+        )
+        assert resp.status_code == expected
+
+    @pytest.mark.parametrize("role,expected", [
         ("admin", 200),
         ("family", 200),
         ("guest", 403),
@@ -137,13 +155,39 @@ class TestFamilyEndpoints:
         assert resp.status_code == expected
 
 
+class TestBottlesEndpoints:
+    """Bottles page and collection API accessible to all authenticated roles."""
+
+    @pytest.mark.parametrize("role", ["admin", "family", "guest"])
+    def test_bottles_page(self, perm_client, role):
+        resp = _request(perm_client, "get", "/bottles", role=role)
+        assert resp.status_code == 200
+
+    @pytest.mark.parametrize("role", ["admin", "family", "guest"])
+    def test_bottles_collection_api(self, perm_client, role):
+        resp = _request(perm_client, "get", "/api/v1/bottles/collection", role=role)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "bottles" in data
+        assert "count" in data
+
+    def test_root_redirects_to_bottles(self, perm_client):
+        resp = _request(perm_client, "get", "/", role="guest")
+        assert resp.status_code == 307
+        assert resp.headers["location"] == "/bottles"
+
+
 class TestPublicEndpoints:
     """Endpoints accessible to all authenticated roles."""
 
-    @pytest.mark.parametrize("role", ["admin", "family", "guest"])
-    def test_ingredients_list(self, perm_client, role):
+    @pytest.mark.parametrize("role,expected", [
+        ("admin", 200),
+        ("family", 200),
+        ("guest", 403),  # guests can't view ingredients
+    ])
+    def test_ingredients_list(self, perm_client, role, expected):
         resp = _request(perm_client, "get", "/api/v1/ingredients", role=role)
-        assert resp.status_code == 200
+        assert resp.status_code == expected
 
     @pytest.mark.parametrize("role", ["admin", "family", "guest"])
     def test_cocktails_list(self, perm_client, role):

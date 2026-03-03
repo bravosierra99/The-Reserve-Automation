@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Manual Tasting - The Reserve{% endblock %}
+{% block title %}Tastings - The Reserve{% endblock %}
 
 {% block head %}
 <script src="/static/js/components/tasting-form-mixin.js"></script>
@@ -18,9 +18,10 @@
     <div x-show="error && !loading" class="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
         <h3 class="text-red-800 font-bold text-lg mb-2">Error</h3>
         <p class="text-red-700" x-text="errorMessage"></p>
-        <a href="/upload" class="mt-4 inline-block text-blue-600 hover:text-blue-800 font-semibold">
-            &larr; Back to Upload
-        </a>
+        <button @click="error = false; errorMessage = ''"
+                class="mt-4 inline-block text-blue-600 hover:text-blue-800 font-semibold">
+            &larr; Try Again
+        </button>
     </div>
 
     <!-- Main wizard -->
@@ -29,15 +30,151 @@
         <div class="bg-white rounded-lg shadow-md p-6">
             <div class="flex justify-between items-start">
                 <div>
-                    <h1 class="text-3xl font-bold text-gray-800 mb-2">Manual Tasting Entry</h1>
-                    <p class="text-gray-600">Enter a tasting manually using the wizard below</p>
+                    <h1 class="text-3xl font-bold text-gray-800 mb-2">Tastings</h1>
+                    <p class="text-gray-600">Enter a tasting manually or upload a tasting card</p>
                 </div>
-                <button @click="cancelWizard()"
+                <button x-show="tastingMode === 'manual' && currentStep !== 'taster_info'"
+                        @click="cancelWizard()"
                         class="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 font-semibold rounded-lg transition-colors">
                     Cancel
                 </button>
             </div>
+
+            <!-- Mode Toggle -->
+            <div class="flex gap-2 mt-4">
+                <button @click="tastingMode = 'manual'"
+                        :class="tastingMode === 'manual' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-5 py-2 rounded-lg font-semibold transition-colors">
+                    Manual Entry
+                </button>
+                <button @click="tastingMode = 'upload'"
+                        :class="tastingMode === 'upload' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                        class="px-5 py-2 rounded-lg font-semibold transition-colors">
+                    Upload Tasting Card
+                </button>
+            </div>
         </div>
+
+        <!-- ===== UPLOAD TASTING CARD MODE ===== -->
+        <template x-if="tastingMode === 'upload'">
+            <div class="space-y-6">
+                <!-- Download Templates -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h3 class="font-bold text-blue-900 mb-2">Download Tasting Card Templates</h3>
+                    <p class="text-blue-800 text-sm mb-3">Print these templates to fill out during tastings, then upload photos for automatic extraction.</p>
+                    <div class="flex flex-wrap gap-3">
+                        <a href="/static/AWS_Wine_Evaluation_Chart_2024.pdf" download
+                           class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow transition-colors">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            AWS Wine Chart
+                        </a>
+                        <a href="/static/bourbon_tasting.pdf" download
+                           class="inline-flex items-center px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg shadow transition-colors">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            Bourbon Tasting Sheet
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Expected Tasting Count -->
+                <div class="bg-white rounded-lg shadow-md p-4">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                        How many tastings are on this card? (optional)
+                    </label>
+                    <p class="text-gray-500 text-xs mb-3">
+                        Helps validate extraction - you'll get a warning if the count doesn't match.
+                    </p>
+                    <div class="flex gap-2">
+                        <button @click="uploadExpectedCount = 1" :class="uploadExpectedCount === 1 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                                class="px-4 py-2 rounded-lg font-semibold transition-colors">1</button>
+                        <button @click="uploadExpectedCount = 2" :class="uploadExpectedCount === 2 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                                class="px-4 py-2 rounded-lg font-semibold transition-colors">2</button>
+                        <button @click="uploadExpectedCount = 3" :class="uploadExpectedCount === 3 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                                class="px-4 py-2 rounded-lg font-semibold transition-colors">3</button>
+                        <button @click="uploadExpectedCount = 4" :class="uploadExpectedCount === 4 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                                class="px-4 py-2 rounded-lg font-semibold transition-colors">4</button>
+                        <button @click="uploadExpectedCount = null" :class="uploadExpectedCount === null ? 'bg-gray-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                                class="px-4 py-2 rounded-lg font-semibold transition-colors">Skip</button>
+                    </div>
+                </div>
+
+                <!-- File Upload -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">Upload Tasting Card</h2>
+
+                    <input type="file" x-ref="cardFileInput" @change="handleCardFileSelect" accept="image/*" capture="environment" class="hidden">
+
+                    <!-- Upload buttons -->
+                    <div x-show="!cardSelectedFile && !cardUploading && !cardUploadComplete" class="space-y-4">
+                        <button @click="$refs.cardFileInput.click()"
+                                class="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white text-lg font-semibold rounded-lg shadow-md transition-colors">
+                            Take Photo
+                        </button>
+                        <button @click="$refs.cardFileInput.removeAttribute('capture'); $refs.cardFileInput.click()"
+                                class="w-full py-4 px-6 bg-green-600 hover:bg-green-700 text-white text-lg font-semibold rounded-lg shadow-md transition-colors">
+                            Choose from Gallery
+                        </button>
+                    </div>
+
+                    <!-- Preview -->
+                    <div x-show="cardSelectedFile && !cardUploading && !cardUploadComplete" class="space-y-4">
+                        <div class="relative">
+                            <img :src="cardPreviewUrl" class="w-full rounded-lg shadow-md" style="max-height: 80vh; object-fit: contain;" alt="Preview">
+                            <button @click="clearCardFile()" class="absolute top-2 right-2 bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-full text-sm font-semibold">
+                                Clear
+                            </button>
+                        </div>
+                        <button @click="uploadCardFile()" class="w-full py-4 px-6 bg-green-600 hover:bg-green-700 text-white text-lg font-semibold rounded-lg shadow-md transition-colors">
+                            Upload &amp; Extract
+                        </button>
+                    </div>
+
+                    <!-- Uploading spinner -->
+                    <div x-show="cardUploading" class="text-center py-8">
+                        <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
+                        <p class="text-gray-600 text-lg">Extracting tasting notes...</p>
+                        <p class="text-gray-500 text-sm mt-2">This may take 5-10 seconds</p>
+                    </div>
+
+                    <!-- Success state -->
+                    <div x-show="cardUploadComplete" class="text-center py-8">
+                        <div class="text-green-600 text-6xl mb-4">&#10003;</div>
+                        <h3 class="text-2xl font-bold text-gray-800 mb-2">Extraction Complete!</h3>
+                        <p class="text-gray-600 mb-4" x-text="'Found ' + cardTastingsCount + ' tasting(s)'"></p>
+                        <!-- Count mismatch warning -->
+                        <div x-show="uploadExpectedCount && cardTastingsCount !== uploadExpectedCount"
+                             class="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-4 text-left">
+                            <p class="text-yellow-800 font-semibold">
+                                &#9888; Count mismatch: Expected <span x-text="uploadExpectedCount"></span>, found <span x-text="cardTastingsCount"></span>
+                            </p>
+                            <p class="text-yellow-700 text-sm mt-1">
+                                You can skip individual tastings during review if some were incorrectly detected.
+                            </p>
+                        </div>
+                        <a :href="'/review-tastings/' + cardExtractionId"
+                           class="inline-block py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-colors">
+                            Review &amp; Approve &rarr;
+                        </a>
+                    </div>
+
+                    <!-- Error state -->
+                    <div x-show="cardError" class="bg-red-50 border border-red-200 rounded-lg p-4">
+                        <p class="text-red-800" x-text="cardErrorMessage"></p>
+                        <button @click="cardError = false; cardErrorMessage = ''; clearCardFile()" class="mt-2 text-red-600 hover:text-red-800 font-semibold">
+                            Try Again
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- ===== MANUAL ENTRY MODE ===== -->
+        <template x-if="tastingMode === 'manual'">
+        <div class="space-y-6">
 
         <!-- Progress indicator -->
         <div class="bg-white rounded-lg shadow-md p-6">
@@ -320,6 +457,9 @@
         </div>
     </div>
 
+        </div><!-- end manual entry mode -->
+        </template>
+
     <!-- Search Modal (reused from review_tastings.html) -->
     <div x-show="showSearchModal"
          x-cloak
@@ -405,6 +545,20 @@ function manualTastingWizard() {
     return {
         // Include mixin properties
         ...mixin,
+
+        // Mode toggle: 'manual' or 'upload'
+        tastingMode: 'manual',
+
+        // Upload tasting card state
+        uploadExpectedCount: null,
+        cardSelectedFile: null,
+        cardPreviewUrl: null,
+        cardUploading: false,
+        cardUploadComplete: false,
+        cardExtractionId: null,
+        cardTastingsCount: 0,
+        cardError: false,
+        cardErrorMessage: '',
 
         // UI State (no server session - all state is local)
         _currentStep: 'taster_info',
@@ -631,6 +785,55 @@ function manualTastingWizard() {
             }
         },
 
+        // ---- Upload tasting card methods ----
+        handleCardFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            this.cardSelectedFile = file;
+            this.cardPreviewUrl = URL.createObjectURL(file);
+        },
+
+        clearCardFile() {
+            this.cardSelectedFile = null;
+            this.cardPreviewUrl = null;
+            if (this.$refs.cardFileInput) this.$refs.cardFileInput.value = '';
+            this.cardUploadComplete = false;
+            this.cardTastingsCount = 0;
+        },
+
+        async uploadCardFile() {
+            if (!this.cardSelectedFile) return;
+
+            this.cardUploading = true;
+            this.cardError = false;
+            this.cardUploadComplete = false;
+
+            const formData = new FormData();
+            formData.append('file', this.cardSelectedFile);
+            if (this.uploadExpectedCount) {
+                formData.append('expected_count', this.uploadExpectedCount);
+            }
+
+            try {
+                const response = await fetch('/api/v1/tastings/upload-card', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) throw new Error('Upload failed');
+
+                const result = await response.json();
+                this.cardExtractionId = result.extraction_id;
+                this.cardTastingsCount = result.tastings_count || 0;
+                this.cardUploadComplete = true;
+            } catch (err) {
+                this.cardError = true;
+                this.cardErrorMessage = err.message || 'Failed to upload tasting card.';
+            } finally {
+                this.cardUploading = false;
+            }
+        },
+
         cancelWizard() {
             if (!confirm('Are you sure you want to cancel? All entered data will be lost.')) {
                 return;
@@ -640,7 +843,7 @@ function manualTastingWizard() {
             if (this.participantSession && this.participantSession.event_id) {
                 window.location.href = `/events/${this.participantSession.event_id}`;
             } else {
-                window.location.href = '/upload';
+                window.location.href = '/bottles';
             }
         },
 
@@ -700,9 +903,9 @@ function manualTastingWizard() {
                     alert('Tasting saved successfully!');
                     window.location.href = `/events/${result.event_id}`;
                 } else {
-                    // Obsidian mode - show file path and redirect to upload
+                    // Obsidian mode - show file path and redirect to bottles
                     alert(`Tasting saved successfully to ${result.file_path}`);
-                    window.location.href = '/upload';
+                    window.location.href = '/bottles';
                 }
             } catch (e) {
                 alert('Error: ' + (e.message || 'Failed to save tasting'));

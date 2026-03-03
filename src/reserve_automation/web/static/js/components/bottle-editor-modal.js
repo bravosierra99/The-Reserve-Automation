@@ -11,6 +11,7 @@ window.bottleEditorModal = function() {
         // Modal state
         isOpen: false,
         mode: null,           // 'management' or 'upload'
+        readOnly: false,      // When true, hides edit controls (for non-admin users)
 
         // Bottle data
         bottle: null,         // Reactive bottle data
@@ -74,9 +75,10 @@ window.bottleEditorModal = function() {
         /**
          * Open modal in management mode (existing bottle from vault)
          */
-        async openManagement(bottle) {
-            console.log('Opening management modal with bottle:', bottle);
+        async openManagement(bottle, readOnly = false) {
+            console.log('Opening management modal with bottle:', bottle, 'readOnly:', readOnly);
             this.mode = 'management';
+            this.readOnly = readOnly;
             this.bottle = { ...bottle };
             this.originalBottle = { ...bottle };
             this.bottleId = bottle.id;
@@ -779,7 +781,7 @@ window.bottleEditorModal = function() {
             if (!this.bottleId) return;
 
             try {
-                const response = await fetch('/api/v1/management/bottles/tastings-summary', {
+                const response = await fetch('/api/v1/bottles/tastings-summary', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -807,7 +809,7 @@ window.bottleEditorModal = function() {
             this.loadingTastings = true;
 
             try {
-                const response = await fetch('/api/v1/management/bottles/tastings-list', {
+                const response = await fetch('/api/v1/bottles/tastings-list', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

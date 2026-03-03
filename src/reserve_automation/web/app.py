@@ -124,22 +124,22 @@ app.include_router(cocktails.router, tags=["cocktails"])  # Cocktail recipe mana
 
 @app.get("/")
 async def root():
-    """Root endpoint - redirect to events (accessible to all roles)."""
+    """Root endpoint - redirect to bottles (accessible to all roles)."""
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/events")
+    return RedirectResponse(url="/bottles")
 
 
 @app.exception_handler(403)
 async def permission_denied_handler(request, exc):
-    """Redirect page requests to /events on 403, return JSON for API."""
+    """Redirect page requests to /bottles on 403, return JSON for API."""
     from fastapi.responses import RedirectResponse, JSONResponse
     if request.url.path.startswith("/api/"):
         return JSONResponse(
             status_code=403,
             content={"detail": str(exc.detail) if hasattr(exc, "detail") else "Permission denied"},
         )
-    # Page request - redirect to events (accessible to all roles)
-    return RedirectResponse(url="/events", status_code=303)
+    # Page request - redirect to bottles (accessible to all roles)
+    return RedirectResponse(url="/bottles", status_code=303)
 
 
 def main():
