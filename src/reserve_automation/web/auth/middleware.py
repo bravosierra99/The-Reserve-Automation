@@ -128,6 +128,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return None
 
         role = auth_config.resolve_role(email)
+        logger.info(f"Auth: resolved email={email!r} -> role={role!r}")
 
         return AuthenticatedUser(email=email, role=role)
 
