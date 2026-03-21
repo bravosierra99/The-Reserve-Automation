@@ -1,6 +1,6 @@
 [project]
 name = "reserve-automation"
-version = "0.6.0"
+version = "0.6.1"
 description = "Bottle ingestion automation for The Reserve spirits collection"
 authors = [
     {name = "Ben Smith", email = "ben@example.com"}
@@ -45,6 +45,7 @@ dependencies = [
     # Auth
     "PyJWT>=2.8.0",
     "cryptography>=41.0.0",
+    "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -58,6 +59,7 @@ dev = [
 
 [project.scripts]
 reserve-automation = "reserve_automation.cli:cli"
+populate-ingredients = "reserve_automation.scripts.populate_ingredients:main_cli"
 
 [build-system]
 requires = ["hatchling"]
