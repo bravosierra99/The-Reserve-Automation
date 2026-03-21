@@ -16,9 +16,6 @@ from .models import AuthenticatedUser
 # Paths that don't require authentication
 PUBLIC_PATHS = {
     "/api/v1/health",
-    "/docs",
-    "/openapi.json",
-    "/redoc",
 }
 
 # Path prefixes that don't require authentication
@@ -35,23 +32,32 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self.auth_config = auth_config
         self.jwt_validator = CloudflareJWTValidator(auth_config.cloudflare)
 
+    def _get_active_config(self, request: Request) -> AuthConfig:
+        """Get the active auth config, preferring app.state if set (e.g., by lifespan or tests)."""
+        state_config = getattr(request.app.state, "auth_config", None)
+        return state_config if state_config is not None else self.auth_config
+
     async def dispatch(self, request: Request, call_next):
         # Skip auth for public paths
         if self._is_public_path(request.url.path):
             return await call_next(request)
+
+        auth_config = self._get_active_config(request)
 
         user = None
         used_dev_mode = False
 
         # If a Cloudflare JWT is present, ALWAYS use real auth
         # (even if dev mode is enabled in config — dev mode is for direct access only)
-        jwt_header = self.auth_config.cloudflare.jwt_header
+        jwt_header = auth_config.cloudflare.jwt_header
         has_cf_jwt = bool(request.headers.get(jwt_header))
 
+        logger.debug(f"Auth: path={request.url.path} has_cf_jwt={has_cf_jwt} headers={list(request.headers.keys())}")
+
         if has_cf_jwt:
-            user = await self._get_cloudflare_user(request)
-        elif self.auth_config.dev.enabled:
-            user = self._get_dev_user(request)
+            user = await self._get_cloudflare_user(request, auth_config)
+        elif auth_config.dev.enabled:
+            user = self._get_dev_user(request, auth_config)
             used_dev_mode = True
 
         if user is None:
@@ -81,19 +87,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return True
         return False
 
-    def _get_dev_user(self, request: Request) -> AuthenticatedUser:
+    def _get_dev_user(self, request: Request, auth_config: AuthConfig) -> AuthenticatedUser:
         """Get user from dev mode (cookie override or default mock)."""
-        dev = self.auth_config.dev
+        dev = auth_config.dev
 
         # Check for role override cookie
         role_override = request.cookies.get("dev_role_override")
         if role_override and role_override in ("admin", "family", "guest"):
             role = role_override
             # Use a mock email for the overridden role
-            if role == "admin" and self.auth_config.roles.get("admin"):
-                email = self.auth_config.roles["admin"].emails[0] if self.auth_config.roles["admin"].emails else dev.mock_user_email
-            elif role == "family" and self.auth_config.roles.get("family"):
-                email = self.auth_config.roles["family"].emails[0] if self.auth_config.roles["family"].emails else "family@localhost"
+            if role == "admin" and auth_config.roles.get("admin"):
+                email = auth_config.roles["admin"].emails[0] if auth_config.roles["admin"].emails else dev.mock_user_email
+            elif role == "family" and auth_config.roles.get("family"):
+                email = auth_config.roles["family"].emails[0] if auth_config.roles["family"].emails else "family@localhost"
             else:
                 email = "guest@localhost"
         else:
@@ -102,9 +108,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         return AuthenticatedUser(email=email, role=role)
 
-    async def _get_cloudflare_user(self, request: Request) -> Optional[AuthenticatedUser]:
+    async def _get_cloudflare_user(self, request: Request, auth_config: AuthConfig) -> Optional[AuthenticatedUser]:
         """Get user from Cloudflare Access JWT."""
-        jwt_header = self.auth_config.cloudflare.jwt_header
+        jwt_header = auth_config.cloudflare.jwt_header
         token = request.headers.get(jwt_header)
 
         if not token:
@@ -112,13 +118,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         claims = await self.jwt_validator.validate_token(token)
         if not claims:
+            logger.debug(f"Auth: JWT validation failed for token prefix={token[:20]!r}")
             return None
 
-        email = claims.get("email", "")
+        # Service token JWTs use common_name instead of email
+        email = claims.get("email") or claims.get("common_name", "")
+        logger.debug(f"Auth: JWT claims keys={list(claims.keys())} email={email!r}")
         if not email:
             return None
 
-        role = self.auth_config.resolve_role(email)
+        role = auth_config.resolve_role(email)
 
         return AuthenticatedUser(email=email, role=role)
 
