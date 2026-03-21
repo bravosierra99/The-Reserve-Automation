@@ -1,5 +1,7 @@
 """Auth configuration models and loader."""
 
+import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -89,14 +91,18 @@ def load_auth_config(config_path: Optional[Path] = None) -> AuthConfig:
                 break
 
     if config_path is None or not config_path.exists():
-        # Return default config (dev mode enabled, no permissions enforced)
-        return AuthConfig(dev=DevConfig(enabled=True))
+        # Return default config (fail closed - dev mode disabled)
+        return AuthConfig(dev=DevConfig(enabled=False))
 
     with open(config_path) as f:
-        data = yaml.safe_load(f)
+        raw = f.read()
+
+    # Expand ${VAR} references from environment
+    raw = re.sub(r"\$\{(\w+)\}", lambda m: os.environ.get(m.group(1), m.group(0)), raw)
+    data = yaml.safe_load(raw)
 
     if not data:
-        return AuthConfig(dev=DevConfig(enabled=True))
+        return AuthConfig(dev=DevConfig(enabled=False))
 
     # Parse roles
     roles = {}
