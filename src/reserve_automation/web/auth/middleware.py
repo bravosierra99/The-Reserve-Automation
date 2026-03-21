@@ -52,7 +52,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         jwt_header = auth_config.cloudflare.jwt_header
         has_cf_jwt = bool(request.headers.get(jwt_header))
 
-        logger.debug(f"Auth: path={request.url.path} has_cf_jwt={has_cf_jwt} headers={list(request.headers.keys())}")
+        logger.info(f"Auth: path={request.url.path} has_cf_jwt={has_cf_jwt}")
 
         if has_cf_jwt:
             user = await self._get_cloudflare_user(request, auth_config)
@@ -118,12 +118,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         claims = await self.jwt_validator.validate_token(token)
         if not claims:
-            logger.debug(f"Auth: JWT validation failed for token prefix={token[:20]!r}")
+            logger.info(f"Auth: JWT validation failed for token prefix={token[:20]!r}")
             return None
 
         # Service token JWTs use common_name instead of email
         email = claims.get("email") or claims.get("common_name", "")
-        logger.debug(f"Auth: JWT claims keys={list(claims.keys())} email={email!r}")
+        logger.info(f"Auth: JWT claims keys={list(claims.keys())} email={email!r}")
         if not email:
             return None
 
