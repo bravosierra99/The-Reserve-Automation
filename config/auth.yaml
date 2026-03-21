@@ -13,7 +13,7 @@ dev:
 
 roles:
   admin:
-    emails: ["bravosierra99@gmail.com", "sjnoreen@gmail.com"]
+    emails: ["bravosierra99@gmail.com", "sjnoreen@gmail.com", "330954edf39e492649130a961ddd6083.access"]
   family:
     emails: ["kmnoreen@gmail.com"]
   # guest: implicit catch-all (any authenticated user not above)
