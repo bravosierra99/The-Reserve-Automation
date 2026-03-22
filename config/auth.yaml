@@ -13,7 +13,7 @@ dev:
 
 roles:
   admin:
-    emails: ["bravosierra99@gmail.com", "sjnoreen@gmail.com", "${CF_SERVICE_TOKEN_ID}"]
+    emails: ["bravosierra99@gmail.com", "sjnoreen@gmail.com", "${CF_ACCESS_CLIENT_ID}"]
   family:
     emails: ["kmnoreen@gmail.com"]
   # guest: implicit catch-all (any authenticated user not above)
