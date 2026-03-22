@@ -32,6 +32,9 @@ services:
       # Optional: LLMWhisperer API key (from .env)
       - LLMWHISPERER_API_KEY=${LLMWHISPERER_API_KEY:-}
 
+      # CF service token identity (for script access to prod API)
+      - CF_SERVICE_TOKEN_ID=${CF_SERVICE_TOKEN_ID:-}
+
     restart: unless-stopped
 
     healthcheck:
