@@ -112,9 +112,15 @@ def load_auth_config(config_path: Optional[Path] = None) -> AuthConfig:
         else:
             roles[role_name] = RoleConfig()
 
-    return AuthConfig(
+    config = AuthConfig(
         cloudflare=CloudflareConfig(**data.get("cloudflare", {})),
         dev=DevConfig(**data.get("dev", {})),
         roles=roles,
         permissions=data.get("permissions", {}),
     )
+
+    from loguru import logger
+    for role_name, role_config in config.roles.items():
+        logger.info(f"Auth config: role={role_name!r} emails={role_config.emails}")
+
+    return config
