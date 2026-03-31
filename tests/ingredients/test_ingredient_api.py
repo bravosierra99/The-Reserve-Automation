@@ -1,11 +1,9 @@
 """Tests for ingredient API endpoints.
 
-CRITICAL: These tests use an isolated test vault at /tmp/test-vault-ingredients-*.
-NEVER run tests against the real vault.
+Uses in-memory SQLite database for test isolation.
 """
 
 import pytest
-from pathlib import Path
 
 
 class TestIngredientList:
@@ -76,7 +74,7 @@ class TestIngredientGet:
 
     def test_get_nonexistent(self, test_client):
         """Getting nonexistent ID returns 404."""
-        response = test_client.get("/api/v1/ingredients/nonexistent123")
+        response = test_client.get("/api/v1/ingredients/99999")
         assert response.status_code == 404
 
     def test_get_includes_children(self, test_client):
@@ -168,7 +166,7 @@ class TestIngredientDescendants:
 class TestIngredientCreate:
     """Test POST /api/v1/ingredients."""
 
-    def test_create_root_ingredient(self, test_client, test_vault):
+    def test_create_root_ingredient(self, test_client):
         """Create a new root ingredient."""
         response = test_client.post("/api/v1/ingredients", json={
             "name": "Bitters",
@@ -179,12 +177,12 @@ class TestIngredientCreate:
         assert data["parent"] is None
         assert data["id"] is not None
 
-        # Verify file was created
-        bitters_dir = test_vault / "2_Ingredients" / "Bitters"
-        assert bitters_dir.exists()
-        assert (bitters_dir / "Bitters.md").exists()
+        # Verify ingredient exists in DB via API
+        get_resp = test_client.get(f"/api/v1/ingredients/{data['id']}")
+        assert get_resp.status_code == 200
+        assert get_resp.json()["name"] == "Bitters"
 
-    def test_create_child_ingredient(self, test_client, test_vault):
+    def test_create_child_ingredient(self, test_client):
         """Create an ingredient as child of existing node."""
         response = test_client.post("/api/v1/ingredients", json={
             "name": "Angostura Bitters",
@@ -240,7 +238,7 @@ class TestIngredientUpdate:
 
     def test_update_nonexistent_fails(self, test_client):
         """Updating nonexistent ingredient fails."""
-        response = test_client.put("/api/v1/ingredients/nonexistent123", json={
+        response = test_client.put("/api/v1/ingredients/99999", json={
             "notes": "test"
         })
         assert response.status_code == 404
@@ -249,7 +247,7 @@ class TestIngredientUpdate:
 class TestIngredientDelete:
     """Test DELETE /api/v1/ingredients/{id}."""
 
-    def test_delete_leaf_ingredient(self, test_client, test_vault):
+    def test_delete_leaf_ingredient(self, test_client):
         """Delete a leaf ingredient (no children)."""
         # Create a disposable ingredient first
         response = test_client.post("/api/v1/ingredients", json={
@@ -264,8 +262,8 @@ class TestIngredientDelete:
         data = response.json()
         assert data["status"] == "deleted"
 
-        # Verify directory removed
-        assert not (test_vault / "2_Ingredients" / "ToDelete").exists()
+        # Verify ingredient is gone via API
+        assert test_client.get(f"/api/v1/ingredients/{ing_id}").status_code == 404
 
     def test_delete_with_children_fails(self, test_client):
         """Deleting ingredient with children fails."""
@@ -279,7 +277,7 @@ class TestIngredientDelete:
 
     def test_delete_nonexistent_fails(self, test_client):
         """Deleting nonexistent ingredient fails."""
-        response = test_client.delete("/api/v1/ingredients/nonexistent123")
+        response = test_client.delete("/api/v1/ingredients/99999")
         assert response.status_code == 404
 
 

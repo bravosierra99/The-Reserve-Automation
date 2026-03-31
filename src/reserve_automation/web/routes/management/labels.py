@@ -1,12 +1,15 @@
 """Label management routes - crop, download, upload, quality review."""
 
 import hashlib
+import os
 from pathlib import Path
 from shutil import copyfile
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form, BackgroundTasks
 from fastapi.responses import FileResponse, Response
 from ...auth.dependencies import require
+from ....db.repositories import get_bottle_repo
+from ....db.repositories.bottle_repo import SQLiteBottleRepository
 from loguru import logger
 from PIL import Image
 import io
@@ -15,6 +18,9 @@ from ....core.models import BottleMetadata
 
 # Thumbnail cache directory
 THUMBNAIL_CACHE_DIR = Path("/tmp/reserve-automation/thumbnails")
+
+# Media directory for label storage
+MEDIA_DIR = Path(os.getenv("MEDIA_DIR", "data/media"))
 
 # Management label routes get labels.edit permission
 # View/thumbnail routes get labels.view permission
@@ -51,23 +57,34 @@ def clean_bottle_data(bottle_data: dict) -> dict:
     return cleaned
 
 
-def get_temp_label_dir(vault_path: str) -> Path:
+def get_temp_label_dir(bottle_id: str) -> Path:
     """
     Get temporary directory for label operations on a specific bottle.
 
-    Uses /tmp to avoid cluttering Obsidian vault with intermediate files.
-    Only final accepted label.jpg is saved to vault.
+    Uses /tmp to avoid cluttering media directory with intermediate files.
+    Only final accepted label.jpg is saved to media dir.
 
     Args:
-        vault_path: The vault_path from BottleMetadata (e.g., "1_Wines/Producer - Name - Year")
+        bottle_id: The bottle ID (e.g., "42")
     """
-    # Use vault_path as unique identifier, replacing slashes with underscores
-    safe_path = vault_path.replace("/", "_").replace(" ", "_")
-    temp_dir = Path("/tmp/reserve-automation/labels") / safe_path
+    safe_id = str(bottle_id).replace("/", "_").replace(" ", "_")
+    temp_dir = Path("/tmp/reserve-automation/labels") / safe_id
     temp_dir.mkdir(parents=True, exist_ok=True)
     return temp_dir
+
+
+def _get_label_dir(bottle_id: str) -> Path:
+    """Get the media label directory for a bottle, creating it if needed."""
+    label_dir = MEDIA_DIR / "bottles" / str(bottle_id)
+    label_dir.mkdir(parents=True, exist_ok=True)
+    return label_dir
+
+
 @router.post("/api/v1/management/labels/crop-current", dependencies=[Depends(require("labels.edit"))])
-async def crop_current_label(data: dict):
+async def crop_current_label(
+    data: dict,
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
     """
     Crop the current label using improved detection.
 
@@ -76,26 +93,20 @@ async def crop_current_label(data: dict):
     from ... import app as app_module
     from ....llm.gateway import LLMGateway
     from ....utils.label_processor import LabelImageProcessor
-    from pathlib import Path
     from shutil import copyfile
 
     core_config = app_module.core_config
-    bottle_registry = app_module.bottle_registry
 
     try:
         bottle_id = data.get("bottle_id")
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        # Look up vault_path from registry
-        if bottle_registry is None:
-            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
-
-        vault_path = bottle_registry.get_path(bottle_id)
-        if not vault_path:
+        bottle = bottle_repo.get_by_id(int(bottle_id))
+        if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
-        label_dir = core_config.vault_path / vault_path / "labels"
+        label_dir = _get_label_dir(bottle_id)
         current_label = label_dir / "label.jpg"
         if not current_label.exists():
             current_label = label_dir / "label.png"
@@ -103,8 +114,8 @@ async def crop_current_label(data: dict):
         if not current_label.exists():
             raise HTTPException(status_code=404, detail="No label found")
 
-        # Create preview path in /tmp (not in vault)
-        temp_dir = get_temp_label_dir(vault_path)
+        # Create preview path in /tmp (not in media dir)
+        temp_dir = get_temp_label_dir(bottle_id)
         preview_path = temp_dir / "label_preview.jpg"
 
         # Copy current to preview
@@ -132,32 +143,26 @@ async def crop_current_label(data: dict):
 
 
 @router.post("/api/v1/management/labels/accept-crop", dependencies=[Depends(require("labels.edit"))])
-async def accept_label_crop(data: dict):
+async def accept_label_crop(
+    data: dict,
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
     """
     Accept the cropped preview and replace the original label.
     """
-    from ... import app as app_module
-    from pathlib import Path
     from shutil import copyfile
-
-    core_config = app_module.core_config
-    bottle_registry = app_module.bottle_registry
 
     try:
         bottle_id = data.get("bottle_id")
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        # Look up vault_path from registry
-        if bottle_registry is None:
-            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
-
-        vault_path = bottle_registry.get_path(bottle_id)
-        if not vault_path:
+        bottle = bottle_repo.get_by_id(int(bottle_id))
+        if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
-        label_dir = core_config.vault_path / vault_path / "labels"
-        temp_dir = get_temp_label_dir(vault_path)
+        label_dir = _get_label_dir(bottle_id)
+        temp_dir = get_temp_label_dir(bottle_id)
         preview_path = temp_dir / "label_preview.jpg"
 
         if not preview_path.exists():
@@ -174,7 +179,11 @@ async def accept_label_crop(data: dict):
             copyfile(current_label, backup_path)
 
         # Replace with preview
-        copyfile(preview_path, current_label)
+        final_label = label_dir / "label.jpg"
+        copyfile(preview_path, final_label)
+
+        # Update DB with label path
+        bottle_repo.update_label_path(int(bottle_id), f"bottles/{bottle_id}/label.jpg")
 
         # Clean up preview
         preview_path.unlink()
@@ -192,16 +201,14 @@ async def accept_label_crop(data: dict):
 
 
 @router.post("/api/v1/management/labels/download-image", dependencies=[Depends(require("labels.edit"))])
-async def download_label_image(data: dict):
+async def download_label_image(
+    data: dict,
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
     """
     Download image from URL and save as label_download.jpg (no cropping yet).
     """
-    from ... import app as app_module
-    from pathlib import Path
     import httpx
-
-    core_config = app_module.core_config
-    bottle_registry = app_module.bottle_registry
 
     try:
         bottle_id = data.get("bottle_id")
@@ -215,12 +222,8 @@ async def download_label_image(data: dict):
         if not image_url:
             raise HTTPException(status_code=400, detail="Missing image URL")
 
-        # Look up vault_path from registry
-        if bottle_registry is None:
-            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
-
-        vault_path = bottle_registry.get_path(bottle_id)
-        if not vault_path:
+        bottle = bottle_repo.get_by_id(int(bottle_id))
+        if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
         # Strip whitespace
@@ -236,8 +239,15 @@ async def download_label_image(data: dict):
 
         logger.info(f"Final URL: {image_url}")
 
-        # Save to /tmp instead of vault
-        temp_dir = get_temp_label_dir(vault_path)
+        # SSRF protection: validate URL doesn't target internal networks
+        from ....utils.url_validation import validate_url_not_internal
+        try:
+            validate_url_not_internal(image_url)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # Save to /tmp instead of media dir
+        temp_dir = get_temp_label_dir(bottle_id)
 
         # Download image
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
@@ -262,34 +272,31 @@ async def download_label_image(data: dict):
 
 
 @router.post("/api/v1/management/labels/crop-download", dependencies=[Depends(require("labels.edit"))])
-async def crop_downloaded_image(data: dict):
+async def crop_downloaded_image(
+    data: dict,
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
     """
     Crop the downloaded image and save as label_download_cropped.jpg.
     """
     from ... import app as app_module
     from ....llm.gateway import LLMGateway
     from ....utils.label_processor import LabelImageProcessor
-    from pathlib import Path
     from shutil import copyfile
 
     core_config = app_module.core_config
-    bottle_registry = app_module.bottle_registry
 
     try:
         bottle_id = data.get("bottle_id")
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        # Look up vault_path from registry
-        if bottle_registry is None:
-            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
-
-        vault_path = bottle_registry.get_path(bottle_id)
-        if not vault_path:
+        bottle = bottle_repo.get_by_id(int(bottle_id))
+        if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
         # Use /tmp for intermediate files
-        temp_dir = get_temp_label_dir(vault_path)
+        temp_dir = get_temp_label_dir(bottle_id)
         download_path = temp_dir / "label_download.jpg"
 
         if not download_path.exists():
@@ -317,16 +324,14 @@ async def crop_downloaded_image(data: dict):
 
 
 @router.post("/api/v1/management/labels/use-downloaded", dependencies=[Depends(require("labels.edit"))])
-async def use_downloaded_label(data: dict):
+async def use_downloaded_label(
+    data: dict,
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
     """
     Use either the original downloaded or cropped version as the final label.
     """
-    from ... import app as app_module
-    from pathlib import Path
     from shutil import copyfile
-
-    core_config = app_module.core_config
-    bottle_registry = app_module.bottle_registry
 
     try:
         bottle_id = data.get("bottle_id")
@@ -335,16 +340,12 @@ async def use_downloaded_label(data: dict):
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        # Look up vault_path from registry
-        if bottle_registry is None:
-            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
-
-        vault_path = bottle_registry.get_path(bottle_id)
-        if not vault_path:
+        bottle = bottle_repo.get_by_id(int(bottle_id))
+        if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
-        label_dir = core_config.vault_path / vault_path / "labels"
-        temp_dir = get_temp_label_dir(vault_path)
+        label_dir = _get_label_dir(bottle_id)
+        temp_dir = get_temp_label_dir(bottle_id)
 
         # Choose source from /tmp
         if use_cropped:
@@ -364,12 +365,12 @@ async def use_downloaded_label(data: dict):
             backup_path = label_dir / "label_backup.jpg"
             copyfile(current_label, backup_path)
 
-        # Create labels directory if it doesn't exist (for bottles with no label yet)
-        label_dir.mkdir(parents=True, exist_ok=True)
-
-        # Replace with chosen version (only final label.jpg goes to vault)
+        # Replace with chosen version (only final label.jpg goes to media dir)
         final_label = label_dir / "label.jpg"
         copyfile(source_path, final_label)
+
+        # Update DB with label path
+        bottle_repo.update_label_path(int(bottle_id), f"bottles/{bottle_id}/label.jpg")
 
         # Clean up temp files from /tmp
         (temp_dir / "label_download.jpg").unlink(missing_ok=True)
@@ -388,17 +389,15 @@ async def use_downloaded_label(data: dict):
 
 
 @router.post("/api/v1/management/labels/manual-crop", dependencies=[Depends(require("labels.edit"))])
-async def manual_crop_label(data: dict):
+async def manual_crop_label(
+    data: dict,
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
     """
     Crop label using exact pixel coordinates from manual selection.
     """
-    from ... import app as app_module
-    from pathlib import Path
     from PIL import Image
     from shutil import copyfile
-
-    core_config = app_module.core_config
-    bottle_registry = app_module.bottle_registry
 
     try:
         bottle_id = data.get("bottle_id")
@@ -410,15 +409,11 @@ async def manual_crop_label(data: dict):
         if not bottle_id or x is None or y is None or width is None or height is None:
             raise HTTPException(status_code=400, detail="Missing bottle_id or coordinates")
 
-        # Look up vault_path from registry
-        if bottle_registry is None:
-            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
-
-        vault_path = bottle_registry.get_path(bottle_id)
-        if not vault_path:
+        bottle = bottle_repo.get_by_id(int(bottle_id))
+        if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
-        label_dir = core_config.vault_path / vault_path / "labels"
+        label_dir = _get_label_dir(bottle_id)
         current_label = label_dir / "label.jpg"
         if not current_label.exists():
             current_label = label_dir / "label.png"
@@ -428,8 +423,8 @@ async def manual_crop_label(data: dict):
 
         logger.info(f"Manual crop: x={x}, y={y}, w={width}, h={height}")
 
-        # Backup original to /tmp (not vault)
-        temp_dir = get_temp_label_dir(vault_path)
+        # Backup original to /tmp (not media dir)
+        temp_dir = get_temp_label_dir(bottle_id)
         backup_path = temp_dir / "label_manual_backup.jpg"
         copyfile(current_label, backup_path)
 
@@ -465,6 +460,9 @@ async def manual_crop_label(data: dict):
         final_label = label_dir / "label.jpg"
         cropped.save(final_label, "JPEG", quality=95)
 
+        # Update DB with label path
+        bottle_repo.update_label_path(int(bottle_id), f"bottles/{bottle_id}/label.jpg")
+
         logger.info(f"Manual crop complete: {final_label}")
 
         return {
@@ -480,25 +478,31 @@ async def manual_crop_label(data: dict):
 
 
 @router.post("/api/v1/management/labels/upload-manual", dependencies=[Depends(require("labels.edit"))])
-async def upload_manual_label(file: UploadFile, bottle: str = Form()):
+async def upload_manual_label(
+    file: UploadFile,
+    bottle: str = Form(),
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
     """
     Upload a manual label image file for a bottle.
     Saves as label_download.jpg so it can use the existing download workflow.
     """
-    from ...app import core_config
-    from ....core.models import BottleMetadata
     import json
 
     try:
-        # Parse bottle data from form
+        # Parse bottle data from form to extract bottle_id
         bottle_data = json.loads(bottle)
-        bottle_obj = BottleMetadata(**bottle_data)
+        bottle_id = bottle_data.get("id")
 
-        if not bottle_obj.vault_path:
-            raise HTTPException(status_code=400, detail="Bottle has no vault path")
+        if not bottle_id:
+            raise HTTPException(status_code=400, detail="Bottle data has no id")
 
-        # Save uploaded file to /tmp (not vault)
-        temp_dir = get_temp_label_dir(bottle_obj.vault_path)
+        db_bottle = bottle_repo.get_by_id(int(bottle_id))
+        if not db_bottle:
+            raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
+
+        # Save uploaded file to /tmp (not media dir)
+        temp_dir = get_temp_label_dir(str(bottle_id))
 
         # Save uploaded file as label_download.jpg in /tmp
         download_path = temp_dir / "label_download.jpg"
@@ -524,16 +528,15 @@ async def upload_manual_label(file: UploadFile, bottle: str = Form()):
 
 
 @router.post("/api/v1/management/labels/manual-crop-downloaded", dependencies=[Depends(require("labels.edit"))])
-async def manual_crop_downloaded_label(data: dict):
+async def manual_crop_downloaded_label(
+    data: dict,
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
     """
     Crop downloaded label image using exact pixel coordinates from manual selection.
     Crops label_download.jpg and saves as label_download_cropped.jpg.
     """
-    from ... import app as app_module
-    from pathlib import Path
     from PIL import Image
-
-    bottle_registry = app_module.bottle_registry
 
     try:
         bottle_id = data.get("bottle_id")
@@ -545,16 +548,12 @@ async def manual_crop_downloaded_label(data: dict):
         if not bottle_id or x is None or y is None or width is None or height is None:
             raise HTTPException(status_code=400, detail="Missing bottle_id or coordinates")
 
-        # Look up vault_path from registry
-        if bottle_registry is None:
-            raise HTTPException(status_code=500, detail="Bottle registry not initialized")
-
-        vault_path = bottle_registry.get_path(bottle_id)
-        if not vault_path:
+        bottle = bottle_repo.get_by_id(int(bottle_id))
+        if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
         # Use /tmp for intermediate files
-        temp_dir = get_temp_label_dir(vault_path)
+        temp_dir = get_temp_label_dir(bottle_id)
         downloaded_label = temp_dir / "label_download.jpg"
 
         if not downloaded_label.exists():
@@ -600,7 +599,8 @@ async def manual_crop_downloaded_label(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Legacy routes (keep for compatibility but may remove later)
+# TODO: Legacy routes - scan/accept/keep use LabelReviewService which scans the vault.
+# These will need to be updated when LabelReviewService is migrated to use SQLite.
 @router.post("/api/v1/management/labels/scan", dependencies=[Depends(require("labels.edit"))])
 async def scan_label_quality(
     background_tasks: BackgroundTasks,
@@ -609,6 +609,9 @@ async def scan_label_quality(
 ):
     """
     Scan all bottle labels and categorize them.
+
+    TODO: This route uses LabelReviewService which scans the vault directly.
+    It will not work correctly until LabelReviewService is updated to use SQLite/MEDIA_DIR.
 
     Args:
         show_all: If True, return all labels including good ones
@@ -665,6 +668,9 @@ async def accept_improved_label(data: dict):
     """
     Accept improved label crop and replace original.
 
+    TODO: This route uses LabelReviewService which scans the vault directly.
+    It will not work correctly until LabelReviewService is updated to use SQLite/MEDIA_DIR.
+
     Args:
         data: dict with 'bottle' field containing bottle metadata
 
@@ -707,6 +713,9 @@ async def keep_original_label(data: dict):
     """
     Keep original label and discard improved version.
 
+    TODO: This route uses LabelReviewService which scans the vault directly.
+    It will not work correctly until LabelReviewService is updated to use SQLite/MEDIA_DIR.
+
     Args:
         data: dict with 'bottle' field containing bottle metadata
 
@@ -745,88 +754,91 @@ async def keep_original_label(data: dict):
 
 
 @router.get("/api/v1/labels/view", dependencies=[Depends(require("labels.view"))])
-async def view_label_image(path: Optional[str] = None, id: Optional[str] = None, file: Optional[str] = None):
+async def view_label_image(
+    path: Optional[str] = None,
+    id: Optional[str] = None,
+    file: Optional[str] = None,
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
     """
     Serve a label image for viewing.
 
     Args:
         path: Path to label image (legacy, will be deprecated). Can be:
-              - Vault-relative path (e.g., "1_Wines/Producer/labels/label.jpg")
-              - Full absolute path (e.g., "/mnt/.../Cellar/1_Wines/...")
+              - Media-relative path (e.g., "bottles/42/label.jpg")
+              - Full absolute path (e.g., "/path/to/data/media/bottles/42/label.jpg")
               - Temp directory path (e.g., "/tmp/reserve-automation/...")
-        id: Opaque bottle ID - preferred over path. Resolves to vault path internally.
+        id: Bottle ID - preferred over path. Resolves to media path internally.
         file: Optional filename within labels directory (default: "label.jpg").
               Used for temp files like "label_download.jpg" or "label_download_cropped.jpg".
 
     Returns:
         FileResponse: The image file
     """
-    from pathlib import Path
-
     try:
-        from ... import app as app_module
-        core_config = app_module.core_config
-        bottle_registry = app_module.bottle_registry
-        vault_path = core_config.vault_path
         temp_path = Path("/tmp/reserve-automation")
 
         # Default filename
         label_filename = file if file else "label.jpg"
 
-        logger.debug(f"View label request: id={id}, path={path}, bottle_registry={bottle_registry is not None}")
+        logger.debug(f"View label request: id={id}, path={path}")
 
-        # If id is provided, resolve it to a vault_path first
+        # If id is provided, resolve it to a media path
         if id:
-            if bottle_registry is None:
-                logger.error(f"Bottle registry not initialized, cannot resolve ID: {id}")
-                raise HTTPException(status_code=500, detail="Bottle registry not initialized")
-            resolved_vault_path = bottle_registry.get_path(id)
-            if resolved_vault_path:
-                # For temp files (label_download, label_download_cropped), check temp dir first
-                if label_filename in ("label_download.jpg", "label_download_cropped.jpg"):
-                    temp_dir = get_temp_label_dir(resolved_vault_path)
-                    temp_file_path = temp_dir / label_filename
-                    if temp_file_path.exists():
-                        path = str(temp_file_path)
-                        logger.debug(f"Resolved bottle ID {id} to temp path {path}")
-                    else:
-                        # Fall back to vault path
-                        path = f"{resolved_vault_path}/labels/{label_filename}"
-                        logger.debug(f"Temp file not found, using vault path {path}")
-                else:
-                    # Construct the label path from vault_path
-                    path = f"{resolved_vault_path}/labels/{label_filename}"
-                    logger.debug(f"Resolved bottle ID {id} to path {path}")
-            else:
+            bottle = bottle_repo.get_by_id(int(id))
+            if not bottle:
                 raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {id}")
+
+            # For temp files (label_download, label_download_cropped), check temp dir first
+            if label_filename in ("label_download.jpg", "label_download_cropped.jpg"):
+                temp_dir = get_temp_label_dir(id)
+                temp_file_path = temp_dir / label_filename
+                if temp_file_path.exists():
+                    path = str(temp_file_path)
+                    logger.debug(f"Resolved bottle ID {id} to temp path {path}")
+                else:
+                    # Fall back to media path
+                    path = f"bottles/{id}/{label_filename}"
+                    logger.debug(f"Temp file not found, using media path {path}")
+            elif label_filename == "label_preview.jpg":
+                # Preview files are always in temp
+                temp_dir = get_temp_label_dir(id)
+                temp_file_path = temp_dir / label_filename
+                path = str(temp_file_path)
+            else:
+                # Use label_image_url from DB if available, otherwise construct default
+                if bottle.label_image_url:
+                    path = str(MEDIA_DIR / bottle.label_image_url)
+                else:
+                    path = str(MEDIA_DIR / "bottles" / str(id) / label_filename)
+                logger.debug(f"Resolved bottle ID {id} to path {path}")
         elif not path:
             raise HTTPException(status_code=400, detail="Either 'path' or 'id' parameter is required")
 
-        # Try to resolve the path - support both absolute and vault-relative paths
+        # Try to resolve the path
         image_path = Path(path)
 
-        # If path doesn't exist as-is, try prepending vault path
-        if not image_path.exists() and vault_path:
+        # If path doesn't exist as-is, try prepending MEDIA_DIR
+        if not image_path.exists():
             relative_path = path.lstrip('/')
-            vault_image_path = vault_path / relative_path
-            if vault_image_path.exists():
-                image_path = vault_image_path
+            media_image_path = MEDIA_DIR / relative_path
+            if media_image_path.exists():
+                image_path = media_image_path
 
         if not image_path.exists():
             raise HTTPException(status_code=404, detail="Image not found")
 
-        # Security check - ensure path is within vault or temp directory
+        # Security check - ensure path is within MEDIA_DIR or temp directory
         # (prevents directory traversal attacks)
         resolved_path = image_path.resolve()
-        is_in_vault = False
+        is_in_media = False
         is_in_temp = False
 
-        if vault_path:
-            try:
-                resolved_path.relative_to(vault_path.resolve())
-                is_in_vault = True
-            except ValueError:
-                pass
+        try:
+            resolved_path.relative_to(MEDIA_DIR.resolve())
+            is_in_media = True
+        except ValueError:
+            pass
 
         try:
             resolved_path.relative_to(temp_path.resolve())
@@ -834,7 +846,7 @@ async def view_label_image(path: Optional[str] = None, id: Optional[str] = None,
         except ValueError:
             pass
 
-        if not (is_in_vault or is_in_temp):
+        if not (is_in_media or is_in_temp):
             raise HTTPException(status_code=403, detail="Access denied")
 
         return FileResponse(
@@ -853,7 +865,13 @@ async def view_label_image(path: Optional[str] = None, id: Optional[str] = None,
 
 
 @router.get("/api/v1/labels/thumbnail", dependencies=[Depends(require("labels.view"))])
-async def get_label_thumbnail(path: Optional[str] = None, id: Optional[str] = None, size: int = 400, file: Optional[str] = None):
+async def get_label_thumbnail(
+    path: Optional[str] = None,
+    id: Optional[str] = None,
+    size: int = 400,
+    file: Optional[str] = None,
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
     """
     Serve a resized thumbnail of a label image.
 
@@ -862,10 +880,10 @@ async def get_label_thumbnail(path: Optional[str] = None, id: Optional[str] = No
 
     Args:
         path: Path to original label image (legacy, will be deprecated). Can be:
-              - Vault-relative path (e.g., "1_Wines/Producer/labels/label.jpg")
-              - Full absolute path (e.g., "/mnt/.../Cellar/1_Wines/...")
+              - Media-relative path (e.g., "bottles/42/label.jpg")
+              - Full absolute path
               - Temp directory path (e.g., "/tmp/reserve-automation/...")
-        id: Opaque bottle ID - preferred over path. Resolves to vault path internally.
+        id: Bottle ID - preferred over path. Resolves to media path internally.
         size: Maximum dimension (width or height) in pixels. Default 400.
               Images are resized maintaining aspect ratio.
         file: Optional filename within labels directory (default: "label.jpg").
@@ -876,10 +894,6 @@ async def get_label_thumbnail(path: Optional[str] = None, id: Optional[str] = No
     from pathlib import Path as PathLib
 
     try:
-        from ... import app as app_module
-        core_config = app_module.core_config
-        bottle_registry = app_module.bottle_registry
-        vault_path = core_config.vault_path
         temp_path = PathLib("/tmp/reserve-automation")
         temp_uploads = PathLib("/tmp/reserve_uploads")
 
@@ -888,47 +902,43 @@ async def get_label_thumbnail(path: Optional[str] = None, id: Optional[str] = No
 
         logger.debug(f"Thumbnail request: id={id}, path={path}")
 
-        # If id is provided, resolve it to a vault_path first
+        # If id is provided, resolve it to a media path
         if id:
-            if bottle_registry is None:
-                logger.error(f"Bottle registry not initialized, cannot resolve ID: {id}")
-                raise HTTPException(status_code=500, detail="Bottle registry not initialized")
-            resolved_vault_path = bottle_registry.get_path(id)
-            if resolved_vault_path:
-                # Construct the label path from vault_path
-                path = f"{resolved_vault_path}/labels/{label_filename}"
-                logger.debug(f"Resolved bottle ID {id} to path {path}")
-            else:
+            bottle = bottle_repo.get_by_id(int(id))
+            if not bottle:
                 raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {id}")
+
+            # Use label_image_url from DB if available, otherwise construct default
+            if bottle.label_image_url:
+                path = str(MEDIA_DIR / bottle.label_image_url)
+            else:
+                path = str(MEDIA_DIR / "bottles" / str(id) / label_filename)
+            logger.debug(f"Resolved bottle ID {id} to path {path}")
         elif not path:
             raise HTTPException(status_code=400, detail="Either 'path' or 'id' parameter is required")
 
-        # Try to resolve the path - support both absolute and vault-relative paths
+        # Try to resolve the path
         image_path = PathLib(path)
 
-        # If path doesn't exist as-is, try prepending vault path
-        # This supports both:
-        # - Full paths: /mnt/d/.../Cellar/1_Wines/...
-        # - Vault-relative paths: 1_Wines/... or /1_Wines/...
-        if not image_path.exists() and vault_path:
-            # Strip leading slash if present for relative path
+        # If path doesn't exist as-is, try prepending MEDIA_DIR
+        if not image_path.exists():
             relative_path = path.lstrip('/')
-            vault_image_path = vault_path / relative_path
-            if vault_image_path.exists():
-                image_path = vault_image_path
+            media_image_path = MEDIA_DIR / relative_path
+            if media_image_path.exists():
+                image_path = media_image_path
                 logger.debug(f"Thumbnail: resolved relative path {path} to {image_path}")
 
         logger.debug(f"Thumbnail request: path={path}, resolved={image_path}, exists={image_path.exists()}")
 
         if not image_path.exists():
-            logger.warning(f"Thumbnail not found: {path} (tried vault-relative: {vault_path / path.lstrip('/') if vault_path else 'N/A'})")
+            logger.warning(f"Thumbnail not found: {path}")
             raise HTTPException(status_code=404, detail=f"Image not found: {path}")
 
-        # Security check - ensure path is within vault or temp directory
+        # Security check - ensure path is within MEDIA_DIR or temp directory
         resolved_path = image_path.resolve()
         is_allowed = False
 
-        for allowed_path in [vault_path, temp_path, temp_uploads]:
+        for allowed_path in [MEDIA_DIR, temp_path, temp_uploads]:
             if allowed_path is None:
                 continue
             try:

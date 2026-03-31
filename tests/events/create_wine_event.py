@@ -38,7 +38,7 @@ event_data = {
     "beverage_type": "wine",
     "is_blind": True,
     "host_name": "Test Host",
-    "bottle_paths": [b["vault_path"] for b in selected_bottles],
+    "bottle_ids": [str(b["id"]) for b in selected_bottles],
     "blind_numbers": [1, 2, 3]  # Will be randomized by backend
 }
 

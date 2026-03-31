@@ -28,6 +28,9 @@ from ..schemas.events import (
     ParticipantSession,
     SubmitCocktailRatingRequest,
 )
+from ...db.repositories import get_event_repo, get_bottle_repo
+from ...db.repositories.event_repo import SQLiteEventRepository
+from ...db.repositories.bottle_repo import SQLiteBottleRepository
 
 router = APIRouter()
 
@@ -67,16 +70,12 @@ async def event_results_page(event_id: str, request: Request):
 # ============================================================================
 
 @router.post("/api/v1/events", dependencies=[Depends(require("events.create"))])
-async def create_event(request_data: CreateEventRequest):
+async def create_event(
+    request_data: CreateEventRequest,
+    repo: SQLiteEventRepository = Depends(get_event_repo),
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
     """Create a new tasting event."""
-    from .. import app as app_module
-    event_store = app_module.event_store
-    core_config = app_module.core_config
-    bottle_registry = app_module.bottle_registry
-
-    if event_store is None or core_config is None:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-
     try:
         # Validate blind numbers if blind mode
         if request_data.is_blind:
@@ -91,38 +90,26 @@ async def create_event(request_data: CreateEventRequest):
                     detail="Number of blind_numbers must match bottle_ids"
                 )
 
-        # Validate bottles exist in vault by resolving IDs to paths
-        vault_path = core_config.vault_path
+        # Validate bottles exist in database
         bottles = []
         for i, bottle_id in enumerate(request_data.bottle_ids):
-            # Resolve bottle ID to vault path
-            bottle_vault_path = None
-            if bottle_registry:
-                bottle_vault_path = bottle_registry.get_path(bottle_id)
-
-            if not bottle_vault_path:
+            bottle = bottle_repo.get_by_id(int(bottle_id))
+            if not bottle:
                 raise HTTPException(
                     status_code=404,
                     detail=f"Bottle not found for ID: {bottle_id}"
                 )
 
-            full_path = vault_path / bottle_vault_path
-            if not full_path.exists():
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Bottle not found in vault: {bottle_id}"
-                )
+            # Build bottle name from metadata
+            bottle_name = f"{bottle.producer} - {bottle.name}" if bottle.producer else bottle.name
 
-            # Extract bottle name from path (folder name)
-            bottle_name = bottle_vault_path.split('/')[-1]
-
-            bottle = EventBottle(
+            event_bottle = EventBottle(
                 bottle_id=bottle_id,
                 bottle_name=bottle_name,
-                bottle_path=bottle_vault_path,
+                bottle_path=str(bottle_id),
                 blind_number=request_data.blind_numbers[i] if request_data.is_blind else None
             )
-            bottles.append(bottle)
+            bottles.append(event_bottle)
 
         # Create event
         event_id = str(uuid.uuid4())
@@ -138,8 +125,8 @@ async def create_event(request_data: CreateEventRequest):
             participants={}
         )
 
-        # Store in event_store
-        event_store[event_id] = event.dict()
+        # Persist to database
+        repo.create(event.model_dump())
         logger.info(f"Created event: {event_id} - {request_data.name} ({len(bottles)} bottles)")
 
         return event
@@ -152,16 +139,10 @@ async def create_event(request_data: CreateEventRequest):
 
 
 @router.get("/api/v1/events", dependencies=[Depends(require("events.view"))])
-async def list_events():
+async def list_events(repo: SQLiteEventRepository = Depends(get_event_repo)):
     """Get all events."""
-    from ..app import event_store
-
-    if event_store is None:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-
     try:
-        # Return all events
-        events = list(event_store.values())
+        events = repo.get_all()
         logger.debug(f"Retrieved {len(events)} events")
         return events
 
@@ -171,18 +152,16 @@ async def list_events():
 
 
 @router.get("/api/v1/events/{event_id}", dependencies=[Depends(require("events.view"))])
-async def get_event(event_id: str):
+async def get_event(
+    event_id: str,
+    repo: SQLiteEventRepository = Depends(get_event_repo),
+):
     """Get event details."""
-    from ..app import event_store
-
-    if event_store is None:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-
     try:
-        if event_id not in event_store:
+        event = repo.get_by_id(event_id)
+        if event is None:
             raise HTTPException(status_code=404, detail="Event not found")
 
-        event = event_store[event_id]
         logger.debug(f"Retrieved event: {event_id}")
         return event
 
@@ -202,19 +181,16 @@ async def join_event(
     event_id: str,
     request_data: JoinEventRequest,
     request: Request,
-    response: Response
+    response: Response,
+    repo: SQLiteEventRepository = Depends(get_event_repo),
 ):
     """Join an event as a participant."""
-    from ..app import event_store, web_config
-
-    if event_store is None or web_config is None:
-        raise HTTPException(status_code=500, detail="Service not initialized")
+    from ..app import web_config
 
     try:
-        if event_id not in event_store:
+        event = repo.get_by_id(event_id)
+        if event is None:
             raise HTTPException(status_code=404, detail="Event not found")
-
-        event = event_store[event_id]
 
         # Check if event is open
         if event["status"] == EventStatus.CLOSED:
@@ -223,15 +199,11 @@ async def join_event(
         # Generate participant ID
         participant_id = str(uuid.uuid4())
 
-        # Create participant
-        participant = Participant(
-            participant_id=participant_id,
-            name=request_data.participant_name,
-            tastings=[]
-        )
-
-        # Add to event
-        event["participants"][participant_id] = participant.dict()
+        # Add participant via repo
+        repo.add_participant(event_id, {
+            "participant_id": participant_id,
+            "name": request_data.participant_name,
+        })
         logger.info(f"Participant {request_data.participant_name} joined event {event_id}")
 
         # Read existing multi-event session cookie
@@ -261,6 +233,7 @@ async def join_event(
             path="/",  # Must be "/" so cookie is sent on all paths
             max_age=7 * 24 * 3600,  # 7 days (longer since it covers multiple events)
             httponly=False,  # Must be False so JavaScript can access it
+            secure=True,
             samesite="lax"
         )
 
@@ -282,18 +255,15 @@ async def join_event(
 # ============================================================================
 
 @router.put("/api/v1/events/{event_id}/reveal", dependencies=[Depends(require("events.manage"))])
-async def reveal_event(event_id: str):
+async def reveal_event(
+    event_id: str,
+    repo: SQLiteEventRepository = Depends(get_event_repo),
+):
     """Reveal bottle names (transition from blind to revealed)."""
-    from ..app import event_store
-
-    if event_store is None:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-
     try:
-        if event_id not in event_store:
+        event = repo.get_by_id(event_id)
+        if event is None:
             raise HTTPException(status_code=404, detail="Event not found")
-
-        event = event_store[event_id]
 
         # Check if event is blind
         if not event["is_blind"]:
@@ -307,10 +277,10 @@ async def reveal_event(event_id: str):
             raise HTTPException(status_code=400, detail="Cannot reveal a closed event")
 
         # Update status
-        event["status"] = EventStatus.REVEALED
+        updated_event = repo.update_status(event_id, EventStatus.REVEALED)
         logger.info(f"Event {event_id} revealed")
 
-        return {"message": "Event revealed", "event": event}
+        return {"message": "Event revealed", "event": updated_event}
 
     except HTTPException:
         raise
@@ -320,28 +290,25 @@ async def reveal_event(event_id: str):
 
 
 @router.put("/api/v1/events/{event_id}/close", dependencies=[Depends(require("events.manage"))])
-async def close_event(event_id: str):
+async def close_event(
+    event_id: str,
+    repo: SQLiteEventRepository = Depends(get_event_repo),
+):
     """Close an event (no more tastings allowed)."""
-    from ..app import event_store
-
-    if event_store is None:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-
     try:
-        if event_id not in event_store:
+        event = repo.get_by_id(event_id)
+        if event is None:
             raise HTTPException(status_code=404, detail="Event not found")
-
-        event = event_store[event_id]
 
         # Check current status
         if event["status"] == EventStatus.CLOSED:
             return {"message": "Event already closed", "event": event}
 
         # Update status
-        event["status"] = EventStatus.CLOSED
+        updated_event = repo.update_status(event_id, EventStatus.CLOSED)
         logger.info(f"Event {event_id} closed")
 
-        return {"message": "Event closed", "event": event}
+        return {"message": "Event closed", "event": updated_event}
 
     except HTTPException:
         raise
@@ -351,21 +318,17 @@ async def close_event(event_id: str):
 
 
 @router.delete("/api/v1/events/{event_id}", dependencies=[Depends(require("events.manage"))])
-async def delete_event(event_id: str):
+async def delete_event(
+    event_id: str,
+    repo: SQLiteEventRepository = Depends(get_event_repo),
+):
     """Delete an event."""
-    from ..app import event_store
-
-    if event_store is None:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-
     try:
-        if event_id not in event_store:
+        deleted = repo.delete(event_id)
+        if not deleted:
             raise HTTPException(status_code=404, detail="Event not found")
 
-        # Delete event
-        del event_store[event_id]
         logger.info(f"Deleted event: {event_id}")
-
         return {"status": "deleted", "event_id": event_id}
 
     except HTTPException:
@@ -380,14 +343,11 @@ async def delete_event(event_id: str):
 # ============================================================================
 
 @router.post("/api/v1/events/cocktail", dependencies=[Depends(require("events.create"))])
-async def create_cocktail_event(request_data: CreateCocktailEventRequest):
+async def create_cocktail_event(
+    request_data: CreateCocktailEventRequest,
+    repo: SQLiteEventRepository = Depends(get_event_repo),
+):
     """Create a cocktail tasting event (blind or flight mode)."""
-    from .. import app as app_module
-    event_store = app_module.event_store
-
-    if event_store is None:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-
     try:
         # Validate: blind mode requires cocktails upfront
         if request_data.event_mode == EventMode.BLIND:
@@ -417,7 +377,7 @@ async def create_cocktail_event(request_data: CreateCocktailEventRequest):
             cocktails=request_data.cocktails,
         )
 
-        event_store[event_id] = event.model_dump()
+        repo.create(event.model_dump())
         logger.info(
             f"Created cocktail event: {event_id} - {request_data.name} "
             f"({request_data.event_mode.value} mode, "
@@ -434,18 +394,16 @@ async def create_cocktail_event(request_data: CreateCocktailEventRequest):
 
 
 @router.post("/api/v1/events/{event_id}/cocktails", dependencies=[Depends(require("events.participate"))])
-async def add_event_cocktail(event_id: str, request_data: AddEventCocktailRequest):
+async def add_event_cocktail(
+    event_id: str,
+    request_data: AddEventCocktailRequest,
+    repo: SQLiteEventRepository = Depends(get_event_repo),
+):
     """Add a cocktail to a flight event (flight mode only)."""
-    from ..app import event_store
-
-    if event_store is None:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-
     try:
-        if event_id not in event_store:
+        event = repo.get_by_id(event_id)
+        if event is None:
             raise HTTPException(status_code=404, detail="Event not found")
-
-        event = event_store[event_id]
 
         if event.get("event_type") != EventType.COCKTAIL:
             raise HTTPException(status_code=400, detail="Not a cocktail event")
@@ -466,7 +424,7 @@ async def add_event_cocktail(event_id: str, request_data: AddEventCocktailReques
             added_at=datetime.now(),
         )
 
-        event["cocktails"].append(cocktail.model_dump())
+        repo.add_cocktail_to_event(event_id, cocktail.model_dump())
         logger.info(
             f"Added cocktail '{request_data.cocktail_name}' to event {event_id}"
         )
@@ -485,18 +443,13 @@ async def submit_cocktail_rating(
     event_id: str,
     request_data: SubmitCocktailRatingRequest,
     request: Request,
+    repo: SQLiteEventRepository = Depends(get_event_repo),
 ):
     """Submit a rating for a cocktail in an event."""
-    from ..app import event_store
-
-    if event_store is None:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-
     try:
-        if event_id not in event_store:
+        event = repo.get_by_id(event_id)
+        if event is None:
             raise HTTPException(status_code=404, detail="Event not found")
-
-        event = event_store[event_id]
 
         if event.get("event_type") != EventType.COCKTAIL:
             raise HTTPException(status_code=400, detail="Not a cocktail event")
@@ -529,29 +482,19 @@ async def submit_cocktail_rating(
                 detail=f"Cocktail '{request_data.cocktail_name}' not in this event"
             )
 
-        # Add rating to participant
-        participant = event["participants"][participant_id]
+        # Add/update rating via repo
         rating = CocktailRating(
             cocktail_name=request_data.cocktail_name,
             score=request_data.score,
             notes=request_data.notes,
         )
 
-        # Initialize cocktail_ratings list if missing (backward compat)
-        if "cocktail_ratings" not in participant:
-            participant["cocktail_ratings"] = []
-
-        # Replace existing rating for same cocktail, or add new
-        existing_idx = None
-        for i, r in enumerate(participant["cocktail_ratings"]):
-            if r.get("cocktail_name") == request_data.cocktail_name:
-                existing_idx = i
-                break
-
-        if existing_idx is not None:
-            participant["cocktail_ratings"][existing_idx] = rating.model_dump()
-        else:
-            participant["cocktail_ratings"].append(rating.model_dump())
+        repo.add_cocktail_rating(
+            participant_id=participant_id,
+            cocktail_name=request_data.cocktail_name,
+            score=request_data.score,
+            notes=request_data.notes,
+        )
 
         logger.info(
             f"Rating submitted for '{request_data.cocktail_name}' "

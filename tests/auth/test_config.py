@@ -125,13 +125,13 @@ class TestLoadAuthConfig:
 
     def test_load_missing_file_returns_default(self):
         config = load_auth_config(Path("/nonexistent/auth.yaml"))
-        assert config.dev.enabled is True  # Default for missing config
+        assert config.dev.enabled is False  # Fail closed: dev mode off by default
 
     def test_load_empty_file(self, tmp_path):
         config_path = tmp_path / "auth.yaml"
         config_path.write_text("")
         config = load_auth_config(config_path)
-        assert config.dev.enabled is True
+        assert config.dev.enabled is False  # Fail closed: dev mode off by default
 
 
 class TestDevConfig:

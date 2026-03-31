@@ -1,143 +1,72 @@
 """
 Shared fixtures for tasting tests.
 
-CRITICAL: These tests MUST use an isolated test vault, NEVER the real vault.
-The test vault is created fresh for each test module and destroyed after.
+Uses in-memory SQLite database for test isolation.
 """
-
-import shutil
-from pathlib import Path
 
 import pytest
 
-
-# Test vault path - completely isolated from real data
-TEST_VAULT_PATH = Path("/tmp/test-vault-tastings")
+from reserve_automation.core.models import BottleMetadata
 
 
 @pytest.fixture(scope="module")
-def test_vault():
-    """
-    Create an isolated test vault with fixture bottles.
+def test_db():
+    """Get a fresh database session and seed bottle data for tasting tests."""
+    from reserve_automation.db.engine import get_db
 
-    This vault is completely separate from the real vault and contains
-    only test data. It's created fresh for each test module.
-    """
-    # Clean up any existing test vault
-    if TEST_VAULT_PATH.exists():
-        shutil.rmtree(TEST_VAULT_PATH)
+    db = next(get_db())
 
-    # Create vault directory structure
-    TEST_VAULT_PATH.mkdir(parents=True)
-    (TEST_VAULT_PATH / "1_Whiskeys").mkdir()
-    (TEST_VAULT_PATH / "1_Wines").mkdir()
-    (TEST_VAULT_PATH / "1_Spirits").mkdir()
+    # Clean existing data
+    from reserve_automation.db.models.bottle import BottleModel, TastingNoteModel
+    db.query(TastingNoteModel).delete()
+    db.query(BottleModel).delete()
+    db.commit()
 
-    # Create test whiskey bottle (Weller)
-    weller_dir = TEST_VAULT_PATH / "1_Whiskeys" / "Buffalo Trace - Weller Special Reserve"
-    weller_dir.mkdir(parents=True)
-    (weller_dir / "Buffalo Trace - Weller Special Reserve.md").write_text("""---
-fileClass: Whiskey
-Name: Buffalo Trace - Weller Special Reserve
-Distiller: Buffalo Trace
-WhiskeyName: Weller Special Reserve
-AgeStatement:
-Year:
-Type: Kentucky Straight Bourbon Whiskey
-MashBill: Wheated
-BarrelType:
-Proof: 90
-Region-State: Kentucky
-BatchNumber:
-BottleNumber:
-Price:
-PurchaseSource:
-PurchaseLink:
-Inventory: 1
-Buy: 0
-Stars: --
-ValueForMoney:
-BottleOpenedDate:
-BottleImage:
----
+    # Seed test bottles
+    from reserve_automation.db.repositories.bottle_repo import SQLiteBottleRepository
+    repo = SQLiteBottleRepository(db)
 
-## Test Fixture Bottle
+    repo.create(BottleMetadata(
+        producer="Buffalo Trace",
+        name="Weller Special Reserve",
+        type="whiskey",
+        source="test",
+        proof=90,
+        region="Kentucky",
+        inventory=1,
+    ))
+    repo.create(BottleMetadata(
+        producer="Caymus Vineyards",
+        name="Cabernet Sauvignon",
+        type="wine",
+        source="test",
+        year=2021,
+        variety="Cabernet Sauvignon",
+        region="USA - Napa Valley",
+        abv=14.5,
+        inventory=1,
+    ))
 
-This is a test fixture bottle for automated testing.
-""")
+    yield db
 
-    # Create test wine bottle (Caymus)
-    caymus_dir = TEST_VAULT_PATH / "1_Wines" / "Caymus Vineyards - Cabernet Sauvignon - 2021"
-    caymus_dir.mkdir(parents=True)
-    (caymus_dir / "Caymus Vineyards - Cabernet Sauvignon - 2021.md").write_text("""---
-fileClass: Wine
-Name: Caymus Vineyards - Cabernet Sauvignon - 2021
-Winemaker: Caymus Vineyards
-WineName: Cabernet Sauvignon
-Vintage: "2021"
-Type: Red wine
-Variety: Cabernet Sauvignon
-Country-Region: USA - Napa Valley
-Vineyard:
-ABV: 14.5
-Style:
-Price:
-PurchaseSource:
-PurchaseLink:
-Stars: --
-ValueForMoney:
-Points:
-Inventory: 1
-Buy: 0
----
-
-## Test Fixture Bottle
-
-This is a test fixture bottle for automated testing.
-""")
-
-    yield TEST_VAULT_PATH
-
-    # Cleanup after all tests in module
-    if TEST_VAULT_PATH.exists():
-        shutil.rmtree(TEST_VAULT_PATH)
+    # Clean up
+    db.query(TastingNoteModel).delete()
+    db.query(BottleModel).delete()
+    db.commit()
 
 
 @pytest.fixture(scope="module")
-def test_client(test_vault):
-    """
-    Create test client with proper configuration using ISOLATED test vault.
-
-    CRITICAL: This sets RESERVE_VAULT_PATH to the test vault, ensuring
-    tests NEVER touch the real vault.
-    """
-    import os
+def test_client(test_db):
+    """Create test client with in-memory database."""
     from fastapi.testclient import TestClient
-
-    # CRITICAL: Override vault path BEFORE importing app
-    os.environ["RESERVE_VAULT_PATH"] = str(test_vault)
-
-    # Now import and configure
     from reserve_automation.web.app import app
     from reserve_automation.web.config import load_web_config
+    from reserve_automation.web import app as web_app
+    from reserve_automation.web.services.upload_service import UploadService
 
     core_config, web_config = load_web_config()
-
-    # Verify we're using the test vault
-    assert str(test_vault) in str(core_config.vault_path), \
-        f"SAFETY CHECK FAILED: Not using test vault! Got {core_config.vault_path}"
-
-    # Override dependencies
-    from reserve_automation.web import app as web_app
-    from reserve_automation.core.bottle_registry import BottleRegistry
     web_app.core_config = core_config
     web_app.web_config = web_config
-
-    # Initialize bottle registry for ID lookups
-    web_app.bottle_registry = BottleRegistry()
-
-    # Create services
-    from reserve_automation.web.services.upload_service import UploadService
     web_app.upload_service = UploadService(
         temp_dir=web_config.uploads.temp_dir,
         max_file_size_mb=web_config.uploads.max_file_size_mb,
@@ -149,30 +78,30 @@ def test_client(test_vault):
 
 
 @pytest.fixture
-def weller_bottle(test_vault, test_client):
-    """Return path info for the test Weller bottle with opaque ID."""
-    from reserve_automation.web import app as web_app
-    vault_path = "1_Whiskeys/Buffalo Trace - Weller Special Reserve"
-    # Register bottle and get ID
-    bottle_id = web_app.bottle_registry.register(vault_path)
+def weller_bottle(test_db):
+    """Return info for the test Weller bottle."""
+    from reserve_automation.db.repositories.bottle_repo import SQLiteBottleRepository
+    repo = SQLiteBottleRepository(test_db)
+    bottles = repo.search("Weller")
+    assert bottles, "Weller bottle not found in test DB"
+    bottle = bottles[0]
     return {
-        "name": "Buffalo Trace - Weller Special Reserve",
-        "vault_path": vault_path,  # Keep for internal test use (file operations)
-        "id": bottle_id,  # Opaque ID for API calls
+        "name": f"{bottle.producer} - {bottle.name}",
+        "id": str(bottle.id),
         "beverage_type": "whiskey"
     }
 
 
 @pytest.fixture
-def caymus_bottle(test_vault, test_client):
-    """Return path info for the test Caymus bottle with opaque ID."""
-    from reserve_automation.web import app as web_app
-    vault_path = "1_Wines/Caymus Vineyards - Cabernet Sauvignon - 2021"
-    # Register bottle and get ID
-    bottle_id = web_app.bottle_registry.register(vault_path)
+def caymus_bottle(test_db):
+    """Return info for the test Caymus bottle."""
+    from reserve_automation.db.repositories.bottle_repo import SQLiteBottleRepository
+    repo = SQLiteBottleRepository(test_db)
+    bottles = repo.search("Caymus")
+    assert bottles, "Caymus bottle not found in test DB"
+    bottle = bottles[0]
     return {
-        "name": "Caymus Vineyards - Cabernet Sauvignon - 2021",
-        "vault_path": vault_path,  # Keep for internal test use (file operations)
-        "id": bottle_id,  # Opaque ID for API calls
+        "name": f"{bottle.producer} - {bottle.name}",
+        "id": str(bottle.id),
         "beverage_type": "wine"
     }

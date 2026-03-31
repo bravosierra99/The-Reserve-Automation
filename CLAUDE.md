@@ -221,34 +221,34 @@ User says: "Add ABV to wine bottles"
 ### The Rule: READ THE #CLAUDE_REQs, THEN DO WHAT THEY SAY
 If a #CLAUDE_REQ lists 5 files, you MUST check all 5 files. Not optional.
 
-## Obsidian Vault Integration
+## Storage Architecture (SQLite)
 
-This automation system integrates with an Obsidian vault at `the-reserve/Cellar/`. The vault structure and field names are the source of truth. When in doubt, check the actual Obsidian templates and fileClass definitions.
+As of v1.0.0, all data is stored in SQLite (default: `data/reserve.db`) using SQLAlchemy ORM with the repository pattern. The Obsidian vault is no longer the source of truth for the backend.
 
-### Key Integration Points:
+### Key Components:
 
-1. **Templates**: Automation templates must match Obsidian templates in `the-reserve/Cellar/9_Templates/`
-2. **FileClasses**: Field names must match fileClass definitions in `the-reserve/Cellar/8_FileClass/`
-3. **Vault Structure**:
-   - Wines: `Cellar/1_Wines/{BottleName}/{BottleName}.md`
-   - Whiskeys: `Cellar/1_Whiskeys/{BottleName}/{BottleName}.md`
-   - Spirits: `Cellar/1_Spirits/{BottleName}/{BottleName}.md`
-   - Tastings: Same folder as bottle, named `Tasting-YYYY-MM-DD-TasterName.md`
-4. **DataviewJS Queries**: Bottle files contain queries that search for specific fileClass values
+1. **Database Engine** (`db/engine.py`): SQLite + WAL mode, session factory, `get_db()` for FastAPI Depends
+2. **Models** (`db/models/`): SQLAlchemy ORM models for bottles, tastings, cocktails, ingredients, events
+3. **Repositories** (`db/repositories/`): CRUD implementations (e.g., `SQLiteBottleRepository`)
+4. **Converters** (`db/converters.py`): SQLAlchemy ↔ Pydantic translation
+5. **Import Script** (`scripts/import_vault.py`): One-time vault→DB migration
 
-### Template Requirements (templates/*.md.j2):
+### Data Flow:
+- Routes use FastAPI `Depends(get_bottle_repo)` to get repository instances
+- Repositories return Pydantic domain models (e.g., `BottleMetadata`, `Ingredient`)
+- Integer primary keys; `str(id)` sent to frontend
+- Images stored at `data/media/bottles/{id}/label.jpg`
 
-**CRITICAL**:
-- Templates MUST start with `---` on line 1 (Obsidian frontmatter delimiter)
-- DO NOT add #CLAUDE_REQ comments to template files - they'll appear in generated files and break frontmatter parsing
-- The templates are the source of truth - don't modify them unless explicitly requested
+### Legacy Code (preserved but unused by routes):
+- `VaultReader` — kept for the import script
+- `ObsidianGenerator` — kept for potential export
+- `BottleMatcher` — kept for vault-mode fallback in services
+- Jinja2 markdown templates (`templates/*.md.j2`) — unused by routes
 
-### When Working on Vault Integration:
-
-- Read the Obsidian template files BEFORE modifying automation templates
-- Test changes by checking if Dataview queries still work in Obsidian
-- Verify fileClass values match what queries expect
-- Ensure field names match exactly (case-sensitive)
+### When Working on Data Layer:
+- Add new fields to: model (`db/models/`), converter (`db/converters.py`), Pydantic model (`core/`)
+- Add new tables: create model, add to `Base.metadata`, create repository
+- Tests use in-memory SQLite (`sqlite:///:memory:`) — see `tests/conftest.py`
 
 ## Workflow Summary
 
@@ -299,22 +299,15 @@ pkill -f "uvicorn.*reserve_automation"
 
 **MANDATORY: Always check for and run tests when modifying code.**
 
-### CRITICAL: Vault Safety
+### Test Isolation
 
-**NEVER run tests against the real vault at `/mnt/d/Users/ben/Documents/the-reserve/Cellar/`**
-
-All tests MUST use isolated test vaults in `/tmp/`. If you need to create tests, use the **test-runner agent** (`.claude/agents/test-runner.md`) which has the isolation patterns.
-
-Key safety documents:
-- `tests/e2e/TESTING_SAFETY.md` - Vault isolation requirements
-- `tests/e2e/conftest.py` - Reference implementation for isolated test vaults
+All tests use in-memory SQLite (`sqlite:///:memory:`) for isolation. The root `tests/conftest.py` initializes the DB once per session. Each test module seeds its own data via repositories and cleans up afterward.
 
 ### E2E Testing Priority
 
 Most bugs come from **frontend/backend integration issues**. Prefer E2E browser tests over unit tests:
 1. Tests in `tests/e2e/` run real browsers against real servers
 2. They catch integration issues that unit tests miss
-3. Use real fixture data from the vault (copied to `/tmp/test-vault-*`)
 
 ### Before Making Changes
 
@@ -343,9 +336,11 @@ grep -r "class Test" tests/ | grep -i "events"
 
 | Modified Files | Run These Tests |
 |----------------|-----------------|
-| `routes/events.py`, `routes/tastings.py`, `templates/event_*.html` | `./tests/events/run_all_tests.sh` |
+| `routes/events.py`, `routes/tastings.py` | `uv run pytest tests/events/ -v` |
+| `routes/cocktails.py` | `uv run pytest tests/cocktails/ -v` |
+| `routes/ingredients.py` | `uv run pytest tests/ingredients/ -v` |
+| `db/` models or repositories | `uv run pytest tests/ -v` |
 | `extractors/bottle.py`, `parsers/pdf.py` | `uv run pytest tests/test_bottle_extraction_cli.py -v` |
-| `web/` routes or templates | `uv run pytest tests/test_bottle_extraction_web.py -v` |
 | Multiple systems | `uv run pytest tests/ -v` |
 
 ### If Tests Don't Exist

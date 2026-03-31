@@ -1,6 +1,6 @@
 """Tests for cocktail tasting API endpoints.
 
-CRITICAL: These tests use an isolated test vault at /tmp/test-vault-cocktails-*.
+Data is stored in SQLite (not vault files).
 """
 
 import pytest
@@ -9,7 +9,7 @@ import pytest
 class TestCreateCocktailTasting:
     """Test POST /api/v1/cocktails/{id}/tastings."""
 
-    def test_create_tasting(self, test_client, test_vault):
+    def test_create_tasting(self, test_client):
         # Get a cocktail ID
         response = test_client.get("/api/v1/cocktails")
         cocktails = response.json()
@@ -32,11 +32,6 @@ class TestCreateCocktailTasting:
         assert data["id"] is not None
         assert data["tasting_date"] is not None
 
-        # Verify file was created
-        tasting_dir = test_vault / "3_Cocktails" / "Moscow Mule"
-        tasting_files = list(tasting_dir.glob("Tasting-*-TestTaster.md"))
-        assert len(tasting_files) >= 1
-
     def test_create_tasting_minimal(self, test_client):
         """Create tasting with just a name (no score/notes)."""
         response = test_client.get("/api/v1/cocktails")
@@ -53,7 +48,7 @@ class TestCreateCocktailTasting:
         assert data["notes"] is None
 
     def test_create_tasting_nonexistent_cocktail(self, test_client):
-        response = test_client.post("/api/v1/cocktails/nonexistent123/tastings", json={
+        response = test_client.post("/api/v1/cocktails/99999/tastings", json={
             "taster_name": "Test",
         })
         assert response.status_code == 404
@@ -113,7 +108,7 @@ class TestListCocktailTastings:
         assert "score" in tasting
         assert "bottles_used" in tasting
 
-    def test_list_tastings_empty_cocktail(self, test_client, test_vault):
+    def test_list_tastings_empty_cocktail(self, test_client):
         """Cocktail with no tastings returns empty list."""
         response = test_client.get("/api/v1/cocktails")
         cocktails = response.json()
@@ -126,50 +121,15 @@ class TestListCocktailTastings:
         assert len(data) == 0
 
     def test_list_tastings_nonexistent_cocktail(self, test_client):
-        response = test_client.get("/api/v1/cocktails/nonexistent123/tastings")
+        response = test_client.get("/api/v1/cocktails/99999/tastings")
         assert response.status_code == 404
 
 
-class TestTastingVaultFile:
-    """Test that tasting files are correctly created in the vault."""
 
-    def test_tasting_file_has_correct_frontmatter(self, test_client, test_vault):
-        """Verify the vault file has correct YAML frontmatter."""
-        import yaml
+class TestTastingRoundtrip:
+    """Test that tastings can be created and read back via the API."""
 
-        response = test_client.get("/api/v1/cocktails")
-        cocktails = response.json()
-        mule = next(c for c in cocktails if c["name"] == "Moscow Mule")
-
-        # Create a tasting with known data
-        response = test_client.post(f"/api/v1/cocktails/{mule['id']}/tastings", json={
-            "taster_name": "FrontmatterTest",
-            "score": 7.5,
-            "notes": "Testing frontmatter",
-            "bartender": "TestBarkeep",
-        })
-        assert response.status_code == 200
-
-        # Find the tasting file
-        tasting_dir = test_vault / "3_Cocktails" / "Moscow Mule"
-        tasting_files = list(tasting_dir.glob("Tasting-*-FrontmatterTest.md"))
-        assert len(tasting_files) == 1
-
-        # Parse frontmatter
-        content = tasting_files[0].read_text()
-        import re
-        match = re.search(r'^---\n(.*?)\n---', content, re.DOTALL | re.MULTILINE)
-        assert match is not None
-
-        metadata = yaml.safe_load(match.group(1))
-        assert metadata["fileClass"] == "Cocktail Tasting"
-        assert metadata["TasterName"] == "FrontmatterTest"
-        assert metadata["Score"] == 7.5
-        assert metadata["Bartender"] == "TestBarkeep"
-        assert metadata["Notes"] == "Testing frontmatter"
-        assert "Moscow Mule" in str(metadata.get("LinkedCocktail", ""))
-
-    def test_tasting_roundtrip(self, test_client, test_vault):
+    def test_tasting_roundtrip(self, test_client):
         """Create a tasting via API, then read it back via list endpoint."""
         response = test_client.get("/api/v1/cocktails")
         cocktails = response.json()

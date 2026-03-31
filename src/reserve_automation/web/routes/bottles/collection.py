@@ -5,7 +5,8 @@ from fastapi.responses import HTMLResponse
 from loguru import logger
 
 from ...auth.dependencies import require
-from ....utils.vault_reader import VaultReader
+from ....db.repositories import get_bottle_repo
+from ....db.repositories.bottle_repo import SQLiteBottleRepository
 from ..management.core import get_bottle_tastings_summary, get_bottle_tastings_list
 
 router = APIRouter(dependencies=[Depends(require("bottles.view"))])
@@ -20,23 +21,17 @@ async def bottles_page(request: Request):
 
 
 @router.get("/api/v1/bottles/collection")
-async def get_bottle_collection():
+async def get_bottle_collection(
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
     """
     Get all bottles for the collection grid view.
-
-    Same data as management/bottles but with bottles.view permission
-    so all authenticated users can browse the collection.
 
     Returns:
         dict: Contains list of bottles with their current metadata (with IDs)
     """
-    from ... import app as app_module
-    core_config = app_module.core_config
-    bottle_registry = app_module.bottle_registry
-
     try:
-        vault_reader = VaultReader(core_config.vault_path, registry=bottle_registry)
-        bottles = vault_reader.read_all_bottles()
+        bottles = bottle_repo.get_all()
         bottles_data = [bottle.model_dump(mode='json') for bottle in bottles]
 
         logger.info(f"Collection: loaded {len(bottles)} bottles")

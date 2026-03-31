@@ -32,7 +32,7 @@ def main():
 
     # Take first 3 bottles
     selected_bottles = bottles[:3]
-    bottle_paths = [b["vault_path"] for b in selected_bottles]
+    bottle_ids = [str(b["id"]) for b in selected_bottles]
 
     print(f"\n✓ Found {len(selected_bottles)} Stagg bottles:")
     for i, b in enumerate(selected_bottles, 1):
@@ -46,7 +46,7 @@ def main():
         "beverage_type": "whiskey",
         "is_blind": True,
         "host_name": "Test Host",
-        "bottle_paths": bottle_paths,
+        "bottle_ids": bottle_ids,
         "blind_numbers": [1, 2, 3]
     }
 

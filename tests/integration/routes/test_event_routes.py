@@ -27,14 +27,11 @@ def client(tmp_path):
     
     config = Config(paths={"vault": str(vault_path), "templates_dir": "templates"})
     app_module.core_config = config
-    
+
     web_config = Mock()
     web_config.sessions.secret_key = "test-secret"
     web_config.sessions.max_age_hours = 24
     app_module.web_config = web_config
-    
-    # Initialize event store
-    app_module.event_store = {}
     
     return TestClient(app_module.app)
 

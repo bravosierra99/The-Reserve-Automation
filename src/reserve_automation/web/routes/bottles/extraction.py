@@ -153,13 +153,13 @@ async def search_bottles(
         limit: Maximum results to return
         event_id: Optional event ID (restricts to event bottles only)
     """
-    from ...app import core_config
+    from ....db.engine import get_db
+    from ....db.repositories.bottle_repo import SQLiteBottleRepository
+    from ....db.repositories.tasting_repo import SQLiteTastingRepository
     from ...services.tasting_service import TastingService
 
-    if not core_config:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-
-    tasting_service = TastingService(core_config)
+    db = next(get_db())
+    tasting_service = TastingService(SQLiteBottleRepository(db), SQLiteTastingRepository(db))
     results = tasting_service.search_bottles(
         query=q,
         beverage_type=beverage_type,

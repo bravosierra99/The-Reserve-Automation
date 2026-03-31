@@ -1,6 +1,6 @@
 """Tests for cocktail API endpoints.
 
-CRITICAL: These tests use an isolated test vault at /tmp/test-vault-cocktails-*.
+Uses in-memory SQLite database for test isolation.
 """
 
 import pytest
@@ -53,7 +53,7 @@ class TestCocktailGet:
         assert data["ingredients"][0]["unit"] == "oz"
 
     def test_get_nonexistent(self, test_client):
-        response = test_client.get("/api/v1/cocktails/nonexistent123")
+        response = test_client.get("/api/v1/cocktails/99999")
         assert response.status_code == 404
 
 
@@ -75,7 +75,7 @@ class TestCocktailSearch:
 class TestCocktailCreate:
     """Test POST /api/v1/cocktails."""
 
-    def test_create_cocktail(self, test_client, test_vault):
+    def test_create_cocktail(self, test_client):
         response = test_client.post("/api/v1/cocktails", json={
             "name": "Whiskey Sour",
             "description": "A classic sour cocktail",
@@ -96,11 +96,6 @@ class TestCocktailCreate:
         assert data["method"] == "shaken"
         assert len(data["ingredients"]) == 3
         assert data["id"] is not None
-
-        # Verify file was created
-        cocktail_dir = test_vault / "3_Cocktails" / "Whiskey Sour"
-        assert cocktail_dir.exists()
-        assert (cocktail_dir / "Whiskey Sour.md").exists()
 
     def test_create_duplicate_fails(self, test_client):
         response = test_client.post("/api/v1/cocktails", json={
@@ -131,14 +126,14 @@ class TestCocktailUpdate:
         assert data["description"] == "A refreshing copper mug cocktail"
 
     def test_update_nonexistent(self, test_client):
-        response = test_client.put("/api/v1/cocktails/nonexistent123", json={"garnish": "test"})
+        response = test_client.put("/api/v1/cocktails/99999", json={"garnish": "test"})
         assert response.status_code == 404
 
 
 class TestCocktailDelete:
     """Test DELETE /api/v1/cocktails/{id}."""
 
-    def test_delete_cocktail(self, test_client, test_vault):
+    def test_delete_cocktail(self, test_client):
         # Create one to delete
         response = test_client.post("/api/v1/cocktails", json={
             "name": "ToDeleteCocktail",
@@ -150,10 +145,12 @@ class TestCocktailDelete:
         assert response.status_code == 200
         assert response.json()["status"] == "deleted"
 
-        assert not (test_vault / "3_Cocktails" / "ToDeleteCocktail").exists()
+        # Verify it's gone
+        response = test_client.get(f"/api/v1/cocktails/{cid}")
+        assert response.status_code == 404
 
     def test_delete_nonexistent(self, test_client):
-        response = test_client.delete("/api/v1/cocktails/nonexistent123")
+        response = test_client.delete("/api/v1/cocktails/99999")
         assert response.status_code == 404
 
 
@@ -173,7 +170,7 @@ class TestCocktailPages:
 
 
 class TestIngredientYamlRoundtrip:
-    """Test that YAML ingredients survive write+read cycle."""
+    """Test that ingredients survive create+read cycle."""
 
     def test_created_cocktail_has_ingredients(self, test_client):
         """Creating a cocktail and reading it back preserves ingredients."""

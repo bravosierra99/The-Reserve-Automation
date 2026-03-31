@@ -13,7 +13,7 @@ from .config import load_web_config, load_auth_config
 from .logging_config import setup_web_logging
 from .routes import upload, review, health, bottles, tastings, management, events, ingredients, cocktails
 from .services.upload_service import UploadService
-from ..core.bottle_registry import BottleRegistry
+from ..db.engine import init_db
 
 
 # Global services (initialized on startup)
@@ -21,14 +21,12 @@ upload_service: UploadService = None
 core_config = None
 web_config = None
 auth_config = None
-event_store: dict[str, dict] = {}
-bottle_registry: BottleRegistry = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    global upload_service, core_config, web_config, auth_config, event_store, bottle_registry
+    global upload_service, core_config, web_config, auth_config
 
     # Startup - Initialize logging first
     # Read log level from environment variable, default to INFO for production
@@ -38,7 +36,12 @@ async def lifespan(app: FastAPI):
 
     # Load configuration
     core_config, web_config = load_web_config()
-    logger.info(f"Loaded configuration: vault={core_config.vault_path}")
+    logger.info(f"Loaded configuration")
+
+    # Initialize database
+    database_url = os.getenv("DATABASE_URL", "sqlite:///data/reserve.db")
+    init_db(database_url)
+    logger.info(f"Database initialized: {database_url}")
 
     # Load auth configuration
     auth_config = load_auth_config()
@@ -55,20 +58,6 @@ async def lifespan(app: FastAPI):
         allowed_extensions=web_config.uploads.allowed_extensions
     )
 
-    # Initialize event store (in-memory)
-    event_store = {}
-    logger.info("Event store initialized")
-
-    # Initialize bottle registry (in-memory mapping between opaque IDs and vault paths)
-    bottle_registry = BottleRegistry()
-    logger.info(f"Bottle registry initialized: {bottle_registry}, id={id(bottle_registry)}")
-
-    # Verify the module-level variable is set
-    import sys
-    this_module = sys.modules[__name__]
-    logger.info(f"app.py module name: {__name__}")
-    logger.info(f"Module-level bottle_registry check: {getattr(this_module, 'bottle_registry', 'NOT FOUND')}, id={id(getattr(this_module, 'bottle_registry', None)) if getattr(this_module, 'bottle_registry', None) else 'None'}")
-
     # Clean up old temp files on startup
     deleted = upload_service.cleanup_old_files(
         max_age_hours=web_config.uploads.cleanup_age_hours
@@ -84,18 +73,34 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down application")
 
 
+# Conditionally enable OpenAPI docs only in dev mode
+_startup_auth_config = load_auth_config()
+_docs_url = "/docs" if _startup_auth_config.dev.enabled else None
+_redoc_url = "/redoc" if _startup_auth_config.dev.enabled else None
+_openapi_url = "/openapi.json" if _startup_auth_config.dev.enabled else None
+
 # Create FastAPI app
 app = FastAPI(
     title="The Reserve Automation",
     description="Mobile-first web interface for bottle and tasting management",
     version="0.1.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
 )
+
+# Set auth config on app.state so middleware and dependencies can access it
+# (lifespan may update this later, but this ensures it's always available)
+app.state.auth_config = _startup_auth_config
+
+# Register security headers middleware
+from .middleware.security_headers import SecurityHeadersMiddleware
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Register auth middleware (must be done before app starts, not in lifespan)
 from .auth.middleware import AuthMiddleware
-_auth_config_for_middleware = load_auth_config()
-app.add_middleware(AuthMiddleware, auth_config=_auth_config_for_middleware)
+app.add_middleware(AuthMiddleware, auth_config=_startup_auth_config)
 
 # Mount static files
 static_path = Path(__file__).parent / "static"

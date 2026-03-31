@@ -3,10 +3,9 @@
 Test Suite 1: Event-Based Tasting Tests
 
 Tests the manual tasting wizard in event mode.
-SAFE: No vault writes - all data stored in-memory event store.
+SAFE: No vault writes - all data stored in SQLite database.
 
-CRITICAL: These tests use an ISOLATED test vault via conftest.py fixtures.
-They NEVER touch the real vault.
+CRITICAL: These tests use an in-memory SQLite database via conftest.py fixtures.
 """
 
 import json
@@ -71,7 +70,7 @@ def test_manual_event_tasting(test_client, weller_bottle):
         "beverage_type": "whiskey",
         "taster_name": "TestUser",
         "tasting_date": "2025-12-27",
-        "selected_bottle_path": test_bottle["vault_path"],
+        "selected_bottle_id": test_bottle["id"],
         "event_id": event_id,
         "participant_id": participant_id,
         "tasting_data": tasting_data
@@ -147,7 +146,7 @@ def test_edit_event_tasting(test_client, weller_bottle):
         "beverage_type": "whiskey",
         "taster_name": "TestEditor",
         "tasting_date": "2025-12-27",
-        "selected_bottle_path": test_bottle["vault_path"],
+        "selected_bottle_id": test_bottle["id"],
         "event_id": event_id,
         "participant_id": participant_id,
         "tasting_data": {
@@ -168,7 +167,7 @@ def test_edit_event_tasting(test_client, weller_bottle):
         "beverage_type": "whiskey",
         "taster_name": "TestEditor",
         "tasting_date": "2025-12-27",
-        "selected_bottle_path": test_bottle["vault_path"],
+        "selected_bottle_id": test_bottle["id"],
         "event_id": event_id,
         "participant_id": participant_id,
         "tasting_data": {

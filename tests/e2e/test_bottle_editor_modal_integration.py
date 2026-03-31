@@ -32,12 +32,8 @@ def test_client():
     core_config, web_config = load_web_config()
 
     from reserve_automation.web import app as web_app
-    from reserve_automation.core.bottle_registry import BottleRegistry
     web_app.core_config = core_config
     web_app.web_config = web_config
-
-    # Initialize bottle registry for ID lookups
-    web_app.bottle_registry = BottleRegistry()
 
     from reserve_automation.web.services.upload_service import UploadService
     web_app.upload_service = UploadService(

@@ -126,6 +126,7 @@ async def upload_file(
             value=session_token,
             max_age=web_config.sessions.max_age_hours * 3600,
             httponly=True,
+            secure=True,
             samesite="lax"
         )
 

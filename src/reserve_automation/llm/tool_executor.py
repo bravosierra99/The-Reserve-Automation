@@ -104,6 +104,14 @@ class ToolExecutor:
         if not url:
             return {"error": "No URL provided"}
 
+        # SSRF protection: validate URL doesn't target internal networks
+        from ..utils.url_validation import validate_url_not_internal
+        try:
+            validate_url_not_internal(url)
+        except ValueError as e:
+            logger.warning(f"Blocked internal URL fetch attempt: {url} - {e}")
+            return {"error": f"URL blocked: {e}"}
+
         logger.info(f"Fetching: {url}")
 
         try:

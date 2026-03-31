@@ -1,19 +1,6 @@
-#CLAUDE_REQ: Cocktail routes depend on:
-#CLAUDE_REQ: - CocktailRecipe model (core/cocktail.py) for data structures
-#CLAUDE_REQ: - CocktailTastingNote model (core/cocktail_tasting.py) for tasting data structures
-#CLAUDE_REQ: - VaultReader.read_all_cocktails() (utils/vault_reader.py) for reading cocktails
-#CLAUDE_REQ: - VaultReader.read_cocktail_tastings() (utils/vault_reader.py) for reading tastings
-#CLAUDE_REQ: - ObsidianGenerator.generate_cocktail_file() (generators/obsidian.py) for writing cocktails
-#CLAUDE_REQ: - ObsidianGenerator.generate_cocktail_tasting_file() (generators/obsidian.py) for writing tastings
-#CLAUDE_REQ: - FileClass (the-reserve/Cellar/8_FileClass/Cocktail.md) for cocktail field names
-#CLAUDE_REQ: - FileClass (the-reserve/Cellar/8_FileClass/Cocktail Tasting.md) for tasting field names
-#CLAUDE_REQ: - Vault structure: 3_Cocktails/{Name}/{Name}.md for cocktails
-#CLAUDE_REQ: - Vault structure: 3_Cocktails/{Name}/Tasting-{date}-{taster}.md for tastings
 """Cocktail recipe management endpoints."""
 
 import json
-import re
-import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -22,7 +9,6 @@ from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import BaseModel, Field
 
-from ...core.bottle_registry import BottleRegistry
 from ...core.cocktail import (
     CocktailRecipe,
     CreateCocktailRequest,
@@ -33,37 +19,13 @@ from ...core.cocktail_tasting import (
     CocktailTastingNote,
     CreateCocktailTastingRequest,
 )
-from ...generators.obsidian import ObsidianGenerator
-from ...utils.vault_reader import VaultReader
+from ...db.repositories import get_cocktail_repo
+from ...db.repositories.cocktail_repo import SQLiteCocktailRepository
 
 router = APIRouter()
 
 templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=templates_dir)
-
-
-def _get_services():
-    """Get initialized services from app module."""
-    from .. import app as app_module
-    core_config = app_module.core_config
-    bottle_registry = app_module.bottle_registry
-    if core_config is None:
-        raise HTTPException(status_code=500, detail="Service not initialized")
-    return core_config, bottle_registry
-
-
-def _read_cocktails(core_config, bottle_registry) -> list[CocktailRecipe]:
-    """Read all cocktails from vault."""
-    reader = VaultReader(core_config.vault_path, registry=bottle_registry)
-    return reader.read_all_cocktails()
-
-
-def _find_cocktail_by_id(cocktails: list[CocktailRecipe], cocktail_id: str):
-    """Find a cocktail by its opaque ID."""
-    for c in cocktails:
-        if c.id == cocktail_id:
-            return c
-    return None
 
 
 def _cocktail_to_dict(c: CocktailRecipe) -> dict:
@@ -93,11 +55,24 @@ def _cocktail_to_dict(c: CocktailRecipe) -> dict:
     }
 
 
-def _sanitize_filename(name: str) -> str:
-    """Remove/replace invalid filename characters."""
-    name = re.sub(r'[<>:"/\\|?*]', '', name)
-    name = re.sub(r'\s+', ' ', name)
-    return name.strip()
+def _tasting_to_dict(t: CocktailTastingNote) -> dict:
+    """Convert cocktail tasting note to API response dict."""
+    return {
+        "id": t.id,
+        "recipe_name": t.recipe_name,
+        "taster_name": t.taster_name,
+        "tasting_date": t.tasting_date,
+        "score": t.score,
+        "notes": t.notes,
+        "bartender": t.bartender,
+        "bottles_used": [
+            {
+                "recipe_ingredient": bu.recipe_ingredient,
+                "actual_product": bu.actual_product,
+            }
+            for bu in t.bottles_used
+        ],
+    }
 
 
 # ============================================================================
@@ -123,22 +98,16 @@ async def cocktail_detail_page(cocktail_id: str, request: Request):
 # ============================================================================
 
 @router.get("/api/v1/cocktails", dependencies=[Depends(require("cocktails.view"))])
-async def list_cocktails(q: str = None):
+async def list_cocktails(
+    q: str = None,
+    repo: SQLiteCocktailRepository = Depends(get_cocktail_repo),
+):
     """List all cocktails, optionally filtered by search query."""
-    core_config, bottle_registry = _get_services()
-
     try:
-        cocktails = _read_cocktails(core_config, bottle_registry)
-
         if q:
-            query_lower = q.lower()
-            cocktails = [
-                c for c in cocktails
-                if query_lower in c.name.lower()
-                or any(query_lower in i.ingredient.lower() for i in c.ingredients)
-                or (c.method and query_lower in c.method.lower())
-                or (c.style and query_lower in c.style.lower())
-            ]
+            cocktails = repo.search(q)
+        else:
+            cocktails = repo.get_all()
 
         return [_cocktail_to_dict(c) for c in cocktails]
     except Exception as e:
@@ -147,34 +116,30 @@ async def list_cocktails(q: str = None):
 
 
 @router.get("/api/v1/cocktails/search", dependencies=[Depends(require("cocktails.view"))])
-async def search_cocktails(q: str = ""):
+async def search_cocktails(
+    q: str = "",
+    repo: SQLiteCocktailRepository = Depends(get_cocktail_repo),
+):
     """Search cocktails by name or ingredient."""
     if not q.strip():
         raise HTTPException(status_code=400, detail="Query parameter 'q' is required")
 
-    core_config, bottle_registry = _get_services()
     try:
-        cocktails = _read_cocktails(core_config, bottle_registry)
-        query_lower = q.lower()
-        matches = [
-            c for c in cocktails
-            if query_lower in c.name.lower()
-            or any(query_lower in i.ingredient.lower() for i in c.ingredients)
-        ]
-        return [_cocktail_to_dict(c) for c in matches]
+        cocktails = repo.search(q)
+        return [_cocktail_to_dict(c) for c in cocktails]
     except Exception as e:
         logger.error(f"Failed to search cocktails: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/api/v1/cocktails/{cocktail_id}", dependencies=[Depends(require("cocktails.view"))])
-async def get_cocktail(cocktail_id: str):
+async def get_cocktail(
+    cocktail_id: int,
+    repo: SQLiteCocktailRepository = Depends(get_cocktail_repo),
+):
     """Get a single cocktail recipe."""
-    core_config, bottle_registry = _get_services()
-
     try:
-        cocktails = _read_cocktails(core_config, bottle_registry)
-        cocktail = _find_cocktail_by_id(cocktails, cocktail_id)
+        cocktail = repo.get_by_id(cocktail_id)
         if not cocktail:
             raise HTTPException(status_code=404, detail="Cocktail not found")
 
@@ -187,19 +152,19 @@ async def get_cocktail(cocktail_id: str):
 
 
 @router.post("/api/v1/cocktails", dependencies=[Depends(require("cocktails.create"))])
-async def create_cocktail(request_data: CreateCocktailRequest):
+async def create_cocktail(
+    request_data: CreateCocktailRequest,
+    repo: SQLiteCocktailRepository = Depends(get_cocktail_repo),
+):
     """Create a new cocktail recipe."""
-    core_config, bottle_registry = _get_services()
-
     try:
         # Check for duplicate name
-        existing = _read_cocktails(core_config, bottle_registry)
-        for c in existing:
-            if c.name.lower() == request_data.name.lower():
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Cocktail '{request_data.name}' already exists"
-                )
+        existing = repo.get_by_name(request_data.name)
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cocktail '{request_data.name}' already exists"
+            )
 
         cocktail = CocktailRecipe(
             name=request_data.name,
@@ -213,24 +178,9 @@ async def create_cocktail(request_data: CreateCocktailRequest):
             serving_size=request_data.serving_size,
         )
 
-        template_dir = Path(__file__).parent.parent.parent.parent.parent / "templates"
-        generator = ObsidianGenerator(
-            vault_path=core_config.vault_path,
-            template_dir=template_dir,
-        )
-
-        obsidian_file = generator.generate_cocktail_file(cocktail)
-        generator.write_file(obsidian_file)
-
-        vault_path = str(obsidian_file.file_path.parent.relative_to(core_config.vault_path))
-        if bottle_registry is not None:
-            cocktail.id = bottle_registry.register(vault_path)
-        else:
-            cocktail.id = BottleRegistry.generate_id(vault_path)
-        cocktail.vault_path = vault_path
-
-        logger.info(f"Created cocktail: {cocktail.name} (id={cocktail.id})")
-        return _cocktail_to_dict(cocktail)
+        created = repo.create(cocktail)
+        logger.info(f"Created cocktail: {created.name} (id={created.id})")
+        return _cocktail_to_dict(created)
 
     except HTTPException:
         raise
@@ -240,70 +190,38 @@ async def create_cocktail(request_data: CreateCocktailRequest):
 
 
 @router.put("/api/v1/cocktails/{cocktail_id}", dependencies=[Depends(require("cocktails.edit"))])
-async def update_cocktail(cocktail_id: str, request_data: UpdateCocktailRequest):
+async def update_cocktail(
+    cocktail_id: int,
+    request_data: UpdateCocktailRequest,
+    repo: SQLiteCocktailRepository = Depends(get_cocktail_repo),
+):
     """Update a cocktail recipe."""
-    core_config, bottle_registry = _get_services()
-
     try:
-        cocktails = _read_cocktails(core_config, bottle_registry)
-        cocktail = _find_cocktail_by_id(cocktails, cocktail_id)
-        if not cocktail:
+        existing = repo.get_by_id(cocktail_id)
+        if not existing:
             raise HTTPException(status_code=404, detail="Cocktail not found")
-
-        old_name = cocktail.name
-        vault_path = cocktail.vault_path
 
         update_data = request_data.model_dump(exclude_unset=True)
 
         # Check for duplicate name
-        if "name" in update_data and update_data["name"] != old_name:
-            for c in cocktails:
-                if c.name.lower() == update_data["name"].lower() and c.id != cocktail_id:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"Cocktail '{update_data['name']}' already exists"
-                    )
+        if "name" in update_data and update_data["name"] != existing.name:
+            dup = repo.get_by_name(update_data["name"])
+            if dup and dup.id != str(cocktail_id):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Cocktail '{update_data['name']}' already exists"
+                )
 
-        # Apply updates
+        # Apply updates to Pydantic model
         for key, value in update_data.items():
             if key == "ingredients" and value is not None:
-                cocktail.ingredients = [RecipeIngredient(**i) if isinstance(i, dict) else i for i in value]
+                existing.ingredients = [RecipeIngredient(**i) if isinstance(i, dict) else i for i in value]
             else:
-                setattr(cocktail, key, value)
+                setattr(existing, key, value)
 
-        template_dir = Path(__file__).parent.parent.parent.parent.parent / "templates"
-        generator = ObsidianGenerator(
-            vault_path=core_config.vault_path,
-            template_dir=template_dir,
-        )
-
-        # Move directory if name changed
-        if "name" in update_data and update_data["name"] != old_name:
-            old_dir = core_config.vault_path / vault_path
-            new_folder_name = _sanitize_filename(cocktail.name)
-            new_dir = core_config.vault_path / "3_Cocktails" / new_folder_name
-
-            if old_dir.exists():
-                shutil.move(str(old_dir), str(new_dir))
-
-            if bottle_registry is not None:
-                bottle_registry.unregister(vault_path)
-
-            vault_path = f"3_Cocktails/{new_folder_name}"
-            cocktail.vault_path = vault_path
-
-            old_md = new_dir / f"{old_name}.md"
-            if old_md.exists():
-                old_md.unlink()
-
-        obsidian_file = generator.generate_cocktail_file(cocktail)
-        generator.write_file(obsidian_file)
-
-        if bottle_registry is not None:
-            cocktail.id = bottle_registry.register(vault_path)
-
-        logger.info(f"Updated cocktail: {cocktail.name} (id={cocktail.id})")
-        return _cocktail_to_dict(cocktail)
+        updated = repo.update(cocktail_id, existing)
+        logger.info(f"Updated cocktail: {updated.name} (id={updated.id})")
+        return _cocktail_to_dict(updated)
 
     except HTTPException:
         raise
@@ -313,26 +231,19 @@ async def update_cocktail(cocktail_id: str, request_data: UpdateCocktailRequest)
 
 
 @router.delete("/api/v1/cocktails/{cocktail_id}", dependencies=[Depends(require("cocktails.delete"))])
-async def delete_cocktail(cocktail_id: str):
+async def delete_cocktail(
+    cocktail_id: int,
+    repo: SQLiteCocktailRepository = Depends(get_cocktail_repo),
+):
     """Delete a cocktail recipe."""
-    core_config, bottle_registry = _get_services()
-
     try:
-        cocktails = _read_cocktails(core_config, bottle_registry)
-        cocktail = _find_cocktail_by_id(cocktails, cocktail_id)
+        cocktail = repo.get_by_id(cocktail_id)
         if not cocktail:
             raise HTTPException(status_code=404, detail="Cocktail not found")
 
-        vault_path = cocktail.vault_path
-        full_path = core_config.vault_path / vault_path
-        if full_path.exists():
-            shutil.rmtree(full_path)
-
-        if bottle_registry is not None:
-            bottle_registry.unregister(vault_path)
-
+        repo.delete(cocktail_id)
         logger.info(f"Deleted cocktail: {cocktail.name} (id={cocktail_id})")
-        return {"status": "deleted", "name": cocktail.name, "id": cocktail_id}
+        return {"status": "deleted", "name": cocktail.name, "id": str(cocktail_id)}
 
     except HTTPException:
         raise
@@ -345,39 +256,17 @@ async def delete_cocktail(cocktail_id: str):
 # COCKTAIL TASTING ROUTES
 # ============================================================================
 
-def _tasting_to_dict(t: CocktailTastingNote) -> dict:
-    """Convert cocktail tasting note to API response dict."""
-    return {
-        "id": t.id,
-        "recipe_name": t.recipe_name,
-        "taster_name": t.taster_name,
-        "tasting_date": t.tasting_date,
-        "score": t.score,
-        "notes": t.notes,
-        "bartender": t.bartender,
-        "bottles_used": [
-            {
-                "recipe_ingredient": bu.recipe_ingredient,
-                "actual_product": bu.actual_product,
-            }
-            for bu in t.bottles_used
-        ],
-    }
-
-
 @router.post("/api/v1/cocktails/{cocktail_id}/tastings", dependencies=[Depends(require("cocktail_tastings.submit"))])
 async def create_cocktail_tasting(
-    cocktail_id: str, request_data: CreateCocktailTastingRequest
+    cocktail_id: int,
+    request_data: CreateCocktailTastingRequest,
+    repo: SQLiteCocktailRepository = Depends(get_cocktail_repo),
 ):
     """Create a tasting note for a cocktail."""
     from datetime import date
 
-    core_config, bottle_registry = _get_services()
-
     try:
-        # Look up the cocktail
-        cocktails = _read_cocktails(core_config, bottle_registry)
-        cocktail = _find_cocktail_by_id(cocktails, cocktail_id)
+        cocktail = repo.get_by_id(cocktail_id)
         if not cocktail:
             raise HTTPException(status_code=404, detail="Cocktail not found")
 
@@ -391,30 +280,9 @@ async def create_cocktail_tasting(
             bottles_used=request_data.bottles_used,
         )
 
-        template_dir = Path(__file__).parent.parent.parent.parent.parent / "templates"
-        generator = ObsidianGenerator(
-            vault_path=core_config.vault_path,
-            template_dir=template_dir,
-        )
-
-        obsidian_file = generator.generate_cocktail_tasting_file(tasting)
-        generator.write_file(obsidian_file)
-
-        # Generate ID for the tasting
-        tasting_vault_path = str(
-            obsidian_file.file_path.relative_to(core_config.vault_path)
-        )
-        if bottle_registry is not None:
-            tasting.id = bottle_registry.register(tasting_vault_path)
-        else:
-            tasting.id = BottleRegistry.generate_id(tasting_vault_path)
-        tasting.vault_path = tasting_vault_path
-
-        logger.info(
-            f"Created cocktail tasting for {cocktail.name} "
-            f"by {tasting.taster_name} (id={tasting.id})"
-        )
-        return _tasting_to_dict(tasting)
+        created = repo.create_tasting(tasting, cocktail_id)
+        logger.info(f"Created cocktail tasting for {cocktail.name} by {created.taster_name}")
+        return _tasting_to_dict(created)
 
     except HTTPException:
         raise
@@ -424,19 +292,17 @@ async def create_cocktail_tasting(
 
 
 @router.get("/api/v1/cocktails/{cocktail_id}/tastings", dependencies=[Depends(require("cocktail_tastings.view"))])
-async def list_cocktail_tastings(cocktail_id: str):
+async def list_cocktail_tastings(
+    cocktail_id: int,
+    repo: SQLiteCocktailRepository = Depends(get_cocktail_repo),
+):
     """List all tasting notes for a cocktail."""
-    core_config, bottle_registry = _get_services()
-
     try:
-        cocktails = _read_cocktails(core_config, bottle_registry)
-        cocktail = _find_cocktail_by_id(cocktails, cocktail_id)
+        cocktail = repo.get_by_id(cocktail_id)
         if not cocktail:
             raise HTTPException(status_code=404, detail="Cocktail not found")
 
-        reader = VaultReader(core_config.vault_path, registry=bottle_registry)
-        tastings = reader.read_cocktail_tastings(cocktail.name)
-
+        tastings = repo.get_tastings(cocktail_id)
         return [_tasting_to_dict(t) for t in tastings]
 
     except HTTPException:
@@ -446,34 +312,24 @@ async def list_cocktail_tastings(cocktail_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/api/v1/cocktails/{cocktail_id}/tastings/{tasting_file}", dependencies=[Depends(require("cocktail_tastings.delete"))])
-async def delete_cocktail_tasting(cocktail_id: str, tasting_file: str):
-    """Delete a cocktail tasting note.
-
-    Args:
-        cocktail_id: The cocktail ID
-        tasting_file: The tasting filename (e.g., "Tasting-2025-01-15-Ben.md")
-    """
-    core_config, bottle_registry = _get_services()
-
+@router.delete("/api/v1/cocktails/{cocktail_id}/tastings/{tasting_id}", dependencies=[Depends(require("cocktail_tastings.delete"))])
+async def delete_cocktail_tasting(
+    cocktail_id: int,
+    tasting_id: int,
+    repo: SQLiteCocktailRepository = Depends(get_cocktail_repo),
+):
+    """Delete a cocktail tasting note."""
     try:
-        cocktails = _read_cocktails(core_config, bottle_registry)
-        cocktail = _find_cocktail_by_id(cocktails, cocktail_id)
+        cocktail = repo.get_by_id(cocktail_id)
         if not cocktail:
             raise HTTPException(status_code=404, detail="Cocktail not found")
 
-        # Find the tasting file
-        cocktail_folder = Path(cocktail.vault_path).parent
-        tasting_path = cocktail_folder / tasting_file
-
-        if not tasting_path.exists():
+        deleted = repo.delete_tasting(tasting_id)
+        if not deleted:
             raise HTTPException(status_code=404, detail="Tasting not found")
 
-        # Delete the tasting file
-        tasting_path.unlink()
-        logger.info(f"Deleted cocktail tasting: {tasting_path}")
-
-        return {"status": "deleted", "file": tasting_file}
+        logger.info(f"Deleted cocktail tasting {tasting_id}")
+        return {"status": "deleted", "id": str(tasting_id)}
 
     except HTTPException:
         raise
@@ -535,7 +391,6 @@ Use standard measurements (oz for spirits, dash for bitters). Return ONLY valid 
         )
 
         # Parse JSON response
-        import json
         recipe_text = response.content.strip()
         # Remove markdown code blocks if present
         if recipe_text.startswith("```"):

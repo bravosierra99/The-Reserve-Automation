@@ -32,6 +32,15 @@ templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=templates_dir)
 
 
+def _get_tasting_service():
+    """Create a DB-backed TastingService."""
+    from ...db.engine import get_db
+    from ...db.repositories.bottle_repo import SQLiteBottleRepository
+    from ...db.repositories.tasting_repo import SQLiteTastingRepository
+    db = next(get_db())
+    return TastingService(SQLiteBottleRepository(db), SQLiteTastingRepository(db))
+
+
 # ============================================================================
 # Page Routes
 # ============================================================================
@@ -96,7 +105,7 @@ async def get_tasting_session(
             logger.debug(f"Successfully converted extraction_data, got {len(extraction_result.tastings)} tastings")
 
             logger.debug(f"Creating tasting session from extraction")
-            tasting_service = TastingService(core_config)
+            tasting_service = _get_tasting_service()
             tasting_session = tasting_service.create_session_from_extraction(
                 extraction_id=extraction_id,
                 extraction_result=extraction_result,
@@ -136,7 +145,7 @@ async def get_tasting_session(
     # Get stats
     try:
         logger.debug(f"Getting session stats")
-        tasting_service = TastingService(core_config)
+        tasting_service = _get_tasting_service()
         session_obj = TastingSession(**tasting_session) if isinstance(tasting_session, dict) else tasting_session
         stats = tasting_service.get_session_stats(session_obj)
         logger.debug(f"Successfully got stats: {stats}")
@@ -187,9 +196,9 @@ async def get_single_tasting(
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Get a single tasting by index."""
-    from ..app import core_config, web_config
+    from ..app import web_config
 
-    if not core_config or not web_config:
+    if not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
 
     if not session_token:
@@ -282,6 +291,7 @@ async def update_tasting(
         value=new_token,
         max_age=web_config.sessions.max_age_hours * 3600,
         httponly=True,
+        secure=True,
         samesite="lax"
     )
 
@@ -298,12 +308,12 @@ async def select_match(
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Select a bottle match for a tasting."""
-    from ..app import core_config, web_config
+    from ..app import web_config
 
     logger.debug(f"=== SELECT MATCH ENDPOINT ===")
     logger.debug(f"extraction_id: {extraction_id}, index: {index}, bottle_path: {request.bottle_path}")
 
-    if not core_config or not web_config:
+    if not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
 
     if not session_token:
@@ -344,7 +354,7 @@ async def select_match(
     logger.debug(f"Tasting after update: {tastings[index].get('selected_match')}")
 
     # Check for duplicate
-    tasting_service = TastingService(core_config)
+    tasting_service = _get_tasting_service()
     tasting_data = tastings[index].get("tasting_data", {})
     duplicate_warning = tasting_service.check_duplicate_tasting(
         bottle_path=request.bottle_path,
@@ -369,6 +379,7 @@ async def select_match(
         value=new_token,
         max_age=web_config.sessions.max_age_hours * 3600,
         httponly=True,
+        secure=True,
         samesite="lax"
     )
 
@@ -392,9 +403,9 @@ async def approve_tasting(
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Approve and save a single tasting."""
-    from ..app import core_config, web_config, upload_service
+    from ..app import web_config, upload_service
 
-    if not core_config or not web_config:
+    if not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
 
     if not session_token:
@@ -427,7 +438,7 @@ async def approve_tasting(
         raise HTTPException(status_code=400, detail="No bottle selected for this tasting")
 
     # Save the tasting
-    tasting_service = TastingService(core_config)
+    tasting_service = _get_tasting_service()
 
     # Get event context if present
     event_id = session_data.get("event_id")
@@ -482,7 +493,7 @@ async def approve_tasting(
     }
 
 
-@router.post("/api/v1/tastings/{extraction_id}/{index}/skip")
+@router.post("/api/v1/tastings/{extraction_id}/{index}/skip", dependencies=[Depends(require("tastings.submit"))])
 async def skip_tasting(
     extraction_id: str,
     index: int,
@@ -490,9 +501,9 @@ async def skip_tasting(
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Skip a single tasting without saving."""
-    from ..app import core_config, web_config, upload_service
+    from ..app import web_config, upload_service
 
-    if not core_config or not web_config:
+    if not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
 
     if not session_token:
@@ -523,7 +534,7 @@ async def skip_tasting(
     tasting_session["tastings"] = tastings
 
     # Check if all done
-    tasting_service = TastingService(core_config)
+    tasting_service = _get_tasting_service()
     stats = tasting_service.get_session_stats(TastingSession(**tasting_session))
 
     # If all done, clean up
@@ -555,7 +566,7 @@ async def skip_tasting(
     }
 
 
-@router.post("/api/v1/tastings/{extraction_id}/reject-all")
+@router.post("/api/v1/tastings/{extraction_id}/reject-all", dependencies=[Depends(require("tastings.submit"))])
 async def reject_all_tastings(
     extraction_id: str,
     response: Response,
@@ -604,9 +615,9 @@ async def refresh_matches(
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Re-run bottle matching for all tastings in the session."""
-    from ..app import core_config, web_config
+    from ..app import web_config
 
-    if not core_config or not web_config:
+    if not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
 
     if not session_token:
@@ -628,7 +639,7 @@ async def refresh_matches(
     if not tasting_session:
         raise HTTPException(status_code=404, detail="No tasting session")
 
-    tasting_service = TastingService(core_config)
+    tasting_service = _get_tasting_service()
     tastings = tasting_session.get("tastings", [])
 
     # Re-run matching for each tasting that hasn't been approved
@@ -670,6 +681,7 @@ async def refresh_matches(
         value=new_token,
         max_age=web_config.sessions.max_age_hours * 3600,
         httponly=True,
+        secure=True,
         samesite="lax"
     )
 
@@ -781,35 +793,38 @@ async def save_manual_tasting(
     This endpoint just receives the complete data and saves it.
     No server-side session needed.
     """
-    from .. import app as app_module
-    core_config = app_module.core_config
-    event_store = app_module.event_store
-    bottle_registry = app_module.bottle_registry
+    from ...db.engine import get_db
+    from ...db.repositories.bottle_repo import SQLiteBottleRepository
+    from ...db.repositories.event_repo import SQLiteEventRepository
 
     try:
-        if not core_config:
-            raise HTTPException(status_code=500, detail="Service not initialized")
+        db = next(get_db())
+        bottle_repo = SQLiteBottleRepository(db)
 
         # Resolve bottle ID to path if needed
         selected_bottle_path = request_data.selected_bottle_path
         if not selected_bottle_path and request_data.selected_bottle_id:
-            if bottle_registry is None:
-                raise HTTPException(status_code=500, detail="Bottle registry not initialized")
-            selected_bottle_path = bottle_registry.get_path(request_data.selected_bottle_id)
-            if not selected_bottle_path:
+            bottle = bottle_repo.get_by_id(int(request_data.selected_bottle_id))
+            if not bottle:
                 raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {request_data.selected_bottle_id}")
+            # Use the bottle's vault path for Obsidian mode, or keep the ID for event mode
+            if bottle.vault_path:
+                selected_bottle_path = bottle.vault_path
+            else:
+                # Construct a path from bottle metadata if vault_path not available
+                selected_bottle_path = f"{request_data.selected_bottle_id}"
 
         # Validate required fields
         if not request_data.taster_name:
             raise HTTPException(status_code=400, detail="Taster name is required")
         if not request_data.tasting_date:
             raise HTTPException(status_code=400, detail="Tasting date is required")
-        if not selected_bottle_path:
+        if not selected_bottle_path and not request_data.selected_bottle_id:
             raise HTTPException(status_code=400, detail="Bottle selection is required (provide selected_bottle_id or selected_bottle_path)")
 
         # Save based on mode
         if request_data.mode == ManualTastingMode.OBSIDIAN:
-            tasting_service = TastingService(core_config)
+            tasting_service = _get_tasting_service()
             success, file_path, error = await tasting_service.save_manual_tasting_direct(
                 taster_name=request_data.taster_name,
                 tasting_date=request_data.tasting_date,
@@ -831,37 +846,48 @@ async def save_manual_tasting(
             if not request_data.participant_id:
                 raise HTTPException(status_code=400, detail="Participant ID required for event mode")
 
-            if event_store is None:
-                raise HTTPException(status_code=500, detail="Event store not initialized")
-
-            if request_data.event_id not in event_store:
+            event_repo = SQLiteEventRepository(db)
+            event = event_repo.get_by_id(request_data.event_id)
+            if not event:
                 raise HTTPException(status_code=404, detail="Event not found")
-
-            event = event_store[request_data.event_id]
 
             if request_data.participant_id not in event["participants"]:
                 raise HTTPException(status_code=404, detail="Participant not found in event")
 
             participant = event["participants"][request_data.participant_id]
 
-            # Check if tasting already exists (for editing)
-            existing_index = None
-            for i, t in enumerate(participant["tastings"]):
-                if t["bottle_path"] == selected_bottle_path:
-                    existing_index = i
-                    break
+            # The selected_bottle_id IS the DB bottle ID now
+            bottle_id = request_data.selected_bottle_id
+            if not bottle_id:
+                raise HTTPException(status_code=400, detail="Bottle ID required for event mode")
 
-            tasting_entry = {
-                "bottle_path": selected_bottle_path,
-                "tasting_data": request_data.tasting_data
-            }
+            # Check if tasting already exists for this participant + bottle (for editing)
+            existing_tasting = None
+            from ...db.models.event import EventTastingModel
+            existing_tasting = (
+                db.query(EventTastingModel)
+                .filter(
+                    EventTastingModel.participant_id == request_data.participant_id,
+                    EventTastingModel.bottle_id == int(bottle_id),
+                )
+                .first()
+            )
 
-            if existing_index is not None:
-                participant["tastings"][existing_index] = tasting_entry
-                logger.info(f"Updated tasting for bottle {selected_bottle_path}")
+            if existing_tasting:
+                # Update existing tasting
+                existing_tasting.tasting_data = request_data.tasting_data
+                db.commit()
+                logger.info(f"Updated tasting for bottle {bottle_id}")
             else:
-                participant["tastings"].append(tasting_entry)
-                logger.info(f"Added new tasting for bottle {selected_bottle_path}")
+                # Add new tasting via repo
+                event_repo.add_tasting(
+                    participant_id=request_data.participant_id,
+                    tasting_data={
+                        "bottle_id": bottle_id,
+                        "tasting_data": request_data.tasting_data,
+                    },
+                )
+                logger.info(f"Added new tasting for bottle {bottle_id}")
 
             logger.info(f"Saved manual tasting to event {request_data.event_id}")
             return {"status": "saved", "event_id": request_data.event_id}

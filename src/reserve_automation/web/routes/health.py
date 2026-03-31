@@ -6,8 +6,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from loguru import logger
+
+from ..auth.dependencies import require
 
 router = APIRouter()
 
@@ -121,7 +123,18 @@ def _get_git_info() -> dict:
 @router.get("/health")
 async def health_check():
     """
-    Health check endpoint with version and deployment information.
+    Public health check endpoint - minimal info only.
+
+    Returns:
+        Basic status (no version, git, or runtime details).
+    """
+    return {"status": "healthy"}
+
+
+@router.get("/health/details", dependencies=[Depends(require("management.access"))])
+async def health_check_details():
+    """
+    Detailed health check endpoint - admin only.
 
     Returns:
         Status information including git commit, Python version, etc.
@@ -131,9 +144,9 @@ async def health_check():
     response = {
         "status": "healthy",
         "service": "The Reserve Automation",
-        "version": git_info["version"],  # From git tag
+        "version": git_info["version"],
         "git": {
-            "commit": git_info["commit_short"],  # Short hash for readability
+            "commit": git_info["commit_short"],
             "commit_full": git_info["commit"],
             "branch": git_info["branch"],
             "clean": git_info["clean"],
@@ -147,11 +160,9 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
     }
 
-    # Add build date if available (from Docker build)
     if git_info.get("build_date"):
         response["git"]["build_date"] = git_info["build_date"]
 
-    # Log health check with version info for visibility
     logger.info(
         f"Health check: v{response['version']} "
         f"[{git_info['commit_short']}@{git_info['branch']}] "

@@ -8,8 +8,6 @@ from loguru import logger
 
 from reserve_automation.core.config import Config
 from reserve_automation.core.tasting_note import TastingExtractionResult, TastingNote
-from reserve_automation.generators.tasting_generator import TastingGenerator
-from reserve_automation.utils.bottle_matcher import BottleMatcher, BottleMatch
 
 from ..schemas.tasting import (
     MatchCandidate,
@@ -23,32 +21,31 @@ from ..schemas.tasting import (
 class TastingService:
     """Service for managing tasting extraction and review workflow."""
 
-    def __init__(self, core_config: Config):
+    def __init__(self, config_or_bottle_repo, tasting_repo=None):
         """
         Initialize tasting service.
 
-        Args:
-            core_config: Core application configuration
-        """
-        self.config = core_config
-        self.vault_path = core_config.vault_path
-        self.templates_path = core_config.templates_dir
-
-        # Initialize bottle matcher and tasting generator
-        self.bottle_matcher = BottleMatcher(self.vault_path)
-        self.tasting_generator = TastingGenerator(
-            vault_path=self.vault_path,
-            templates_path=self.templates_path
-        )
-
-    def invalidate_bottle_cache(self, beverage_type: Optional[str] = None):
-        """
-        Invalidate bottle cache after new bottles are added.
+        Supports two modes:
+        1. Legacy: TastingService(core_config) - for session/extraction workflow
+        2. DB mode: TastingService(bottle_repo, tasting_repo) - for DB operations
 
         Args:
-            beverage_type: Optional beverage type to invalidate. If None, clears entire cache.
+            config_or_bottle_repo: Either Config or SQLiteBottleRepository
+            tasting_repo: Optional SQLiteTastingRepository (if first arg is a repo)
         """
-        self.bottle_matcher.invalidate_cache(beverage_type)
+        from ...db.repositories.bottle_repo import SQLiteBottleRepository
+
+        if isinstance(config_or_bottle_repo, SQLiteBottleRepository):
+            self.bottle_repo = config_or_bottle_repo
+            self.tasting_repo = tasting_repo
+            self.config = None
+            self.vault_path = None
+        else:
+            # Legacy mode - config passed
+            self.config = config_or_bottle_repo
+            self.vault_path = config_or_bottle_repo.vault_path if config_or_bottle_repo else None
+            self.bottle_repo = None
+            self.tasting_repo = None
 
     def create_session_from_extraction(
         self,
@@ -58,31 +55,16 @@ class TastingService:
         upload_filename: Optional[str] = None,
         event_id: Optional[str] = None
     ) -> TastingSession:
-        """
-        Create a TastingSession from an extraction result.
-
-        Args:
-            extraction_id: Unique ID for this extraction
-            extraction_result: Raw extraction result from LLM
-            expected_count: User-specified expected tasting count
-            upload_filename: Original uploaded filename
-            event_id: Optional event ID to restrict matches to event bottles
-
-        Returns:
-            TastingSession with match candidates populated
-        """
+        """Create a TastingSession from an extraction result."""
         logger.info(f"Creating tasting session {extraction_id} with {len(extraction_result.tastings)} tastings")
 
         tastings = []
         for i, tasting in enumerate(extraction_result.tastings):
             try:
                 logger.debug(f"Processing tasting {i}: {tasting.bottle_name}")
-                # Convert raw tasting to TastingData
                 tasting_data = self._tasting_note_to_data(tasting)
-                logger.debug(f"Successfully converted tasting {i} to TastingData")
             except Exception as e:
                 logger.error(f"Failed to convert tasting {i} to TastingData: {e}", exc_info=True)
-                logger.error(f"Tasting data: {tasting.model_dump()}")
                 raise
 
             # Get match candidates for this tasting
@@ -107,7 +89,6 @@ class TastingService:
                     tasting_date=tasting.tasting_date
                 )
 
-            # Determine initial status
             status = TastingStatus.MATCHED if selected_match else TastingStatus.EXTRACTED
 
             session_item = TastingSessionItem(
@@ -126,7 +107,6 @@ class TastingService:
         if count_mismatch:
             logger.warning(f"Count mismatch: expected {expected_count}, got {actual_count}")
 
-        # Infer beverage_type from template_type or first tasting
         beverage_type = "unknown"
         if extraction_result.template_type == "aws_wine":
             beverage_type = "wine"
@@ -156,94 +136,113 @@ class TastingService:
         limit: int = 5,
         event_id: Optional[str] = None
     ) -> list[MatchCandidate]:
-        """
-        Get potential bottle matches for a tasting.
-
-        Args:
-            bottle_name: Bottle name from tasting card
-            beverage_type: "wine" or "whiskey"
-            limit: Maximum candidates to return
-            event_id: Optional event ID to restrict matches to event bottles
-
-        Returns:
-            List of MatchCandidate objects sorted by confidence
-        """
+        """Get potential bottle matches for a tasting using DB search."""
         logger.debug(f"Finding matches for: {bottle_name} ({beverage_type}, event_id={event_id})")
 
-        # If event_id provided, filter to event bottles only
+        # If event_id provided, search event bottles
         if event_id:
-            from ..app import event_store
-            if event_store and event_id in event_store:
-                event = event_store[event_id]
-                event_bottles = event["bottles"]
+            return self._search_event_bottles(bottle_name, beverage_type, event_id, limit)
 
-                candidates = []
-                for bottle in event_bottles:
-                    # Simple string matching for event bottles
-                    if bottle_name.lower() in bottle["bottle_name"].lower():
-                        # Build thumbnail URL
-                        thumbnail_url = None
-                        label_path = self.vault_path / bottle["bottle_path"] / "labels" / "label.jpg"
-                        if label_path.exists():
-                            thumbnail_url = f"/api/v1/bottle-label/{bottle['bottle_path']}"
+        # Use bottle_repo for DB search
+        if self.bottle_repo:
+            bottles = self.bottle_repo.search(bottle_name)
+            candidates = []
+            for bottle in bottles[:limit]:
+                # Simple confidence based on name similarity
+                from difflib import SequenceMatcher
+                full_name = f"{bottle.producer} - {bottle.name}"
+                confidence = SequenceMatcher(None, bottle_name.lower(), full_name.lower()).ratio()
 
-                        # Display name depends on event status
-                        display_name = bottle["bottle_name"]
-                        if event["is_blind"] and event["status"] == "open" and bottle.get("blind_number"):
-                            display_name = f"Bottle #{bottle['blind_number']}"
+                thumbnail_url = f"/api/v1/bottle-label/{bottle.id}" if bottle.label_image_url else None
 
-                        candidate = MatchCandidate(
-                            bottle_path=bottle["bottle_path"],
-                            bottle_name=display_name,
-                            producer="",
-                            confidence=1.0 if bottle_name.lower() == bottle["bottle_name"].lower() else 0.8,
-                            thumbnail_url=thumbnail_url,
-                            beverage_type=beverage_type
-                        )
-                        candidates.append(candidate)
+                candidate = MatchCandidate(
+                    bottle_path=str(bottle.id),  # Use DB ID as path
+                    bottle_name=full_name,
+                    producer=bottle.producer or "",
+                    vintage=bottle.year,
+                    confidence=confidence,
+                    thumbnail_url=thumbnail_url,
+                    beverage_type=bottle.type or beverage_type
+                )
+                candidates.append(candidate)
 
-                candidates.sort(key=lambda x: x.confidence, reverse=True)
-                return candidates[:limit]
+            candidates.sort(key=lambda x: x.confidence, reverse=True)
+            return candidates[:limit]
 
-            # Event not found, return empty
-            return []
-
-        matches = self.bottle_matcher.find_matches(
-            bottle_name=bottle_name,
-            beverage_type=beverage_type,
-            top_n=limit,
-            min_score=0.3
-        )
-
-        candidates = []
-        for match in matches:
-            # Use vault_path directly from bottle metadata
-            bottle_path = match.bottle.vault_path or ""
-
-            if not bottle_path:
-                logger.warning(f"Bottle has no vault_path: {self._get_full_name(match)}")
-                continue
-
-            # Build thumbnail URL (if label exists)
-            thumbnail_url = None
-            bottle_folder_name = bottle_path.split('/')[-1]  # Last component
-            label_path = self.vault_path / bottle_path / "labels" / "label.jpg"
-            if label_path.exists():
-                thumbnail_url = f"/api/v1/vault-images/{beverage_type}/{bottle_folder_name}/label.jpg"
-
-            candidate = MatchCandidate(
-                bottle_path=bottle_path,
-                bottle_name=self._get_full_name(match),
-                producer=match.bottle.producer or "",
-                vintage=match.bottle.year,
-                confidence=match.score,
-                thumbnail_url=thumbnail_url,
-                beverage_type=beverage_type
+        # Fallback to vault-based matching if no repo
+        if self.vault_path:
+            from reserve_automation.utils.bottle_matcher import BottleMatcher
+            bottle_matcher = BottleMatcher(self.vault_path)
+            matches = bottle_matcher.find_matches(
+                bottle_name=bottle_name,
+                beverage_type=beverage_type,
+                top_n=limit,
+                min_score=0.3
             )
-            candidates.append(candidate)
 
-        logger.debug(f"Found {len(candidates)} candidates")
-        return candidates
+            candidates = []
+            for match in matches:
+                bottle_path = match.bottle.vault_path or ""
+                if not bottle_path:
+                    continue
+
+                thumbnail_url = None
+                label_path = self.vault_path / bottle_path / "labels" / "label.jpg"
+                if label_path.exists():
+                    thumbnail_url = f"/api/v1/vault-images/{beverage_type}/{bottle_path.split('/')[-1]}/label.jpg"
+
+                candidate = MatchCandidate(
+                    bottle_path=bottle_path,
+                    bottle_name=self._get_full_name_from_match(match),
+                    producer=match.bottle.producer or "",
+                    vintage=match.bottle.year,
+                    confidence=match.score,
+                    thumbnail_url=thumbnail_url,
+                    beverage_type=beverage_type
+                )
+                candidates.append(candidate)
+
+            return candidates
+
+        return []
+
+    def _search_event_bottles(self, bottle_name, beverage_type, event_id, limit):
+        """Search for bottles within an event."""
+        from ...db.repositories import get_event_repo
+        from ...db.engine import get_db
+
+        # Try to get event from DB
+        try:
+            db = next(get_db())
+            from ...db.repositories.event_repo import SQLiteEventRepository
+            event_repo = SQLiteEventRepository(db)
+            event = event_repo.get(event_id)
+            if not event:
+                return []
+
+            event_bottles = event.get("bottles", [])
+            candidates = []
+            for bottle in event_bottles:
+                if bottle_name.lower() in bottle.get("bottle_name", "").lower():
+                    display_name = bottle["bottle_name"]
+                    if event.get("is_blind") and event.get("status") == "open" and bottle.get("blind_number"):
+                        display_name = f"Bottle #{bottle['blind_number']}"
+
+                    candidate = MatchCandidate(
+                        bottle_path=bottle.get("bottle_id", bottle.get("bottle_path", "")),
+                        bottle_name=display_name,
+                        producer="",
+                        confidence=1.0 if bottle_name.lower() == bottle.get("bottle_name", "").lower() else 0.8,
+                        thumbnail_url=None,
+                        beverage_type=beverage_type
+                    )
+                    candidates.append(candidate)
+
+            candidates.sort(key=lambda x: x.confidence, reverse=True)
+            return candidates[:limit]
+        except Exception as e:
+            logger.warning(f"Failed to search event bottles: {e}")
+            return []
 
     def search_bottles(
         self,
@@ -253,108 +252,69 @@ class TastingService:
         strict: bool = True,
         event_id: Optional[str] = None
     ) -> list[MatchCandidate]:
-        """
-        Search for bottles in the vault by name.
+        """Search for bottles by name using DB."""
+        logger.info(f"Searching bottles: '{query}' (type={beverage_type}, event_id={event_id})")
 
-        Args:
-            query: Search query
-            beverage_type: Optional filter (wine/whiskey)
-            limit: Maximum results
-            strict: Use strict substring matching (default True)
-            event_id: Optional event ID to restrict search to event bottles
-
-        Returns:
-            List of matching bottles as MatchCandidate objects
-        """
-        logger.info(f"Searching bottles: '{query}' (type={beverage_type}, strict={strict}, event_id={event_id})")
-
-        # If event_id provided, search only event bottles
         if event_id:
-            from ..app import event_store
-            if event_store and event_id in event_store:
-                event = event_store[event_id]
-                event_bottles = event["bottles"]
+            return self._search_event_bottles(query, beverage_type or "unknown", event_id, limit)
 
-                results = []
-                for bottle in event_bottles:
-                    # Match query against bottle name or blind number
-                    matches_name = query.lower() in bottle["bottle_name"].lower()
-                    matches_number = bottle.get("blind_number") and query in str(bottle["blind_number"])
+        if self.bottle_repo:
+            bottles = self.bottle_repo.search(query)
+            results = []
+            for bottle in bottles[:limit]:
+                from difflib import SequenceMatcher
+                full_name = f"{bottle.producer} - {bottle.name}"
+                confidence = SequenceMatcher(None, query.lower(), full_name.lower()).ratio()
 
-                    if matches_name or matches_number:
-                        # Build thumbnail URL
-                        thumbnail_url = None
-                        label_path = self.vault_path / bottle["bottle_path"] / "labels" / "label.jpg"
-                        if label_path.exists():
-                            thumbnail_url = f"/api/v1/bottle-label/{bottle['bottle_path']}"
-
-                        # Display name depends on event status
-                        display_name = bottle["bottle_name"]
-                        if event["is_blind"] and event["status"] == "open" and bottle.get("blind_number"):
-                            display_name = f"Bottle #{bottle['blind_number']}"
-
-                        candidate = MatchCandidate(
-                            bottle_path=bottle["bottle_path"],
-                            bottle_name=display_name,
-                            producer="",
-                            confidence=1.0 if matches_name else 0.9,
-                            thumbnail_url=thumbnail_url,
-                            beverage_type=event["beverage_type"]
-                        )
-                        results.append(candidate)
-
-                results.sort(key=lambda x: x.confidence, reverse=True)
-                return results[:limit]
-
-            # Event not found, return empty
-            return []
-
-        results = []
-
-        # Search both wine and whiskey if no type specified
-        types_to_search = [beverage_type] if beverage_type else ["wine", "whiskey"]
-
-        for bev_type in types_to_search:
-            matches = self.bottle_matcher.find_matches(
-                bottle_name=query,
-                beverage_type=bev_type,
-                top_n=limit,
-                min_score=0.2,  # Lower threshold for fuzzy search
-                strict_substring=strict
-            )
-
-            for match in matches:
-                # Use vault_path directly from bottle metadata (no reconstruction needed!)
-                bottle_path = match.bottle.vault_path or ""
-
-                if not bottle_path:
-                    logger.warning(f"Bottle has no vault_path: {self._get_full_name(match)}")
-                    continue
-
-                logger.debug(f"Processing match: bottle={self._get_full_name(match)}, vault_path={bottle_path}")
-
-                # Build thumbnail URL from vault_path
-                thumbnail_url = None
-                # Check for label in bottle's labels folder
-                label_path = self.vault_path / bottle_path / "labels" / "label.jpg"
-                if label_path.exists():
-                    thumbnail_url = f"/api/v1/bottle-label/{bottle_path}"
+                thumbnail_url = f"/api/v1/bottle-label/{bottle.id}" if bottle.label_image_url else None
 
                 candidate = MatchCandidate(
-                    bottle_path=bottle_path,
-                    bottle_name=self._get_full_name(match),
-                    producer=match.bottle.producer or "",
-                    vintage=match.bottle.year,
-                    confidence=match.score,
+                    bottle_path=str(bottle.id),
+                    bottle_name=full_name,
+                    producer=bottle.producer or "",
+                    vintage=bottle.year,
+                    confidence=confidence,
                     thumbnail_url=thumbnail_url,
-                    beverage_type=bev_type
+                    beverage_type=bottle.type or beverage_type or "unknown"
                 )
-                logger.debug(f"  -> Created MatchCandidate with bottle_path='{candidate.bottle_path}'")
                 results.append(candidate)
 
-        # Sort by confidence and limit
-        results.sort(key=lambda x: x.confidence, reverse=True)
-        return results[:limit]
+            results.sort(key=lambda x: x.confidence, reverse=True)
+            return results[:limit]
+
+        # Fallback to vault
+        if self.vault_path:
+            from reserve_automation.utils.bottle_matcher import BottleMatcher
+            bottle_matcher = BottleMatcher(self.vault_path)
+            results = []
+            types_to_search = [beverage_type] if beverage_type else ["wine", "whiskey"]
+            for bev_type in types_to_search:
+                matches = bottle_matcher.find_matches(
+                    bottle_name=query, beverage_type=bev_type,
+                    top_n=limit, min_score=0.2, strict_substring=strict
+                )
+                for match in matches:
+                    bottle_path = match.bottle.vault_path or ""
+                    if not bottle_path:
+                        continue
+                    thumbnail_url = None
+                    label_path = self.vault_path / bottle_path / "labels" / "label.jpg"
+                    if label_path.exists():
+                        thumbnail_url = f"/api/v1/bottle-label/{bottle_path}"
+                    candidate = MatchCandidate(
+                        bottle_path=bottle_path,
+                        bottle_name=self._get_full_name_from_match(match),
+                        producer=match.bottle.producer or "",
+                        vintage=match.bottle.year,
+                        confidence=match.score,
+                        thumbnail_url=thumbnail_url,
+                        beverage_type=bev_type
+                    )
+                    results.append(candidate)
+            results.sort(key=lambda x: x.confidence, reverse=True)
+            return results[:limit]
+
+        return []
 
     def check_duplicate_tasting(
         self,
@@ -362,32 +322,28 @@ class TastingService:
         taster: str,
         tasting_date: datetime
     ) -> Optional[str]:
-        """
-        Check if a tasting already exists for this bottle/taster/date combo.
-
-        Args:
-            bottle_path: Relative path to bottle folder
-            taster: Taster name
-            tasting_date: Date of tasting
-
-        Returns:
-            Warning message if duplicate found, None otherwise
-        """
-        full_path = self.vault_path / bottle_path
-
-        if not full_path.exists():
+        """Check if a tasting already exists for this bottle/taster/date combo."""
+        if self.tasting_repo:
+            try:
+                bottle_id = int(bottle_path)
+                date_str = tasting_date.strftime("%Y-%m-%d") if isinstance(tasting_date, datetime) else str(tasting_date)[:10]
+                if self.tasting_repo.check_duplicate(bottle_id, taster, date_str):
+                    return f"A tasting by {taster} on {date_str} may already exist"
+            except (ValueError, TypeError):
+                pass
             return None
 
-        # Look for existing tasting files
-        date_str = tasting_date.strftime("%Y-%m-%d") if isinstance(tasting_date, datetime) else str(tasting_date)[:10]
+        # Fallback to vault check
+        if self.vault_path:
+            full_path = self.vault_path / bottle_path
+            if not full_path.exists():
+                return None
 
-        for tasting_file in full_path.glob("tasting-*.md"):
-            # Check if file matches this taster and date
-            content = tasting_file.read_text()
-
-            # Simple check - look for taster name and date in content
-            if taster.lower() in content.lower() and date_str in content:
-                return f"A tasting by {taster} on {date_str} may already exist: {tasting_file.name}"
+            date_str = tasting_date.strftime("%Y-%m-%d") if isinstance(tasting_date, datetime) else str(tasting_date)[:10]
+            for tasting_file in full_path.glob("tasting-*.md"):
+                content = tasting_file.read_text()
+                if taster.lower() in content.lower() and date_str in content:
+                    return f"A tasting by {taster} on {date_str} may already exist: {tasting_file.name}"
 
         return None
 
@@ -398,101 +354,257 @@ class TastingService:
         event_id: Optional[str] = None,
         participant_id: Optional[str] = None
     ) -> tuple[bool, Optional[str], Optional[str]]:
-        """
-        Save a single tasting to the vault or event store.
-
-        Args:
-            tasting_item: The tasting session item to save
-            bottle_path: Path to bottle folder in vault
-            event_id: Optional event ID for event-based tastings
-            participant_id: Optional participant ID for event-based tastings
-
-        Returns:
-            Tuple of (success, file_path, error_message)
-        """
+        """Save a single tasting to the DB or event store."""
         logger.info(f"Saving tasting to {bottle_path} (event_id={event_id})")
 
-        # If event_id provided, save to event_store instead of vault
+        # If event_id provided, save to event store
         if event_id:
+            return await self._save_to_event(tasting_item, bottle_path, event_id, participant_id)
+
+        # Save to DB via tasting_repo
+        if self.tasting_repo and self.bottle_repo:
             try:
-                from ..app import event_store
-                if event_store is None or event_id not in event_store:
-                    return False, None, "Event not found"
+                bottle_id = int(bottle_path)
+                bottle = self.bottle_repo.get_by_id(bottle_id)
+                if not bottle:
+                    return False, None, f"Bottle not found: {bottle_path}"
 
-                if not participant_id:
-                    return False, None, "Participant ID required for event tastings"
+                tasting_note = self._data_to_tasting_note(tasting_item.tasting_data)
+                tasting_note.bottle_name = f"{bottle.producer} - {bottle.name}"
 
-                event = event_store[event_id]
-
-                # Check if participant exists
-                if participant_id not in event["participants"]:
-                    return False, None, "Participant not found in event"
-
-                participant = event["participants"][participant_id]
-
-                # Check for duplicate (one tasting per bottle per participant)
-                if any(t["bottle_path"] == bottle_path for t in participant["tastings"]):
-                    return False, None, "You have already tasted this bottle"
-
-                # Add tasting to participant
-                participant["tastings"].append({
-                    "bottle_path": bottle_path,
-                    "tasting_data": tasting_item.tasting_data.dict()
-                })
-
-                logger.info(f"Saved tasting to event {event_id} for participant {participant_id}")
-                return True, f"event:{event_id}", None
+                created = self.tasting_repo.create(tasting_note, bottle_id)
+                logger.info(f"Saved tasting to DB: id={created.id}")
+                return True, str(created.id), None
 
             except Exception as e:
-                logger.error(f"Failed to save event tasting: {e}", exc_info=True)
+                logger.error(f"Failed to save tasting to DB: {e}", exc_info=True)
                 return False, None, str(e)
 
-        try:
-            # Convert TastingData back to TastingNote
-            tasting_note = self._data_to_tasting_note(tasting_item.tasting_data)
-
-            # Get the bottle match
-            full_bottle_path = self.vault_path / bottle_path
-            if not full_bottle_path.exists():
-                return False, None, f"Bottle folder not found: {bottle_path}"
-
-            # Create a minimal BottleMatch for the generator
-            # We need to find the actual bottle metadata
-            matches = self.bottle_matcher.find_matches(
-                bottle_name=full_bottle_path.name,
-                beverage_type=tasting_item.tasting_data.beverage_type,
-                top_n=1,
-                min_score=0.0
-            )
-
-            if not matches:
-                # Create a synthetic match
+        # Fallback to vault
+        if self.vault_path:
+            try:
+                from reserve_automation.generators.tasting_generator import TastingGenerator
+                from reserve_automation.utils.bottle_matcher import BottleMatcher, BottleMatch
                 from reserve_automation.core.models import BottleMetadata
-                bottle_meta = BottleMetadata(
-                    producer="",
-                    name=full_bottle_path.name,
-                    type=tasting_item.tasting_data.beverage_type
+
+                tasting_note = self._data_to_tasting_note(tasting_item.tasting_data)
+                full_bottle_path = self.vault_path / bottle_path
+                if not full_bottle_path.exists():
+                    return False, None, f"Bottle folder not found: {bottle_path}"
+
+                bottle_matcher = BottleMatcher(self.vault_path)
+                matches = bottle_matcher.find_matches(
+                    bottle_name=full_bottle_path.name,
+                    beverage_type=tasting_item.tasting_data.beverage_type,
+                    top_n=1, min_score=0.0
                 )
-                match = BottleMatch(bottle_meta, 1.0, full_bottle_path)
-            else:
-                match = matches[0]
-                match.folder_path = full_bottle_path  # Ensure correct path
 
-            # Generate tasting file
-            file_path = self.tasting_generator.generate_tasting_file(
-                tasting=tasting_note,
-                bottle_match=match,
-                dry_run=False
-            )
+                if matches:
+                    match = matches[0]
+                    match.folder_path = full_bottle_path
+                else:
+                    bottle_meta = BottleMetadata(
+                        producer="", name=full_bottle_path.name,
+                        type=tasting_item.tasting_data.beverage_type
+                    )
+                    match = BottleMatch(bottle_meta, 1.0, full_bottle_path)
 
-            rel_path = str(file_path.relative_to(self.vault_path))
-            logger.info(f"Created tasting file: {rel_path}")
+                tasting_generator = TastingGenerator(
+                    vault_path=self.vault_path,
+                    templates_path=self.config.templates_dir if self.config else None
+                )
+                file_path = tasting_generator.generate_tasting_file(
+                    tasting=tasting_note, bottle_match=match, dry_run=False
+                )
+                rel_path = str(file_path.relative_to(self.vault_path))
+                return True, rel_path, None
 
-            return True, rel_path, None
+            except Exception as e:
+                logger.error(f"Failed to save tasting: {e}", exc_info=True)
+                return False, None, str(e)
+
+        return False, None, "No storage backend available"
+
+    async def _save_to_event(self, tasting_item, bottle_path, event_id, participant_id):
+        """Save tasting to event store."""
+        try:
+            from ...db.repositories.event_repo import SQLiteEventRepository
+            from ...db.engine import get_db
+
+            db = next(get_db())
+            event_repo = SQLiteEventRepository(db)
+            event = event_repo.get(event_id)
+
+            if not event:
+                return False, None, "Event not found"
+            if not participant_id:
+                return False, None, "Participant ID required for event tastings"
+            if participant_id not in event.get("participants", {}):
+                return False, None, "Participant not found in event"
+
+            participant = event["participants"][participant_id]
+            if any(t.get("bottle_path") == bottle_path for t in participant.get("tastings", [])):
+                return False, None, "You have already tasted this bottle"
+
+            participant.setdefault("tastings", []).append({
+                "bottle_path": bottle_path,
+                "tasting_data": tasting_item.tasting_data.dict()
+            })
+            event_repo.update(event_id, event)
+
+            logger.info(f"Saved tasting to event {event_id} for participant {participant_id}")
+            return True, f"event:{event_id}", None
 
         except Exception as e:
-            logger.error(f"Failed to save tasting: {e}", exc_info=True)
+            logger.error(f"Failed to save event tasting: {e}", exc_info=True)
             return False, None, str(e)
+
+    async def save_manual_tasting_direct(
+        self,
+        taster_name: str,
+        tasting_date: str,
+        beverage_type: str,
+        selected_bottle_path: str,
+        tasting_data: dict,
+    ) -> tuple[bool, Optional[str], Optional[str]]:
+        """Save a manual tasting directly (no session required)."""
+        from ..schemas.tasting import TastingData as TastingDataSchema
+
+        if not taster_name:
+            return False, None, "Missing taster name"
+        if not tasting_date:
+            return False, None, "Missing tasting date"
+        if not selected_bottle_path:
+            return False, None, "No bottle selected"
+
+        # DB mode
+        if self.bottle_repo and self.tasting_repo:
+            try:
+                bottle_id = int(selected_bottle_path)
+                bottle = self.bottle_repo.get_by_id(bottle_id)
+                if not bottle:
+                    return False, None, f"Bottle not found: {selected_bottle_path}"
+
+                bottle_name = f"{bottle.producer} - {bottle.name}"
+
+                tasting_data_dict = {
+                    'bottle_name': bottle_name,
+                    'taster_name': taster_name,
+                    'tasting_date': tasting_date,
+                    'beverage_type': beverage_type,
+                    **(tasting_data or {})
+                }
+                tasting_data_obj = TastingDataSchema(**tasting_data_dict)
+                tasting_date_parsed = datetime.fromisoformat(tasting_date)
+
+                tasting_note = TastingNote(
+                    bottle_name=bottle_name,
+                    taster_name=taster_name,
+                    tasting_date=tasting_date_parsed,
+                    beverage_type=beverage_type,
+                    wine_appearance=tasting_data_obj.wine_appearance,
+                    wine_aroma=tasting_data_obj.wine_aroma,
+                    wine_taste=tasting_data_obj.wine_taste,
+                    wine_aftertaste=tasting_data_obj.wine_aftertaste,
+                    wine_overall=tasting_data_obj.wine_overall,
+                    whiskey_nose=tasting_data_obj.whiskey_nose,
+                    whiskey_palate=tasting_data_obj.whiskey_palate,
+                    whiskey_finish=tasting_data_obj.whiskey_finish,
+                    whiskey_overall=tasting_data_obj.whiskey_overall,
+                    days_from_crack=tasting_data_obj.days_from_crack,
+                    fill_level=tasting_data_obj.fill_level,
+                    color=tasting_data_obj.color,
+                    place=tasting_data_obj.place,
+                    theme=tasting_data_obj.theme,
+                    appearance_notes=tasting_data_obj.appearance_notes or [],
+                    nose_notes=tasting_data_obj.nose_notes or [],
+                    palate_notes=tasting_data_obj.palate_notes or [],
+                    finish_notes=tasting_data_obj.finish_notes or [],
+                    overall_notes=tasting_data_obj.overall_notes
+                )
+
+                created = self.tasting_repo.create(tasting_note, bottle_id)
+                logger.info(f"Saved manual tasting to DB: id={created.id}")
+                return True, str(created.id), None
+
+            except Exception as e:
+                logger.error(f"Failed to save manual tasting to DB: {e}", exc_info=True)
+                return False, None, str(e)
+
+        # Fallback to vault
+        if self.vault_path:
+            from reserve_automation.utils.bottle_matcher import BottleMatcher, BottleMatch
+            from reserve_automation.core.models import BottleMetadata
+            from reserve_automation.generators.tasting_generator import TastingGenerator
+
+            full_bottle_path = self.vault_path / selected_bottle_path
+            if not full_bottle_path.exists():
+                return False, None, f"Bottle folder not found: {selected_bottle_path}"
+
+            bottle_name = full_bottle_path.name
+            tasting_data_dict = {
+                'bottle_name': bottle_name,
+                'taster_name': taster_name,
+                'tasting_date': tasting_date,
+                'beverage_type': beverage_type,
+                **(tasting_data or {})
+            }
+            tasting_data_obj = TastingDataSchema(**tasting_data_dict)
+            tasting_date_parsed = datetime.fromisoformat(tasting_date)
+
+            tasting_note = TastingNote(
+                bottle_name=bottle_name, taster_name=taster_name,
+                tasting_date=tasting_date_parsed, beverage_type=beverage_type,
+                wine_appearance=tasting_data_obj.wine_appearance,
+                wine_aroma=tasting_data_obj.wine_aroma,
+                wine_taste=tasting_data_obj.wine_taste,
+                wine_aftertaste=tasting_data_obj.wine_aftertaste,
+                wine_overall=tasting_data_obj.wine_overall,
+                whiskey_nose=tasting_data_obj.whiskey_nose,
+                whiskey_palate=tasting_data_obj.whiskey_palate,
+                whiskey_finish=tasting_data_obj.whiskey_finish,
+                whiskey_overall=tasting_data_obj.whiskey_overall,
+                days_from_crack=tasting_data_obj.days_from_crack,
+                fill_level=tasting_data_obj.fill_level,
+                color=tasting_data_obj.color, place=tasting_data_obj.place,
+                theme=tasting_data_obj.theme,
+                appearance_notes=tasting_data_obj.appearance_notes or [],
+                nose_notes=tasting_data_obj.nose_notes or [],
+                palate_notes=tasting_data_obj.palate_notes or [],
+                finish_notes=tasting_data_obj.finish_notes or [],
+                overall_notes=tasting_data_obj.overall_notes
+            )
+
+            bottle_matcher = BottleMatcher(self.vault_path)
+            matches = bottle_matcher.find_matches(
+                bottle_name=bottle_name, beverage_type=beverage_type,
+                top_n=1, min_score=0.0
+            )
+            if matches:
+                match = matches[0]
+                match.folder_path = full_bottle_path
+            else:
+                bottle_meta = BottleMetadata(
+                    producer="", name=bottle_name,
+                    type=beverage_type, source="manual_tasting"
+                )
+                match = BottleMatch(bottle_meta, 1.0, full_bottle_path)
+
+            try:
+                tasting_generator = TastingGenerator(
+                    vault_path=self.vault_path,
+                    templates_path=self.config.templates_dir if self.config else None
+                )
+                file_path = tasting_generator.generate_tasting_file(
+                    tasting=tasting_note, bottle_match=match, dry_run=False
+                )
+                rel_path = str(file_path.relative_to(self.vault_path))
+                return True, rel_path, None
+            except Exception as e:
+                logger.error(f"Failed to generate tasting file: {e}", exc_info=True)
+                return False, None, str(e)
+
+        return False, None, "No storage backend available"
 
     def _tasting_note_to_data(self, tasting: TastingNote) -> TastingData:
         """Convert a TastingNote to TastingData for editing."""
@@ -515,7 +627,7 @@ class TastingService:
             color=tasting.color,
             place=tasting.place,
             theme=tasting.theme,
-            appearance_notes=tasting.appearance_notes or [],  # Wine-specific
+            appearance_notes=tasting.appearance_notes or [],
             nose_notes=tasting.nose_notes or [],
             palate_notes=tasting.palate_notes or [],
             finish_notes=tasting.finish_notes or [],
@@ -524,7 +636,6 @@ class TastingService:
 
     def _data_to_tasting_note(self, data: TastingData) -> TastingNote:
         """Convert TastingData back to TastingNote for saving."""
-        # Parse date
         if isinstance(data.tasting_date, str):
             tasting_date = datetime.fromisoformat(data.tasting_date)
         else:
@@ -556,8 +667,8 @@ class TastingService:
             overall_notes=data.overall_notes
         )
 
-    def _get_full_name(self, match: BottleMatch) -> str:
-        """Get full bottle name from a match."""
+    def _get_full_name_from_match(self, match) -> str:
+        """Get full bottle name from a BottleMatch."""
         parts = [match.bottle.producer, match.bottle.name]
         if match.bottle.year:
             parts.append(str(match.bottle.year))
@@ -576,278 +687,3 @@ class TastingService:
             "remaining": remaining,
             "all_done": remaining == 0
         }
-
-    # ========================================================================
-    # Manual Tasting Methods
-    # ========================================================================
-
-    async def save_manual_tasting_to_obsidian(
-        self,
-        manual_session
-    ) -> tuple[bool, Optional[str], Optional[str]]:
-        """
-        Save a manual tasting session to Obsidian vault.
-
-        Args:
-            manual_session: ManualTastingSession object
-
-        Returns:
-            Tuple of (success, file_path, error_message)
-        """
-        # Import here to avoid circular imports
-        from ..schemas.tasting import ManualTastingSession
-
-        # Convert to proper type if dict
-        if isinstance(manual_session, dict):
-            manual_session = ManualTastingSession(**manual_session)
-
-        # Validate all required fields are present
-        if not manual_session.taster_name or not manual_session.tasting_date:
-            return False, None, "Missing required taster info"
-
-        if not manual_session.selected_bottle_path:
-            return False, None, "No bottle selected"
-
-        if not manual_session.tasting_data:
-            return False, None, "No tasting data provided"
-
-        # Convert to TastingNote
-        tasting_note = self._manual_session_to_tasting_note(manual_session)
-
-        # Find bottle folder
-        full_bottle_path = self.vault_path / manual_session.selected_bottle_path
-        if not full_bottle_path.exists():
-            return False, None, f"Bottle folder not found: {manual_session.selected_bottle_path}"
-
-        # Create bottle match from path
-        from reserve_automation.core.models import BottleMetadata
-        from reserve_automation.utils.bottle_matcher import BottleMatch
-
-        # Get bottle name from folder
-        bottle_name = full_bottle_path.name
-
-        # Try to find existing match for metadata
-        matches = self.bottle_matcher.find_matches(
-            bottle_name=bottle_name,
-            beverage_type=manual_session.beverage_type,
-            top_n=1,
-            min_score=0.0
-        )
-
-        if matches and len(matches) > 0:
-            match = matches[0]
-            match.folder_path = full_bottle_path
-        else:
-            # Create synthetic match if bottle not found in cache
-            bottle_meta = BottleMetadata(
-                producer="",
-                name=bottle_name,
-                type=manual_session.beverage_type,
-                source="manual_tasting"
-            )
-            match = BottleMatch(bottle_meta, 1.0, full_bottle_path)
-
-        # Generate and save tasting file
-        try:
-            file_path = self.tasting_generator.generate_tasting_file(
-                tasting=tasting_note,
-                bottle_match=match,
-                dry_run=False
-            )
-
-            rel_path = str(file_path.relative_to(self.vault_path))
-            logger.info(f"Saved manual tasting to: {rel_path}")
-
-            # Invalidate bottle cache after saving
-            self.invalidate_bottle_cache(manual_session.beverage_type)
-
-            return True, rel_path, None
-        except Exception as e:
-            logger.error(f"Failed to generate tasting file: {e}", exc_info=True)
-            return False, None, str(e)
-
-    async def save_manual_tasting_direct(
-        self,
-        taster_name: str,
-        tasting_date: str,
-        beverage_type: str,
-        selected_bottle_path: str,
-        tasting_data: dict,
-    ) -> tuple[bool, Optional[str], Optional[str]]:
-        """
-        Save a manual tasting directly (no session required).
-
-        This is the sessionless version - all data is passed directly.
-
-        Args:
-            taster_name: Name of the taster
-            tasting_date: Date of tasting (YYYY-MM-DD)
-            beverage_type: "wine" or "whiskey"
-            selected_bottle_path: Relative path to bottle folder in vault
-            tasting_data: Dict containing scores and notes
-
-        Returns:
-            Tuple of (success, file_path, error_message)
-        """
-        from ..schemas.tasting import TastingData
-
-        # Validate required fields
-        if not taster_name:
-            return False, None, "Missing taster name"
-        if not tasting_date:
-            return False, None, "Missing tasting date"
-        if not selected_bottle_path:
-            return False, None, "No bottle selected"
-
-        # Find bottle folder
-        full_bottle_path = self.vault_path / selected_bottle_path
-        if not full_bottle_path.exists():
-            return False, None, f"Bottle folder not found: {selected_bottle_path}"
-
-        # Get bottle name from path
-        bottle_name = full_bottle_path.name
-
-        # Build TastingData
-        tasting_data_dict = {
-            'bottle_name': bottle_name,
-            'taster_name': taster_name,
-            'tasting_date': tasting_date,
-            'beverage_type': beverage_type,
-            **(tasting_data or {})
-        }
-        tasting_data_obj = TastingData(**tasting_data_dict)
-
-        # Parse date
-        tasting_date_parsed = datetime.fromisoformat(tasting_date)
-
-        # Create TastingNote
-        tasting_note = TastingNote(
-            bottle_name=bottle_name,
-            taster_name=taster_name,
-            tasting_date=tasting_date_parsed,
-            beverage_type=beverage_type,
-            wine_appearance=tasting_data_obj.wine_appearance,
-            wine_aroma=tasting_data_obj.wine_aroma,
-            wine_taste=tasting_data_obj.wine_taste,
-            wine_aftertaste=tasting_data_obj.wine_aftertaste,
-            wine_overall=tasting_data_obj.wine_overall,
-            whiskey_nose=tasting_data_obj.whiskey_nose,
-            whiskey_palate=tasting_data_obj.whiskey_palate,
-            whiskey_finish=tasting_data_obj.whiskey_finish,
-            whiskey_overall=tasting_data_obj.whiskey_overall,
-            days_from_crack=tasting_data_obj.days_from_crack,
-            fill_level=tasting_data_obj.fill_level,
-            color=tasting_data_obj.color,
-            place=tasting_data_obj.place,
-            theme=tasting_data_obj.theme,
-            appearance_notes=tasting_data_obj.appearance_notes or [],
-            nose_notes=tasting_data_obj.nose_notes or [],
-            palate_notes=tasting_data_obj.palate_notes or [],
-            finish_notes=tasting_data_obj.finish_notes or [],
-            overall_notes=tasting_data_obj.overall_notes
-        )
-
-        # Create bottle match for file generation
-        from reserve_automation.core.models import BottleMetadata
-        from reserve_automation.utils.bottle_matcher import BottleMatch
-
-        # Try to find existing match for metadata
-        matches = self.bottle_matcher.find_matches(
-            bottle_name=bottle_name,
-            beverage_type=beverage_type,
-            top_n=1,
-            min_score=0.0
-        )
-
-        if matches and len(matches) > 0:
-            match = matches[0]
-            match.folder_path = full_bottle_path
-        else:
-            # Create synthetic match if bottle not found in cache
-            bottle_meta = BottleMetadata(
-                producer="",
-                name=bottle_name,
-                type=beverage_type,
-                source="manual_tasting"
-            )
-            match = BottleMatch(bottle_meta, 1.0, full_bottle_path)
-
-        # Generate and save tasting file
-        try:
-            file_path = self.tasting_generator.generate_tasting_file(
-                tasting=tasting_note,
-                bottle_match=match,
-                dry_run=False
-            )
-
-            rel_path = str(file_path.relative_to(self.vault_path))
-            logger.info(f"Saved manual tasting to: {rel_path}")
-
-            # Invalidate bottle cache after saving
-            self.invalidate_bottle_cache(beverage_type)
-
-            return True, rel_path, None
-        except Exception as e:
-            logger.error(f"Failed to generate tasting file: {e}", exc_info=True)
-            return False, None, str(e)
-
-    def _manual_session_to_tasting_note(self, manual_session) -> TastingNote:
-        """
-        Convert ManualTastingSession to TastingNote.
-
-        Args:
-            manual_session: ManualTastingSession object
-
-        Returns:
-            TastingNote object
-        """
-        from ..schemas.tasting import TastingData
-
-        # Get tasting data
-        tasting_data = manual_session.tasting_data
-        if isinstance(tasting_data, dict):
-            # Merge session-level fields with form data
-            bottle_name = manual_session.selected_bottle_path.split('/')[-1] if manual_session.selected_bottle_path else ""
-            tasting_data_dict = {
-                'bottle_name': bottle_name,
-                'taster_name': manual_session.taster_name,
-                'tasting_date': manual_session.tasting_date,
-                'beverage_type': manual_session.beverage_type,
-                **tasting_data  # Add the form fields (scores, notes, etc.)
-            }
-            tasting_data = TastingData(**tasting_data_dict)
-
-        # Parse date
-        if isinstance(manual_session.tasting_date, str):
-            tasting_date = datetime.fromisoformat(manual_session.tasting_date)
-        else:
-            tasting_date = manual_session.tasting_date
-
-        # Get bottle name from path
-        bottle_name = manual_session.selected_bottle_path.split('/')[-1]
-
-        return TastingNote(
-            bottle_name=bottle_name,
-            taster_name=manual_session.taster_name,
-            tasting_date=tasting_date,
-            beverage_type=manual_session.beverage_type,
-            wine_appearance=tasting_data.wine_appearance,
-            wine_aroma=tasting_data.wine_aroma,
-            wine_taste=tasting_data.wine_taste,
-            wine_aftertaste=tasting_data.wine_aftertaste,
-            wine_overall=tasting_data.wine_overall,
-            whiskey_nose=tasting_data.whiskey_nose,
-            whiskey_palate=tasting_data.whiskey_palate,
-            whiskey_finish=tasting_data.whiskey_finish,
-            whiskey_overall=tasting_data.whiskey_overall,
-            days_from_crack=tasting_data.days_from_crack,
-            fill_level=tasting_data.fill_level,
-            color=tasting_data.color,
-            place=tasting_data.place,
-            theme=tasting_data.theme,
-            appearance_notes=tasting_data.appearance_notes or [],
-            nose_notes=tasting_data.nose_notes or [],
-            palate_notes=tasting_data.palate_notes or [],
-            finish_notes=tasting_data.finish_notes or [],
-            overall_notes=tasting_data.overall_notes
-        )

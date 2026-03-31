@@ -91,7 +91,7 @@ class TestEventCRUD:
                 "beverage_type": "whiskey",
                 "is_blind": False,
                 "host_name": "Test Host",
-                "bottle_ids": ["nonexistent-bottle-id"],
+                "bottle_ids": ["99999"],
                 "blind_numbers": None
             }
         )
@@ -398,7 +398,7 @@ class TestEventBottleDisplay:
         assert len(event["bottles"]) == 1
         bottle = event["bottles"][0]
         assert "bottle_path" in bottle
-        assert bottle["bottle_path"] == weller_bottle["vault_path"]
+        assert bottle["bottle_path"] == weller_bottle["id"]
 
     def test_bottle_path_in_get_response(self, test_client, caymus_bottle):
         """Test that bottle_path is included when getting an event."""
@@ -424,7 +424,7 @@ class TestEventBottleDisplay:
         # Verify bottle_path is present
         bottle = event["bottles"][0]
         assert "bottle_path" in bottle
-        assert bottle["bottle_path"] == caymus_bottle["vault_path"]
+        assert bottle["bottle_path"] == caymus_bottle["id"]
 
     def test_blind_numbers_assigned(self, test_client, weller_bottle, blantons_bottle):
         """Test that blind numbers are correctly assigned."""

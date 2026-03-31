@@ -52,6 +52,12 @@ logs/
 config/user.yaml
 config/*.local.yaml
 
+# Database
+data/
+*.db
+*.db-shm
+*.db-wal
+
 # Temporary files
 *.tmp
 *.bak

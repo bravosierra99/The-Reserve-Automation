@@ -343,160 +343,115 @@ class TestDataConversion:
 # ============================================================================
 
 class TestMatchCandidates:
-    """Test get_match_candidates method."""
+    """Test get_match_candidates method using DB-backed service."""
 
-    def test_get_match_candidates_filters_by_beverage_type(self, service, sample_wine_tasting, tmp_path):
-        """Test that match candidates are filtered by beverage type."""
-        # Mock bottle matcher to return both wine and whiskey
-        mock_wine = BottleMatch(
-            bottle=BottleMetadata(
-                producer="Caymus",
-                name="Cabernet",
-                year=2019,
-                type="wine",
-                source="vault",
-                vault_path="1_Wines/Caymus"
-            ),
-            score=0.95,
-            folder_path=tmp_path / "1_Wines" / "Caymus"
+    @pytest.fixture
+    def db_service(self):
+        """Create a DB-backed TastingService with mock repos."""
+        from reserve_automation.db.repositories.bottle_repo import SQLiteBottleRepository
+        from reserve_automation.db.repositories.tasting_repo import SQLiteTastingRepository
+        mock_bottle_repo = MagicMock(spec=SQLiteBottleRepository)
+        mock_tasting_repo = MagicMock(spec=SQLiteTastingRepository)
+        return TastingService(mock_bottle_repo, mock_tasting_repo)
+
+    def test_get_match_candidates_filters_by_beverage_type(self, db_service):
+        """Test that match candidates include results from DB search."""
+        mock_wine = MagicMock()
+        mock_wine.id = 1
+        mock_wine.producer = "Caymus"
+        mock_wine.name = "Cabernet"
+        mock_wine.year = 2019
+        mock_wine.type = "wine"
+        mock_wine.label_image_url = None
+
+        mock_whiskey = MagicMock()
+        mock_whiskey.id = 2
+        mock_whiskey.producer = "Buffalo Trace"
+        mock_whiskey.name = "Bourbon"
+        mock_whiskey.year = None
+        mock_whiskey.type = "whiskey"
+        mock_whiskey.label_image_url = None
+
+        db_service.bottle_repo.search.return_value = [mock_wine, mock_whiskey]
+
+        candidates = db_service.get_match_candidates(
+            bottle_name="Caymus",
+            beverage_type="wine"
         )
-        mock_whiskey = BottleMatch(
-            bottle=BottleMetadata(
-                producer="Buffalo Trace",
-                name="Bourbon",
-                type="whiskey",
-                source="vault",
-                vault_path="1_Whiskeys/Buffalo-Trace"
-            ),
-            score=0.90,
-            folder_path=tmp_path / "1_Whiskeys" / "Buffalo-Trace"
-        )
 
-        with patch.object(service.bottle_matcher, 'find_matches', return_value=[mock_wine, mock_whiskey]):
-            candidates = service.get_match_candidates(
-                bottle_name="Caymus",
-                beverage_type="wine"
-            )
+        assert len(candidates) == 2
+        assert all(c.confidence > 0 for c in candidates)
 
-        # Note: Current implementation returns all matches from bottle_matcher
-        # Beverage type filtering happens at bottle_matcher level, not in get_match_candidates
-        assert len(candidates) == 2  # Both returned (filtering not implemented here)
-        assert candidates[0].confidence == 0.95  # Wine match
-        assert candidates[1].confidence == 0.90  # Whiskey match
-
-    def test_get_match_candidates_event_mode_filters_event_bottles_only(self, service, mock_config):
+    def test_get_match_candidates_event_mode_filters_event_bottles_only(self, db_service):
         """When event_id provided, only return bottles in that event."""
-        # Mock event store
-        from reserve_automation.web.app import event_store
-        event_id = "test-event"
-        event_store[event_id] = {
-            "bottles": [
-                {"bottle_path": "1_Whiskeys/Stagg", "bottle_name": "Stagg"},
-                {"bottle_path": "1_Whiskeys/EH-Taylor", "bottle_name": "EH Taylor"}
-            ],
-            "is_blind": False,
-            "status": "open"
-        }
-
-        # Mock bottle matcher to return a non-event bottle
-        mock_non_event = BottleMatch(
-            bottle=BottleMetadata(
-                producer="Buffalo Trace",
-                name="Bourbon",
-                type="whiskey",
-                source="vault",
-                vault_path="1_Whiskeys/Buffalo-Trace"  # NOT in event
-            ),
-            score=0.90,
-            folder_path=mock_config.vault_path / "1_Whiskeys" / "Buffalo-Trace"
-        )
-
-        with patch.object(service.bottle_matcher, 'find_matches', return_value=[mock_non_event]):
-            candidates = service.get_match_candidates(
+        # Mock _search_event_bottles to return empty (bottle not in event)
+        with patch.object(db_service, '_search_event_bottles', return_value=[]):
+            candidates = db_service.get_match_candidates(
                 bottle_name="Buffalo Trace",
                 beverage_type="whiskey",
-                event_id=event_id
+                event_id="test-event"
             )
 
-        # Should return 0 candidates (bottle not in event)
+        # Should return 0 candidates (delegated to _search_event_bottles)
         assert len(candidates) == 0
 
-        # Cleanup
-        del event_store[event_id]
-
-    def test_get_match_candidates_sorts_by_confidence(self, service, tmp_path):
+    def test_get_match_candidates_sorts_by_confidence(self, db_service):
         """Test that candidates are sorted by confidence descending."""
-        mock_matches = [
-            BottleMatch(
-                bottle=BottleMetadata(
-                    producer="Low", name="Match", type="wine", source="vault",
-                    vault_path="1_Wines/Low"
-                ),
-                score=0.65,
-                folder_path=tmp_path / "1_Wines" / "Low"
-            ),
-            BottleMatch(
-                bottle=BottleMetadata(
-                    producer="High", name="Match", type="wine", source="vault",
-                    vault_path="1_Wines/High"
-                ),
-                score=0.95,
-                folder_path=tmp_path / "1_Wines" / "High"
-            ),
-            BottleMatch(
-                bottle=BottleMetadata(
-                    producer="Medium", name="Match", type="wine", source="vault",
-                    vault_path="1_Wines/Medium"
-                ),
-                score=0.80,
-                folder_path=tmp_path / "1_Wines" / "Medium"
-            )
-        ]
+        mock_bottles = []
+        for name in ["Low Match", "High Match", "Medium Match"]:
+            m = MagicMock()
+            m.id = len(mock_bottles) + 1
+            m.producer = name.split()[0]
+            m.name = "Wine"
+            m.year = None
+            m.type = "wine"
+            m.label_image_url = None
+            mock_bottles.append(m)
 
-        with patch.object(service.bottle_matcher, 'find_matches', return_value=mock_matches):
-            candidates = service.get_match_candidates(
-                bottle_name="Match",
-                beverage_type="wine"
-            )
+        db_service.bottle_repo.search.return_value = mock_bottles
 
-        # Current implementation returns in order from bottle_matcher (not re-sorted)
-        # bottle_matcher provides them pre-sorted
+        candidates = db_service.get_match_candidates(
+            bottle_name="Match",
+            beverage_type="wine"
+        )
+
         assert len(candidates) == 3
-        assert all(c.confidence > 0 for c in candidates)  # All have valid scores
+        # DB mode sorts by confidence descending
+        confidences = [c.confidence for c in candidates]
+        assert confidences == sorted(confidences, reverse=True)
 
-    def test_get_match_candidates_limits_results(self, service, tmp_path):
-        """Test that results are limited to prevent excessive candidates."""
-        # Create 20 mock matches
-        mock_matches = [
-            BottleMatch(
-                bottle=BottleMetadata(
-                    producer=f"Producer{i}", name="Wine", type="wine", source="vault",
-                    vault_path=f"1_Wines/Wine{i}"
-                ),
-                score=0.90 - (i * 0.01),
-                folder_path=tmp_path / "1_Wines" / f"Wine{i}"
-            )
-            for i in range(20)
-        ]
+    def test_get_match_candidates_limits_results(self, db_service):
+        """Test that results are limited."""
+        mock_bottles = []
+        for i in range(20):
+            m = MagicMock()
+            m.id = i + 1
+            m.producer = f"Producer{i}"
+            m.name = "Wine"
+            m.year = None
+            m.type = "wine"
+            m.label_image_url = None
+            mock_bottles.append(m)
 
-        with patch.object(service.bottle_matcher, 'find_matches', return_value=mock_matches):
-            candidates = service.get_match_candidates(
-                bottle_name="Wine",
-                beverage_type="wine",
-                limit=10
-            )
+        db_service.bottle_repo.search.return_value = mock_bottles
 
-        # Current implementation returns all matches from bottle_matcher
-        # Limiting happens elsewhere or not implemented at this level
-        assert len(candidates) == 20  # All matches returned
+        candidates = db_service.get_match_candidates(
+            bottle_name="Wine",
+            beverage_type="wine",
+            limit=10
+        )
 
-    def test_get_match_candidates_handles_no_matches(self, service):
+        # DB mode limits to the requested limit
+        assert len(candidates) <= 10
+
+    def test_get_match_candidates_handles_no_matches(self, db_service):
         """Test that empty list is returned when no matches found."""
-        with patch.object(service.bottle_matcher, 'find_matches', return_value=[]):
-            candidates = service.get_match_candidates(
-                bottle_name="Nonexistent Wine",
-                beverage_type="wine"
-            )
+        db_service.bottle_repo.search.return_value = []
+
+        candidates = db_service.get_match_candidates(
+            bottle_name="Nonexistent Wine",
+            beverage_type="wine"
+        )
 
         assert len(candidates) == 0
 

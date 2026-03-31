@@ -22,7 +22,7 @@ event_data = {
     "beverage_type": "whiskey",
     "is_blind": False,
     "host_name": "Test Host",
-    "bottle_paths": [b["vault_path"] for b in bottles],
+    "bottle_ids": [str(b["id"]) for b in bottles],
     "blind_numbers": None
 }
 

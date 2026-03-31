@@ -22,7 +22,7 @@ event1_data = {
     "beverage_type": "whiskey",
     "is_blind": True,
     "host_name": "Test Host",
-    "bottle_paths": [b["vault_path"] for b in whiskey_bottles],
+    "bottle_ids": [str(b["id"]) for b in whiskey_bottles],
     "blind_numbers": [1, 2]
 }
 
@@ -45,7 +45,7 @@ event2_data = {
     "beverage_type": "whiskey",
     "is_blind": False,  # Non-blind
     "host_name": "Test Host",
-    "bottle_paths": [b["vault_path"] for b in whiskey_bottles2],
+    "bottle_ids": [str(b["id"]) for b in whiskey_bottles2],
     "blind_numbers": None
 }
 

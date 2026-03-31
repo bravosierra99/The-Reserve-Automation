@@ -12,8 +12,8 @@ import pytest
 class TestBulkSave:
     """Test POST /api/v1/ingredients/bulk-save (no LLM needed)."""
 
-    def test_bulk_save_creates_ingredients(self, test_client, test_vault):
-        """Bulk save creates multiple ingredient files."""
+    def test_bulk_save_creates_ingredients(self, test_client):
+        """Bulk save creates multiple ingredients in DB."""
         response = test_client.post("/api/v1/ingredients/bulk-save", json={
             "parent": "Vodka",
             "ingredients": [
@@ -27,9 +27,11 @@ class TestBulkSave:
         assert data["saved"][0]["name"] == "Grey Goose Vodka"
         assert data["saved"][1]["name"] == "Belvedere Vodka"
 
-        # Verify files exist
-        assert (test_vault / "2_Ingredients" / "Grey Goose Vodka" / "Grey Goose Vodka.md").exists()
-        assert (test_vault / "2_Ingredients" / "Belvedere Vodka" / "Belvedere Vodka.md").exists()
+        # Verify ingredients exist via API
+        search_resp = test_client.get("/api/v1/ingredients/search?q=Grey Goose")
+        assert any(i["name"] == "Grey Goose Vodka" for i in search_resp.json())
+        search_resp = test_client.get("/api/v1/ingredients/search?q=Belvedere")
+        assert any(i["name"] == "Belvedere Vodka" for i in search_resp.json())
 
     def test_bulk_save_skips_unselected(self, test_client):
         """Unselected items are skipped."""

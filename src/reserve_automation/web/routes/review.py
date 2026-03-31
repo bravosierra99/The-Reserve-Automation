@@ -16,6 +16,15 @@ from ..services.upload_service import UploadService
 
 router = APIRouter(dependencies=[Depends(require("upload.access"))])
 
+
+def _get_review_service():
+    from ..services.review_service import ReviewService
+    from ...db.engine import get_db
+    from ...db.repositories.bottle_repo import SQLiteBottleRepository
+    from ...db.repositories.tasting_repo import SQLiteTastingRepository
+    db = next(get_db())
+    return ReviewService(SQLiteBottleRepository(db), SQLiteTastingRepository(db))
+
 # Templates
 templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=templates_dir)
@@ -78,7 +87,7 @@ async def get_extraction(
 
     # Get bottle match previews
     extraction_service = ExtractionService(core_config)
-    review_service = ReviewService(core_config)
+    review_service = _get_review_service()
 
     extraction_result = extraction_service.from_dict(extraction_data)
     match_previews = review_service.preview_matches(extraction_result)
@@ -149,6 +158,7 @@ async def update_extraction(
         value=new_token,
         max_age=web_config.sessions.max_age_hours * 3600,
         httponly=True,
+        secure=True,
         samesite="lax"
     )
 
@@ -207,7 +217,7 @@ async def approve_extraction(
         extraction_result = extraction_service.from_dict(extraction_data)
 
         # Approve and save to vault
-        review_service = ReviewService(core_config)
+        review_service = _get_review_service()
         approval_result = await review_service.approve_extraction(extraction_result)
 
         # Clean up temp files

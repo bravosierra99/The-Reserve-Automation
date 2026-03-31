@@ -50,7 +50,7 @@ function devToolbar() {
         },
 
         switchRole(role) {
-            document.cookie = `dev_role_override=${role};path=/;max-age=${7 * 24 * 3600}`;
+            document.cookie = `dev_role_override=${role};path=/;max-age=${7 * 24 * 3600};secure;samesite=strict`;
             window.location.reload();
         }
     };
