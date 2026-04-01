@@ -807,12 +807,7 @@ async def save_manual_tasting(
             bottle = bottle_repo.get_by_id(int(request_data.selected_bottle_id))
             if not bottle:
                 raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {request_data.selected_bottle_id}")
-            # Use the bottle's vault path for Obsidian mode, or keep the ID for event mode
-            if bottle.vault_path:
-                selected_bottle_path = bottle.vault_path
-            else:
-                # Construct a path from bottle metadata if vault_path not available
-                selected_bottle_path = f"{request_data.selected_bottle_id}"
+            selected_bottle_path = str(request_data.selected_bottle_id)
 
         # Validate required fields
         if not request_data.taster_name:

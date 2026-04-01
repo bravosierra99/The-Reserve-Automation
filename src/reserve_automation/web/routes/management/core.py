@@ -57,21 +57,6 @@ def clean_bottle_data(bottle_data: dict) -> dict:
     return cleaned
 
 
-def get_temp_label_dir(vault_path: str) -> Path:
-    """
-    Get temporary directory for label operations on a specific bottle.
-
-    Uses /tmp to avoid cluttering Obsidian vault with intermediate files.
-    Only final accepted label.jpg is saved to vault.
-
-    Args:
-        vault_path: The vault_path from BottleMetadata (e.g., "1_Wines/Producer - Name - Year")
-    """
-    # Use vault_path as unique identifier, replacing slashes with underscores
-    safe_path = vault_path.replace("/", "_").replace(" ", "_")
-    temp_dir = Path("/tmp/reserve-automation/labels") / safe_path
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    return temp_dir
 
 
 @router.get("/management", response_class=HTMLResponse)
@@ -331,7 +316,7 @@ async def get_all_tastings(
 
                 tasting_data: dict = {
                     "bottle_name": tn.bottle_name or f"{bottle.producer} - {bottle.name}",
-                    "bottle_path": bottle.vault_path or "",
+                    "bottle_path": str(bottle.id),
                     "date": tn.tasting_date,
                     "taster": tn.taster_name,
                     "type": tasting_type,
