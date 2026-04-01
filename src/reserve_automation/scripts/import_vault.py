@@ -164,16 +164,22 @@ def _import_bottles(db, reader: VaultReader, vault: Path, media: Path, stats: di
             if bottle.vault_path:
                 db_bottle._vault_path = bottle.vault_path
 
-            # Copy label image
+            # Copy label image (skip non-image files like PDFs)
             if bottle.vault_path:
                 label_path = vault / bottle.vault_path / "labels" / "label.jpg"
                 if label_path.exists():
-                    dest_dir = media / "bottles" / str(db_bottle.id)
-                    dest_dir.mkdir(parents=True, exist_ok=True)
-                    dest = dest_dir / "label.jpg"
-                    shutil.copy2(label_path, dest)
-                    db_bottle.label_image_path = f"bottles/{db_bottle.id}/label.jpg"
-                    stats["images_copied"] += 1
+                    try:
+                        from PIL import Image
+                        Image.open(label_path).verify()
+                        dest_dir = media / "bottles" / str(db_bottle.id)
+                        dest_dir.mkdir(parents=True, exist_ok=True)
+                        dest = dest_dir / "label.jpg"
+                        shutil.copy2(label_path, dest)
+                        db_bottle.label_image_path = f"bottles/{db_bottle.id}/label.jpg"
+                        stats["images_copied"] += 1
+                    except Exception:
+                        logger.warning(f"  Skipping non-image label: {label_path}")
+                        stats["errors"].append(f"Non-image label skipped: {label_path}")
 
             stats["bottles"] += 1
 
