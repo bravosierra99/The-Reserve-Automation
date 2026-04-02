@@ -411,6 +411,49 @@ async def get_all_tastings(
                 tasters.add(tn.taster_name)
                 types.add(tasting_type)
 
+        # Also include cocktail tastings from CocktailTastingModel
+        from ....db.models.cocktail import CocktailModel
+        from ....db.models.cocktail_tasting import CocktailTastingModel
+        from ....db.engine import get_db
+        db = next(get_db())
+        cocktail_tastings = db.query(CocktailTastingModel).all()
+        cocktails_by_id = {c.id: c for c in db.query(CocktailModel).all()}
+        for ct in cocktail_tastings:
+            cocktail = cocktails_by_id.get(ct.cocktail_id)
+            tastings.append({
+                "bottle_name": ct.recipe_name,
+                "bottle_path": f"cocktail/{ct.cocktail_id}",
+                "date": ct.tasting_date,
+                "taster": ct.taster_name,
+                "type": "cocktail",
+                "total_score": ct.score,
+                "max_score": 10,
+                "aws_score": None,
+                "days_from_crack": None,
+                "fill_level": None,
+                "bartender": ct.bartender,
+                "scores": {"score": ct.score},
+                "notes": {"notes": ct.notes or ""},
+                "producer": None,
+                "variety": None,
+                "country_region": None,
+                "style": cocktail.style if cocktail else None,
+                "wine_type": None,
+                "vineyard": None,
+                "abv": None,
+                "price": None,
+                "purchase_source": None,
+                "vintage": None,
+                "whiskey_type": None,
+                "region_state": None,
+                "proof": None,
+                "age_statement": None,
+                "mash_bill": None,
+                "barrel_type": None,
+            })
+            tasters.add(ct.taster_name)
+            types.add("cocktail")
+
         tastings.sort(key=lambda t: t["date"], reverse=True)
 
         # Build filter options: unique non-null values for type-specific fields
