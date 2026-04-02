@@ -1,85 +1,29 @@
 services:
-  # Reserve Automation FastAPI Application
   web:
     build: .
     container_name: reserve-app
     ports:
       - "0.0.0.0:${WEB_PORT:-8000}:8000"
     volumes:
-      # REQUIRED: Obsidian vault (read-write)
-      - ${VAULT_HOST_PATH}:/vault
-
-      # OPTIONAL: Config files (read-only)
+      - ./data:/app/data
       - ./config:/app/config:ro
-
-      # OPTIONAL: Temp uploads (persist across restarts)
       - reserve_temp:/tmp/reserve_uploads
-
-      # OPTIONAL: Application logs
       - reserve_logs:/app/logs
-
     environment:
-      # Web app secret (from .env)
       - WEB_SECRET_KEY=${WEB_SECRET_KEY}
-
-      # Docker-specific overrides (different from local .env)
-      - RESERVE_VAULT_PATH=/vault/Cellar
+      - DATABASE_URL=sqlite:///data/reserve.db
+      - MEDIA_DIR=data/media
       - RESERVE_LM_STUDIO_URL=http://${LM_STUDIO_HOST:-192.168.86.2}:${LM_STUDIO_PORT:-1234}/v1
-
-      # Optional: Anthropic API key (from .env)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-
-      # Optional: LLMWhisperer API key (from .env)
       - LLMWHISPERER_API_KEY=${LLMWHISPERER_API_KEY:-}
-
-      # CF service token (for script access to prod API)
       - CF_ACCESS_CLIENT_ID=${CF_ACCESS_CLIENT_ID:-}
-
     restart: unless-stopped
-
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-
-    # Resource limits
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-        reservations:
-          memory: 512M
-
-  # Obsidian Remote (Full Obsidian Desktop in Browser)
-  # Optional service - use: docker compose --profile obsidian up
-  obsidian:
-    image: sytone/obsidian-remote:latest
-    container_name: obsidian-web
-    profiles:
-      - obsidian
-    ports:
-      - "0.0.0.0:${OBSIDIAN_PORT:-8080}:8080"
-    volumes:
-      # REQUIRED: Same vault as Reserve app (read-write)
-      - ${VAULT_HOST_PATH}:/vault
-
-      # REQUIRED: Obsidian config (plugins, settings persist)
-      - obsidian_config:/config
-
-    environment:
-      # Display settings for web viewer
-      - DISPLAY_WIDTH=1920
-      - DISPLAY_HEIGHT=1080
-      - LAUNCH_URL=http://localhost:8080
-
-      # Point Obsidian to vault location
-      - VAULT_PATH=/vault/Cellar
-
-    restart: unless-stopped
-
-    # Resource limits
     deploy:
       resources:
         limits:
@@ -88,14 +32,7 @@ services:
           memory: 512M
 
 volumes:
-  # Temp uploads (optional but recommended)
   reserve_temp:
     driver: local
-
-  # Application logs (optional)
   reserve_logs:
-    driver: local
-
-  # Obsidian config (REQUIRED - preserves plugins)
-  obsidian_config:
     driver: local
