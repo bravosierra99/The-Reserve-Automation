@@ -300,128 +300,131 @@ async def get_all_tastings(
     import math
 
     try:
+        from ....db.engine import get_db as _get_db
+        from ....db.models.bottle import TastingNoteModel
+        _db = next(_get_db())
+
         bottles = bottle_repo.get_all()
+        # Build a lookup by bottle_id for metadata
+        bottle_map = {int(b.id): b for b in bottles if b.id}
+
+        # Query TastingNoteModel directly so we have access to id and hidden
+        all_bottle_tastings = _db.query(TastingNoteModel).all()
+
         tastings = []
         tasters: set = set()
         types: set = set()
 
-        for bottle in bottles:
-            bottle_id = int(bottle.id) if bottle.id else None
-            if bottle_id is None:
+        for tn in all_bottle_tastings:
+            bottle = bottle_map.get(tn.bottle_id)
+            if bottle is None:
                 continue
+            tasting_type = tn.beverage_type or bottle.type or "whiskey"
 
-            bottle_tastings = tasting_repo.get_by_bottle_id(bottle_id)
+            tasting_data: dict = {
+                "id": tn.id,
+                "tasting_kind": "bottle",
+                "hidden": tn.hidden,
+                "bottle_name": tn.bottle_name or f"{bottle.producer} - {bottle.name}",
+                "bottle_path": str(bottle.id),
+                "date": tn.tasting_date,
+                "taster": tn.taster_name,
+                "type": tasting_type,
+                "total_score": None,
+                "max_score": None,
+                "aws_score": None,
+                "days_from_crack": tn.days_from_crack,
+                "fill_level": tn.fill_level,
+                "bartender": None,
+                "scores": {},
+                "notes": {},
+                # Bottle metadata from the bottle record
+                "producer": bottle.producer,
+                "variety": bottle.variety,
+                "country_region": f"{bottle.country} - {bottle.region}" if bottle.country and bottle.region else (bottle.country or bottle.region or None),
+                "style": bottle.style,
+                "wine_type": bottle.beverage_type if tasting_type == "wine" else None,
+                "vineyard": bottle.vineyard,
+                "abv": bottle.abv,
+                "price": bottle.price,
+                "purchase_source": bottle.purchase_source,
+                "vintage": bottle.year if tasting_type == "wine" else None,
+                "whiskey_type": bottle.beverage_type if tasting_type == "whiskey" else None,
+                "region_state": bottle.region if tasting_type == "whiskey" else None,
+                "proof": bottle.proof,
+                "age_statement": bottle.age_statement,
+                "mash_bill": bottle.mash_bill,
+                "barrel_type": bottle.barrel_type,
+            }
 
-            for tn in bottle_tastings:
-                tasting_type = tn.beverage_type or bottle.type or "whiskey"
+            if tasting_type == "wine":
+                tasting_data["max_score"] = 100
+                tasting_data["scores"] = {
+                    "appearance": tn.wine_appearance,
+                    "aroma": tn.wine_aroma,
+                    "taste": tn.wine_taste,
+                    "aftertaste": tn.wine_aftertaste,
+                    "overall": tn.wine_overall,
+                }
+                component_values = [v for v in tasting_data["scores"].values() if v is not None]
+                if component_values:
+                    aws_score = sum(component_values)
+                    tasting_data["aws_score"] = round(aws_score, 1)
+                    tasting_data["total_score"] = round(50 + (aws_score / 20) * 50, 1)
 
-                tasting_data: dict = {
-                    "id": tn.id,
-                    "tasting_kind": "bottle",
-                    "hidden": tn.hidden,
-                    "bottle_name": tn.bottle_name or f"{bottle.producer} - {bottle.name}",
-                    "bottle_path": str(bottle.id),
-                    "date": tn.tasting_date,
-                    "taster": tn.taster_name,
-                    "type": tasting_type,
-                    "total_score": None,
-                    "max_score": None,
-                    "aws_score": None,
-                    "days_from_crack": tn.days_from_crack,
-                    "fill_level": tn.fill_level,
-                    "bartender": None,
-                    "scores": {},
-                    "notes": {},
-                    # Bottle metadata from the bottle record
-                    "producer": bottle.producer,
-                    "variety": bottle.variety,
-                    "country_region": f"{bottle.country} - {bottle.region}" if bottle.country and bottle.region else (bottle.country or bottle.region or None),
-                    "style": bottle.style,
-                    "wine_type": bottle.beverage_type if tasting_type == "wine" else None,
-                    "vineyard": bottle.vineyard,
-                    "abv": bottle.abv,
-                    "price": bottle.price,
-                    "purchase_source": bottle.purchase_source,
-                    "vintage": bottle.year if tasting_type == "wine" else None,
-                    "whiskey_type": bottle.beverage_type if tasting_type == "whiskey" else None,
-                    "region_state": bottle.region if tasting_type == "whiskey" else None,
-                    "proof": bottle.proof,
-                    "age_statement": bottle.age_statement,
-                    "mash_bill": bottle.mash_bill,
-                    "barrel_type": bottle.barrel_type,
+                tasting_data["notes"] = {
+                    "appearance": tn.appearance_notes or [],
+                    "aroma": tn.nose_notes or [],
+                    "taste": tn.palate_notes or [],
+                    "aftertaste": tn.finish_notes or [],
+                    "overall": tn.overall_notes or ""
                 }
 
-                if tasting_type == "wine":
-                    tasting_data["max_score"] = 100
-                    tasting_data["scores"] = {
-                        "appearance": tn.wine_appearance,
-                        "aroma": tn.wine_aroma,
-                        "taste": tn.wine_taste,
-                        "aftertaste": tn.wine_aftertaste,
-                        "overall": tn.wine_overall,
-                    }
-                    component_values = [v for v in tasting_data["scores"].values() if v is not None]
-                    if component_values:
-                        aws_score = sum(component_values)
-                        tasting_data["aws_score"] = round(aws_score, 1)
-                        tasting_data["total_score"] = round(50 + (aws_score / 20) * 50, 1)
+            elif tasting_type == "cocktail":
+                tasting_data["max_score"] = 10
+                score = tn.whiskey_overall
+                tasting_data["scores"] = {"score": score}
+                tasting_data["total_score"] = score
+                tasting_data["notes"] = {"notes": tn.overall_notes or ""}
 
-                    tasting_data["notes"] = {
-                        "appearance": tn.appearance_notes or [],
-                        "aroma": tn.nose_notes or [],
-                        "taste": tn.palate_notes or [],
-                        "aftertaste": tn.finish_notes or [],
-                        "overall": tn.overall_notes or ""
-                    }
+            else:
+                # whiskey / spirit
+                tasting_data["max_score"] = 10
+                tasting_data["scores"] = {
+                    "nose": tn.whiskey_nose,
+                    "palate": tn.whiskey_palate,
+                    "finish": tn.whiskey_finish,
+                    "overall": tn.whiskey_overall,
+                }
+                component_values = [v for v in tasting_data["scores"].values() if v is not None]
+                if component_values:
+                    tasting_data["total_score"] = round(sum(component_values), 2)
 
-                elif tasting_type == "cocktail":
-                    tasting_data["max_score"] = 10
-                    # Cocktail tastings may store score in whiskey_overall or similar
-                    score = tn.whiskey_overall
-                    tasting_data["scores"] = {"score": score}
-                    tasting_data["total_score"] = score
-                    tasting_data["notes"] = {"notes": tn.overall_notes or ""}
+                tasting_data["notes"] = {
+                    "nose": tn.nose_notes or [],
+                    "palate": tn.palate_notes or [],
+                    "finish": tn.finish_notes or [],
+                    "overall": tn.overall_notes or ""
+                }
 
-                else:
-                    # whiskey / spirit
-                    tasting_data["max_score"] = 10
-                    tasting_data["scores"] = {
-                        "nose": tn.whiskey_nose,
-                        "palate": tn.whiskey_palate,
-                        "finish": tn.whiskey_finish,
-                        "overall": tn.whiskey_overall,
-                    }
-                    component_values = [v for v in tasting_data["scores"].values() if v is not None]
-                    if component_values:
-                        tasting_data["total_score"] = round(sum(component_values), 2)
+            # Sanitize: replace any NaN/Inf with None
+            for k, v in tasting_data.items():
+                if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                    tasting_data[k] = None
+                elif isinstance(v, dict):
+                    for sk, sv in v.items():
+                        if isinstance(sv, float) and (math.isnan(sv) or math.isinf(sv)):
+                            v[sk] = None
 
-                    tasting_data["notes"] = {
-                        "nose": tn.nose_notes or [],
-                        "palate": tn.palate_notes or [],
-                        "finish": tn.finish_notes or [],
-                        "overall": tn.overall_notes or ""
-                    }
-
-                # Sanitize: replace any NaN/Inf with None
-                for k, v in tasting_data.items():
-                    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-                        tasting_data[k] = None
-                    elif isinstance(v, dict):
-                        for sk, sv in v.items():
-                            if isinstance(sv, float) and (math.isnan(sv) or math.isinf(sv)):
-                                v[sk] = None
-
-                tastings.append(tasting_data)
-                tasters.add(tn.taster_name)
-                types.add(tasting_type)
+            tastings.append(tasting_data)
+            tasters.add(tn.taster_name)
+            types.add(tasting_type)
 
         # Also include cocktail tastings from CocktailTastingModel
         from ....db.models.cocktail import CocktailModel
         from ....db.models.cocktail_tasting import CocktailTastingModel
-        from ....db.engine import get_db
-        db = next(get_db())
-        cocktail_tastings = db.query(CocktailTastingModel).all()
-        cocktails_by_id = {c.id: c for c in db.query(CocktailModel).all()}
+        cocktail_tastings = _db.query(CocktailTastingModel).all()
+        cocktails_by_id = {c.id: c for c in _db.query(CocktailModel).all()}
         for ct in cocktail_tastings:
             cocktail = cocktails_by_id.get(ct.cocktail_id)
             tastings.append({
