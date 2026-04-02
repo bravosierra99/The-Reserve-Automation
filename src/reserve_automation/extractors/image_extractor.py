@@ -118,7 +118,7 @@ Return only the JSON, nothing else."""
                 prompt=prompt,
                 images=[image_bytes],  # Fixed: was "image=", should be "images=" as a list
                 temperature=0.1,  # Very deterministic for extraction
-                max_tokens=800,
+                max_tokens=3000,  # Increased from 800: reasoning models need ~400-800 tokens to think before answering
             )
 
             logger.debug("=" * 80)

@@ -210,6 +210,12 @@ class LMStudioProvider(BaseLLMProvider):
                 payload["num_ctx"] = context_length  # Ollama-style
                 payload["n_ctx"] = context_length    # llama.cpp-style
 
+            # Disable reasoning/thinking for models that default it on (e.g. Qwen3.5).
+            # Without this, reasoning models consume all tokens thinking and return empty content.
+            reasoning_effort = self.config.get("reasoning_effort")
+            if reasoning_effort:
+                payload["reasoning_effort"] = reasoning_effort
+
             # Add tools if provided
             if hasattr(request, 'tools') and request.tools:
                 payload["tools"] = request.tools

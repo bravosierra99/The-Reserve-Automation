@@ -192,23 +192,73 @@ def _import_tastings(db, vault: Path, stats: dict, dry_run: bool):
     """Import tasting notes for all bottles."""
     logger.info("Phase 2: Importing tasting notes...")
 
-    # Get all bottles we just imported
+    # Build a lookup from (producer.lower(), name.lower()) -> BottleModel
+    # so we can match vault directories to DB bottles without relying on
+    # the ephemeral _vault_path attribute (which is lost on fresh DB queries).
     bottles = db.query(BottleModel).all()
+    bottle_lookup: dict[tuple[str, str], BottleModel] = {}
+    for b in bottles:
+        key = (b.producer.lower().strip(), b.name.lower().strip())
+        bottle_lookup[key] = b
 
-    for bottle in bottles:
-        vault_path = getattr(bottle, "_vault_path", None)
-        if not vault_path:
+    # Scan all bottle directories across beverage-type subdirs
+    bottle_dirs = []
+    for bev_dir in vault.iterdir():
+        if not bev_dir.is_dir() or bev_dir.name.startswith("_") or bev_dir.name.startswith("0_"):
+            continue
+        for bottle_dir in bev_dir.iterdir():
+            if bottle_dir.is_dir():
+                bottle_dirs.append(bottle_dir)
+
+    for bottle_dir in bottle_dirs:
+        tasting_files = list(bottle_dir.glob("Tasting-*.md"))
+        if not tasting_files:
             continue
 
-        bottle_dir = vault / vault_path
-        if not bottle_dir.exists():
+        # Try to match this directory to a DB bottle.
+        # Directory names are "Producer - Name" or "Producer - Name - Year".
+        dir_name = bottle_dir.name
+        matched_bottle = None
+
+        if " - " in dir_name:
+            parts = dir_name.split(" - ", 1)
+            producer_raw = parts[0].strip()
+            name_raw = parts[1].strip()
+
+            # Attempt 1: full name as-is
+            key = (producer_raw.lower(), name_raw.lower())
+            matched_bottle = bottle_lookup.get(key)
+
+            # Attempt 2: strip trailing 4-digit year from name (e.g. "Stagg Jr - 2024" → "Stagg Jr")
+            if matched_bottle is None and re.search(r' - \d{4}$', name_raw):
+                name_no_year = re.sub(r' - \d{4}$', '', name_raw).strip()
+                key2 = (producer_raw.lower(), name_no_year.lower())
+                matched_bottle = bottle_lookup.get(key2)
+
+            # Attempt 3: treat last " - " segment as year, re-split to get full name
+            if matched_bottle is None:
+                all_parts = dir_name.split(" - ")
+                if len(all_parts) >= 3 and re.match(r'^\d{4}$', all_parts[-1].strip()):
+                    producer2 = all_parts[0].strip()
+                    name2 = " - ".join(all_parts[1:-1]).strip()
+                    key3 = (producer2.lower(), name2.lower())
+                    matched_bottle = bottle_lookup.get(key3)
+
+        # Fallback: match against _vault_path if set (first-run case)
+        if matched_bottle is None:
+            rel = str(bottle_dir.relative_to(vault))
+            for b in bottles:
+                if getattr(b, "_vault_path", None) == rel:
+                    matched_bottle = b
+                    break
+
+        if matched_bottle is None:
+            logger.debug(f"  No DB match for vault dir: {bottle_dir.name}")
             continue
 
-        # Determine beverage type for parsing
-        bev_type = bottle.type
+        bev_type = matched_bottle.type
 
-        # Scan for tasting files
-        for tasting_file in bottle_dir.glob("Tasting-*.md"):
+        for tasting_file in tasting_files:
             try:
                 tasting_data = _parse_tasting_file(tasting_file, bev_type)
                 if tasting_data is None:
@@ -220,8 +270,8 @@ def _import_tastings(db, vault: Path, stats: dict, dry_run: bool):
                     continue
 
                 db_tasting = TastingNoteModel(
-                    bottle_id=bottle.id,
-                    bottle_name=f"{bottle.producer} - {bottle.name}",
+                    bottle_id=matched_bottle.id,
+                    bottle_name=f"{matched_bottle.producer} - {matched_bottle.name}",
                     **tasting_data,
                 )
                 db.add(db_tasting)

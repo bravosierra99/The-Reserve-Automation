@@ -24,6 +24,15 @@ providers:
     # max_results: 5   # DuckDuckGo results per enrichment search (benchmark default)
     # max_iterations: 5  # Max tool-call loops (only used for non-enrichment tool calls)
 
+  # ── Agent model (for reserve-agent: reasoning enabled for complex multi-step tasks) ──
+  lm_studio_agent:
+    provider: lm_studio
+    base_url: "http://localhost:1234/v1"  # UPDATE with your PC's IP
+    model: "qwen/qwen3.5-9b"             # Reasoning model — thinking ON by default
+    timeout: 300                          # Longer timeout: reasoning adds latency
+    max_retries: 1
+    context_length: 16384
+
   # Option B: Dedicated pure-text model for faster enrichment
   # LM Studio can serve two models simultaneously on different ports.
   # A pure text model (no vision transformer) is faster for enrichment tasks.
