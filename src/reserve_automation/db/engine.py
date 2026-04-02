@@ -3,7 +3,7 @@
 from collections.abc import Generator
 from pathlib import Path
 
-from sqlalchemy import event, create_engine
+from sqlalchemy import event, create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -73,7 +73,24 @@ def init_db(database_url: str = "sqlite:///data/reserve.db") -> Engine:
 
     Base.metadata.create_all(bind=_engine)
 
+    _run_migrations(_engine)
+
     return _engine
+
+
+def _run_migrations(engine: Engine) -> None:
+    """Add columns that may be missing from existing databases."""
+    migrations = [
+        ("tasting_notes",     "hidden BOOLEAN NOT NULL DEFAULT 0"),
+        ("cocktail_tastings", "hidden BOOLEAN NOT NULL DEFAULT 0"),
+    ]
+    with engine.connect() as conn:
+        for table, col_def in migrations:
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_def}"))
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
 
 
 def get_engine() -> Engine:

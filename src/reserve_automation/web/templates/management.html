@@ -779,9 +779,15 @@
                             <span> (filtered from <span x-text="trAllTastings.length"></span> total)</span>
                         </template>
                     </span>
-                    <span x-show="trComputedAvg !== null">
-                        Avg: <span class="font-semibold text-gray-800" x-text="trComputedAvg + '%'"></span>
-                    </span>
+                    <div class="flex items-center gap-4">
+                        <label class="flex items-center gap-1.5 cursor-pointer select-none text-gray-500 hover:text-gray-700">
+                            <input type="checkbox" x-model="trShowHidden" class="rounded">
+                            <span>Show hidden</span>
+                        </label>
+                        <span x-show="trComputedAvg !== null">
+                            Avg: <span class="font-semibold text-gray-800" x-text="trComputedAvg + '%'"></span>
+                        </span>
+                    </div>
                 </div>
 
                 <!-- Empty state -->
@@ -833,15 +839,21 @@
                             </tr>
                         </thead>
                         <!-- One <tbody> per tasting so x-for has a single root element -->
-                        <template x-for="(t, idx) in filteredTastings" :key="t.bottle_name + '|' + t.date + '|' + t.taster">
+                        <template x-for="(t, idx) in filteredTastings" :key="(t.tasting_kind || 'bottle') + ':' + t.id">
                             <tbody>
                                 <!-- Main row -->
                                 <tr class="border-t border-gray-100 hover:bg-blue-50 cursor-pointer transition-colors"
-                                    :class="trIsExpanded(t) ? 'bg-blue-50' : ''"
+                                    :class="{
+                                        'bg-blue-50': trIsExpanded(t),
+                                        'opacity-50': t.hidden
+                                    }"
                                     @click="trToggleRow(t)">
                                     <td class="px-4 py-3 text-gray-700 whitespace-nowrap" x-text="t.date"></td>
                                     <td class="px-4 py-3 text-gray-800 font-medium max-w-xs">
-                                        <span class="block truncate" x-text="t.bottle_name" :title="t.bottle_name"></span>
+                                        <div class="flex items-center gap-2">
+                                            <span class="block truncate" x-text="t.bottle_name" :title="t.bottle_name"></span>
+                                            <span x-show="t.hidden" class="flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded">Hidden</span>
+                                        </div>
                                     </td>
                                     <td class="px-4 py-3 text-gray-700 whitespace-nowrap" x-text="t.taster"></td>
                                     <td x-show="trFilterType === 'all'" class="px-4 py-3 whitespace-nowrap">
@@ -897,6 +909,25 @@
                                                         <span x-text="trFormatDate(t.date)"></span>
                                                     </p>
                                                 </div>
+                                                <!-- Action buttons -->
+                                                <div class="flex items-center gap-2 flex-shrink-0" @click.stop>
+                                                    <button @click="trStartEdit(t, $event)"
+                                                            class="px-2.5 py-1 text-xs font-medium rounded border border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-colors"
+                                                            :class="trIsEditing(t) ? 'bg-blue-50 border-blue-400 text-blue-600' : 'bg-white'">
+                                                        ✏️ Edit
+                                                    </button>
+                                                    <button @click="trToggleHidden(t, $event)"
+                                                            class="px-2.5 py-1 text-xs font-medium rounded border transition-colors"
+                                                            :class="t.hidden
+                                                                ? 'border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                                                : 'border-gray-300 bg-white text-gray-600 hover:border-amber-400 hover:text-amber-600'">
+                                                        <span x-text="t.hidden ? '👁 Show' : '🙈 Hide'"></span>
+                                                    </button>
+                                                    <button @click="trDeleteTasting(t, $event)"
+                                                            class="px-2.5 py-1 text-xs font-medium rounded border border-gray-300 bg-white text-gray-600 hover:border-red-400 hover:text-red-600 transition-colors">
+                                                        🗑 Delete
+                                                    </button>
+                                                </div>
                                             </div>
 
                                             <!-- Bottle Info Card -->
@@ -913,6 +944,128 @@
                                                     </div>
                                                 </div>
                                             </template>
+
+                                            <!-- Edit Form (shown when editing) -->
+                                            <div x-show="trIsEditing(t)" class="px-5 py-4 border-b border-blue-100 bg-blue-50" @click.stop>
+                                                <h4 class="font-semibold text-blue-700 mb-4 text-xs uppercase tracking-wider">Edit Tasting</h4>
+                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <!-- Common fields -->
+                                                    <div>
+                                                        <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Taster</label>
+                                                        <input type="text" x-model="trEditData.taster_name" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                    </div>
+                                                    <div>
+                                                        <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</label>
+                                                        <input type="date" x-model="trEditData.tasting_date" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                    </div>
+
+                                                    <!-- Whiskey scores -->
+                                                    <template x-if="t.type === 'whiskey'">
+                                                        <div class="md:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                            <div>
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nose /3</label>
+                                                                <input type="number" min="0" max="3" step="0.1" x-model="trEditData.nose" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div>
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Palate /3</label>
+                                                                <input type="number" min="0" max="3" step="0.1" x-model="trEditData.palate" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div>
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Finish /3</label>
+                                                                <input type="number" min="0" max="3" step="0.1" x-model="trEditData.finish" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div>
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Overall /1</label>
+                                                                <input type="number" min="0" max="1" step="0.05" x-model="trEditData.overall" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div class="md:col-span-2">
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Days Open</label>
+                                                                <input type="number" min="0" x-model="trEditData.days_from_crack" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div class="md:col-span-2">
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fill Level %</label>
+                                                                <input type="number" min="0" max="100" x-model="trEditData.fill_level" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div class="md:col-span-4">
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nose Notes (comma-separated)</label>
+                                                                <input type="text" x-model="trEditData.nose_notes" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div class="md:col-span-4">
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Palate Notes</label>
+                                                                <input type="text" x-model="trEditData.palate_notes" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div class="md:col-span-4">
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Finish Notes</label>
+                                                                <input type="text" x-model="trEditData.finish_notes" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div class="md:col-span-4">
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Overall Notes</label>
+                                                                <textarea rows="2" x-model="trEditData.overall_notes" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm"></textarea>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+
+                                                    <!-- Wine scores -->
+                                                    <template x-if="t.type === 'wine'">
+                                                        <div class="md:col-span-2 grid grid-cols-2 md:grid-cols-5 gap-3">
+                                                            <div>
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Appearance /3</label>
+                                                                <input type="number" min="0" max="3" step="0.1" x-model="trEditData.appearance" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div>
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Aroma /6</label>
+                                                                <input type="number" min="0" max="6" step="0.1" x-model="trEditData.aroma" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div>
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Taste /6</label>
+                                                                <input type="number" min="0" max="6" step="0.1" x-model="trEditData.taste" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div>
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Aftertaste /3</label>
+                                                                <input type="number" min="0" max="3" step="0.1" x-model="trEditData.aftertaste" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div>
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Overall /2</label>
+                                                                <input type="number" min="0" max="2" step="0.1" x-model="trEditData.overall" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div class="md:col-span-5">
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Overall Notes</label>
+                                                                <textarea rows="2" x-model="trEditData.overall_notes" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm"></textarea>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+
+                                                    <!-- Cocktail fields -->
+                                                    <template x-if="t.type === 'cocktail'">
+                                                        <div class="md:col-span-2 grid grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Score /10</label>
+                                                                <input type="number" min="0" max="10" step="0.5" x-model="trEditData.score" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div>
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Bartender</label>
+                                                                <input type="text" x-model="trEditData.bartender" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                                            </div>
+                                                            <div class="col-span-2">
+                                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</label>
+                                                                <textarea rows="3" x-model="trEditData.notes" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm"></textarea>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+                                                </div>
+
+                                                <!-- Save / Cancel -->
+                                                <div class="flex gap-2 mt-4">
+                                                    <button @click="trSaveEdit(t, $event)"
+                                                            class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors">
+                                                        Save
+                                                    </button>
+                                                    <button @click="trCancelEdit($event)"
+                                                            class="px-4 py-1.5 bg-white border border-gray-300 hover:border-gray-400 text-gray-700 text-sm font-medium rounded transition-colors">
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            </div>
 
                                             <!-- Card Body -->
                                             <div class="px-5 py-4">
@@ -1119,6 +1272,11 @@ function managementApp() {
         // Computed property for filtered/sorted tastings
         get filteredTastings() {
             let tastings = this.trAllTastings;
+
+            // Hide hidden tastings unless the toggle is on
+            if (!this.trShowHidden) {
+                tastings = tastings.filter(t => !t.hidden);
+            }
 
             if (this.trFilterType !== 'all') {
                 tastings = tastings.filter(t => t.type === this.trFilterType);

@@ -119,6 +119,7 @@ window.tastingReviewModule = function() {
                 trFilterMaxScore: '',
                 trFilterDateFrom: '',
                 trFilterDateTo: '',
+                trShowHidden: false,
 
                 trSortColumn: 'date',
                 trSortDir: 'desc',
@@ -128,6 +129,10 @@ window.tastingReviewModule = function() {
                 trTypeFilters: {},
                 trTypeFilterSearch: {},
                 trFilterOptionsData: {},
+
+                // Edit state
+                trEditingId: null,   // composite "kind:id" of the tasting being edited
+                trEditData: {},      // working copy of scores/notes for the edit form
             };
         },
 
@@ -171,13 +176,22 @@ window.tastingReviewModule = function() {
             return this.trSortDir === 'asc' ? '\u2191' : '\u2193';
         },
 
+        trRowKey(t) {
+            return `${t.tasting_kind || 'bottle'}:${t.id}`;
+        },
+
         trToggleRow(t) {
-            const key = `${t.bottle_name}|${t.date}|${t.taster}`;
-            this.trExpandedKey = this.trExpandedKey === key ? null : key;
+            const key = this.trRowKey(t);
+            if (this.trExpandedKey === key) {
+                this.trExpandedKey = null;
+            } else {
+                this.trEditingId = null;  // close any open edit form
+                this.trExpandedKey = key;
+            }
         },
 
         trIsExpanded(t) {
-            return this.trExpandedKey === `${t.bottle_name}|${t.date}|${t.taster}`;
+            return this.trExpandedKey === this.trRowKey(t);
         },
 
         trTypeConfig(type) {
@@ -251,6 +265,119 @@ window.tastingReviewModule = function() {
                 this.trFilterDateTo ||
                 Object.values(this.trTypeFilters).some(v => v) ||
                 Object.values(this.trTypeFilterSearch).some(v => v);
+        },
+
+        // ── Actions ──────────────────────────────────────────────────────────
+
+        async trDeleteTasting(t, event) {
+            event.stopPropagation();
+            if (!confirm(`Delete this tasting by ${t.taster} on ${t.date}? This cannot be undone.`)) return;
+            try {
+                const resp = await fetch(`/api/v1/management/tastings/${t.tasting_kind}/${t.id}`, { method: 'DELETE' });
+                if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+                this.trAllTastings = this.trAllTastings.filter(x => !(x.id === t.id && x.tasting_kind === t.tasting_kind));
+                if (this.trExpandedKey === this.trRowKey(t)) this.trExpandedKey = null;
+            } catch (e) {
+                alert('Failed to delete: ' + e.message);
+            }
+        },
+
+        async trToggleHidden(t, event) {
+            event.stopPropagation();
+            try {
+                const resp = await fetch(`/api/v1/management/tastings/${t.tasting_kind}/${t.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hidden: !t.hidden }),
+                });
+                if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+                // Update in-place so the row re-renders immediately
+                const idx = this.trAllTastings.findIndex(x => x.id === t.id && x.tasting_kind === t.tasting_kind);
+                if (idx !== -1) this.trAllTastings[idx].hidden = !t.hidden;
+            } catch (e) {
+                alert('Failed to update: ' + e.message);
+            }
+        },
+
+        trStartEdit(t, event) {
+            event.stopPropagation();
+            this.trEditingId = this.trRowKey(t);
+            // Deep-copy the mutable fields into the edit buffer
+            this.trEditData = {
+                taster_name: t.taster,
+                tasting_date: t.date,
+                // Scores (flat copy)
+                ...Object.fromEntries(Object.entries(t.scores).map(([k, v]) => [k, v ?? ''])),
+                // Notes
+                nose_notes: Array.isArray(t.notes?.nose) ? t.notes.nose.join(', ') : (t.notes?.nose || ''),
+                palate_notes: Array.isArray(t.notes?.palate) ? t.notes.palate.join(', ') : (t.notes?.palate || ''),
+                finish_notes: Array.isArray(t.notes?.finish) ? t.notes.finish.join(', ') : (t.notes?.finish || ''),
+                overall_notes: t.notes?.overall || '',
+                appearance_notes: Array.isArray(t.notes?.appearance) ? t.notes.appearance.join(', ') : (t.notes?.appearance || ''),
+                notes: t.notes?.notes || '',
+                bartender: t.bartender || '',
+                days_from_crack: t.days_from_crack ?? '',
+                fill_level: t.fill_level ?? '',
+            };
+        },
+
+        trIsEditing(t) {
+            return this.trEditingId === this.trRowKey(t);
+        },
+
+        trCancelEdit(event) {
+            if (event) event.stopPropagation();
+            this.trEditingId = null;
+            this.trEditData = {};
+        },
+
+        async trSaveEdit(t, event) {
+            if (event) event.stopPropagation();
+            const d = this.trEditData;
+            // Build payload — only send fields relevant to this tasting type
+            const payload = { taster_name: d.taster_name, tasting_date: d.tasting_date };
+            if (t.type === 'whiskey') {
+                Object.assign(payload, {
+                    whiskey_nose: parseFloat(d.nose) || null,
+                    whiskey_palate: parseFloat(d.palate) || null,
+                    whiskey_finish: parseFloat(d.finish) || null,
+                    whiskey_overall: parseFloat(d.overall) || null,
+                    nose_notes: d.nose_notes, palate_notes: d.palate_notes,
+                    finish_notes: d.finish_notes, overall_notes: d.overall_notes,
+                    days_from_crack: d.days_from_crack !== '' ? parseInt(d.days_from_crack) : null,
+                    fill_level: d.fill_level !== '' ? parseInt(d.fill_level) : null,
+                });
+            } else if (t.type === 'wine') {
+                Object.assign(payload, {
+                    wine_appearance: parseFloat(d.appearance) || null,
+                    wine_aroma: parseFloat(d.aroma) || null,
+                    wine_taste: parseFloat(d.taste) || null,
+                    wine_aftertaste: parseFloat(d.aftertaste) || null,
+                    wine_overall: parseFloat(d.overall) || null,
+                    appearance_notes: d.appearance_notes, nose_notes: d.palate_notes,
+                    palate_notes: d.taste_notes, finish_notes: d.finish_notes,
+                    overall_notes: d.overall_notes,
+                });
+            } else if (t.type === 'cocktail') {
+                Object.assign(payload, {
+                    score: parseFloat(d.score) || null,
+                    notes: d.notes,
+                    bartender: d.bartender,
+                });
+            }
+            try {
+                const resp = await fetch(`/api/v1/management/tastings/${t.tasting_kind}/${t.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+                // Reload to get fresh computed scores
+                this.trEditingId = null;
+                await this.loadTastings();
+            } catch (e) {
+                alert('Failed to save: ' + e.message);
+            }
         },
 
         // Returns the type-specific filter definitions for the currently selected type

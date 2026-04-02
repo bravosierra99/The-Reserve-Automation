@@ -146,6 +146,9 @@ class TastingNoteModel(Base):
     # Confidence
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
 
+    # Hidden: excluded from score aggregations and default views
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
 

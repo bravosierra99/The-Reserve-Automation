@@ -8,6 +8,7 @@
 from pathlib import Path
 from typing import Dict, Optional
 from fastapi import APIRouter, Depends, Request, HTTPException, BackgroundTasks
+from pydantic import BaseModel as pydantic_BaseModel
 from ...auth.dependencies import require
 from fastapi.responses import HTMLResponse
 from loguru import logger
@@ -315,6 +316,9 @@ async def get_all_tastings(
                 tasting_type = tn.beverage_type or bottle.type or "whiskey"
 
                 tasting_data: dict = {
+                    "id": tn.id,
+                    "tasting_kind": "bottle",
+                    "hidden": tn.hidden,
                     "bottle_name": tn.bottle_name or f"{bottle.producer} - {bottle.name}",
                     "bottle_path": str(bottle.id),
                     "date": tn.tasting_date,
@@ -421,6 +425,9 @@ async def get_all_tastings(
         for ct in cocktail_tastings:
             cocktail = cocktails_by_id.get(ct.cocktail_id)
             tastings.append({
+                "id": ct.id,
+                "tasting_kind": "cocktail",
+                "hidden": ct.hidden,
                 "bottle_name": ct.recipe_name,
                 "bottle_path": f"cocktail/{ct.cocktail_id}",
                 "date": ct.tasting_date,
@@ -477,6 +484,136 @@ async def get_all_tastings(
     except Exception as e:
         logger.error(f"Failed to get all tastings: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/api/v1/management/tastings/{kind}/{tasting_id}", dependencies=[Depends(require("management.access"))])
+async def delete_tasting(kind: str, tasting_id: int):
+    """Delete a tasting record. kind must be 'bottle' or 'cocktail'."""
+    from ....db.engine import get_db
+    from ....db.models.bottle import TastingNoteModel
+    from ....db.models.cocktail_tasting import CocktailTastingModel
+    db = next(get_db())
+    if kind == "bottle":
+        obj = db.query(TastingNoteModel).filter(TastingNoteModel.id == tasting_id).first()
+    elif kind == "cocktail":
+        obj = db.query(CocktailTastingModel).filter(CocktailTastingModel.id == tasting_id).first()
+    else:
+        raise HTTPException(status_code=400, detail="kind must be 'bottle' or 'cocktail'")
+    if not obj:
+        raise HTTPException(status_code=404, detail="Tasting not found")
+    db.delete(obj)
+    db.commit()
+    return {"status": "deleted", "id": tasting_id}
+
+
+class UpdateTastingRequest(pydantic_BaseModel):
+    hidden: bool | None = None
+    taster_name: str | None = None
+    tasting_date: str | None = None
+    # Bottle whiskey scores
+    whiskey_nose: float | None = None
+    whiskey_palate: float | None = None
+    whiskey_finish: float | None = None
+    whiskey_overall: float | None = None
+    # Bottle wine scores
+    wine_appearance: float | None = None
+    wine_aroma: float | None = None
+    wine_taste: float | None = None
+    wine_aftertaste: float | None = None
+    wine_overall: float | None = None
+    # Notes (JSON arrays as comma-separated strings from frontend)
+    nose_notes: str | None = None
+    palate_notes: str | None = None
+    finish_notes: str | None = None
+    overall_notes: str | None = None
+    appearance_notes: str | None = None
+    # Cocktail fields
+    score: float | None = None
+    notes: str | None = None
+    bartender: str | None = None
+    # Whiskey metadata
+    days_from_crack: int | None = None
+    fill_level: int | None = None
+
+
+@router.patch("/api/v1/management/tastings/{kind}/{tasting_id}", dependencies=[Depends(require("management.access"))])
+async def update_tasting(kind: str, tasting_id: int, body: UpdateTastingRequest):
+    """Update a tasting record. Omitted fields are left unchanged."""
+    from datetime import date as date_type
+    from ....db.engine import get_db
+    from ....db.models.bottle import TastingNoteModel
+    from ....db.models.cocktail_tasting import CocktailTastingModel
+    db = next(get_db())
+
+    def _notes_list(val):
+        if val is None:
+            return None
+        return [v.strip() for v in val.split(",") if v.strip()] if val.strip() else []
+
+    if kind == "bottle":
+        obj = db.query(TastingNoteModel).filter(TastingNoteModel.id == tasting_id).first()
+        if not obj:
+            raise HTTPException(status_code=404, detail="Tasting not found")
+        if body.hidden is not None:
+            obj.hidden = body.hidden
+        if body.taster_name is not None:
+            obj.taster_name = body.taster_name
+        if body.tasting_date is not None:
+            obj.tasting_date = date_type.fromisoformat(body.tasting_date)
+        if body.whiskey_nose is not None:
+            obj.whiskey_nose = body.whiskey_nose
+        if body.whiskey_palate is not None:
+            obj.whiskey_palate = body.whiskey_palate
+        if body.whiskey_finish is not None:
+            obj.whiskey_finish = body.whiskey_finish
+        if body.whiskey_overall is not None:
+            obj.whiskey_overall = body.whiskey_overall
+        if body.wine_appearance is not None:
+            obj.wine_appearance = body.wine_appearance
+        if body.wine_aroma is not None:
+            obj.wine_aroma = body.wine_aroma
+        if body.wine_taste is not None:
+            obj.wine_taste = body.wine_taste
+        if body.wine_aftertaste is not None:
+            obj.wine_aftertaste = body.wine_aftertaste
+        if body.wine_overall is not None:
+            obj.wine_overall = body.wine_overall
+        if body.nose_notes is not None:
+            obj.nose_notes = _notes_list(body.nose_notes)
+        if body.palate_notes is not None:
+            obj.palate_notes = _notes_list(body.palate_notes)
+        if body.finish_notes is not None:
+            obj.finish_notes = _notes_list(body.finish_notes)
+        if body.overall_notes is not None:
+            obj.overall_notes = body.overall_notes
+        if body.appearance_notes is not None:
+            obj.appearance_notes = _notes_list(body.appearance_notes)
+        if body.days_from_crack is not None:
+            obj.days_from_crack = body.days_from_crack
+        if body.fill_level is not None:
+            obj.fill_level = body.fill_level
+
+    elif kind == "cocktail":
+        obj = db.query(CocktailTastingModel).filter(CocktailTastingModel.id == tasting_id).first()
+        if not obj:
+            raise HTTPException(status_code=404, detail="Tasting not found")
+        if body.hidden is not None:
+            obj.hidden = body.hidden
+        if body.taster_name is not None:
+            obj.taster_name = body.taster_name
+        if body.tasting_date is not None:
+            obj.tasting_date = date_type.fromisoformat(body.tasting_date)
+        if body.score is not None:
+            obj.score = body.score
+        if body.notes is not None:
+            obj.notes = body.notes
+        if body.bartender is not None:
+            obj.bartender = body.bartender
+    else:
+        raise HTTPException(status_code=400, detail="kind must be 'bottle' or 'cocktail'")
+
+    db.commit()
+    return {"status": "updated", "id": tasting_id}
 
 
 def _parse_float(value) -> float | None:

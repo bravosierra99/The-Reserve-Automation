@@ -3,6 +3,7 @@
 from datetime import datetime, date
 
 from sqlalchemy import (
+    Boolean,
     Date,
     DateTime,
     Float,
@@ -33,6 +34,9 @@ class CocktailTastingModel(Base):
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     bartender: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Hidden: excluded from score aggregations and default views
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
