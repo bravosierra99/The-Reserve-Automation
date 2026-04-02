@@ -39,7 +39,8 @@ from reserve_automation.utils.vault_reader import VaultReader
 @click.option("--database-url", default="sqlite:///data/reserve.db", help="SQLAlchemy database URL")
 @click.option("--media-dir", default="data/media", help="Directory for media files (images)")
 @click.option("--dry-run", is_flag=True, help="Preview import without writing")
-def main(vault_path: str, database_url: str, media_dir: str, dry_run: bool):
+@click.option("--tastings-only", is_flag=True, help="Only import tasting notes (skip bottles/ingredients/cocktails)")
+def main(vault_path: str, database_url: str, media_dir: str, dry_run: bool, tastings_only: bool):
     """Import data from Obsidian vault into SQLite database."""
     vault = Path(vault_path)
     media = Path(media_dir)
@@ -70,20 +71,22 @@ def main(vault_path: str, database_url: str, media_dir: str, dry_run: bool):
     }
 
     try:
-        # Phase 1: Import bottles
-        _import_bottles(db, reader, vault, media, stats, dry_run)
+        if not tastings_only:
+            # Phase 1: Import bottles
+            _import_bottles(db, reader, vault, media, stats, dry_run)
 
         # Phase 2: Import tasting notes (needs bottle IDs from phase 1)
         _import_tastings(db, vault, stats, dry_run)
 
-        # Phase 3: Import ingredients (two-pass for parent resolution)
-        _import_ingredients(db, reader, vault, media, stats, dry_run)
+        if not tastings_only:
+            # Phase 3: Import ingredients (two-pass for parent resolution)
+            _import_ingredients(db, reader, vault, media, stats, dry_run)
 
-        # Phase 4: Import cocktails
-        _import_cocktails(db, reader, stats, dry_run)
+            # Phase 4: Import cocktails
+            _import_cocktails(db, reader, stats, dry_run)
 
-        # Phase 5: Import cocktail tastings
-        _import_cocktail_tastings(db, reader, vault, stats, dry_run)
+            # Phase 5: Import cocktail tastings
+            _import_cocktail_tastings(db, reader, vault, stats, dry_run)
 
         if not dry_run:
             db.commit()
