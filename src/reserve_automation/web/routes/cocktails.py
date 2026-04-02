@@ -332,6 +332,50 @@ async def list_cocktail_tastings(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class UpdateCocktailTastingRequest(BaseModel):
+    taster_name: str | None = None
+    tasting_date: str | None = None
+    score: float | None = None
+    notes: str | None = None
+    bartender: str | None = None
+
+
+@router.patch("/api/v1/cocktails/{cocktail_id}/tastings/{tasting_id}", dependencies=[Depends(require("cocktail_tastings.submit"))])
+async def update_cocktail_tasting(
+    cocktail_id: int,
+    tasting_id: int,
+    request_data: UpdateCocktailTastingRequest,
+    db: Session = Depends(get_db),
+):
+    """Update a cocktail tasting note."""
+    from ...db.models.cocktail_tasting import CocktailTastingModel
+    try:
+        obj = db.query(CocktailTastingModel).filter(CocktailTastingModel.id == tasting_id).first()
+        if not obj:
+            raise HTTPException(status_code=404, detail="Tasting not found")
+
+        if request_data.taster_name is not None:
+            obj.taster_name = request_data.taster_name
+        if request_data.tasting_date is not None:
+            from datetime import date
+            obj.tasting_date = date.fromisoformat(request_data.tasting_date)
+        if request_data.score is not None:
+            obj.score = request_data.score
+        if request_data.notes is not None:
+            obj.notes = request_data.notes
+        if request_data.bartender is not None:
+            obj.bartender = request_data.bartender
+
+        db.commit()
+        db.refresh(obj)
+        return {"status": "updated", "id": tasting_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update cocktail tasting: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/api/v1/cocktails/{cocktail_id}/tastings/{tasting_id}", dependencies=[Depends(require("cocktail_tastings.delete"))])
 async def delete_cocktail_tasting(
     cocktail_id: int,

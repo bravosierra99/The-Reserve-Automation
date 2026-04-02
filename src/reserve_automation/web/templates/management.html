@@ -1124,12 +1124,20 @@
                                                                     </div>
                                                                 </template>
 
-                                                                <!-- Cocktail: bartender -->
-                                                                <template x-if="t.type === 'cocktail' && t.bartender">
-                                                                    <div class="pt-2 mt-1 border-t border-gray-100">
-                                                                        <div class="flex items-center gap-2">
+                                                                <!-- Cocktail: bartender + ingredients used -->
+                                                                <template x-if="t.type === 'cocktail'">
+                                                                    <div class="pt-2 mt-1 border-t border-gray-100 space-y-2">
+                                                                        <div x-show="t.bartender" class="flex items-center gap-2">
                                                                             <span class="text-sm text-gray-600 w-20 flex-shrink-0">Bartender</span>
                                                                             <span class="text-sm font-medium text-gray-800" x-text="t.bartender"></span>
+                                                                        </div>
+                                                                        <div x-show="t.ingredients && t.ingredients.length > 0">
+                                                                            <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Ingredients Used</span>
+                                                                            <div class="flex flex-wrap gap-1.5 mt-1">
+                                                                                <template x-for="ing in (t.ingredients || [])" :key="ing">
+                                                                                    <span class="px-2 py-0.5 bg-orange-50 border border-orange-200 text-orange-700 text-xs rounded" x-text="ing"></span>
+                                                                                </template>
+                                                                            </div>
                                                                         </div>
                                                                     </div>
                                                                 </template>

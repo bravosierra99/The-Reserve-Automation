@@ -100,9 +100,9 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <template x-for="(t, idx) in tastings" :key="idx">
+                            <template x-for="(t, idx) in tastings" :key="t.id">
                                 <>
-                                <tr class="border-b" :class="t.bottles_used && t.bottles_used.length ? '' : 'last:border-0'">
+                                <tr class="border-b">
                                     <td class="py-2 pr-4" x-text="t.tasting_date"></td>
                                     <td class="py-2 pr-4" x-text="t.taster_name"></td>
                                     <td class="py-2 pr-4">
@@ -111,12 +111,16 @@
                                     </td>
                                     <td class="py-2 pr-4" x-text="t.bartender || '--'"></td>
                                     <td class="py-2 pr-4 text-gray-600" x-text="t.notes || ''"></td>
-                                    <td class="py-2">
+                                    <td class="py-2 flex gap-2">
+                                        <button @click="startEditTasting(t)"
+                                                class="text-blue-600 hover:text-blue-800 text-xs">Edit</button>
                                         <button @click="deleteTasting(t.id)"
                                                 class="text-red-600 hover:text-red-800 text-xs">Delete</button>
                                     </td>
                                 </tr>
-                                <tr x-show="t.bottles_used && t.bottles_used.length > 0" class="border-b last:border-0 bg-gray-50">
+                                <!-- Ingredients used row -->
+                                <tr x-show="t.bottles_used && t.bottles_used.length > 0 && editingTastingId !== t.id"
+                                    class="border-b bg-gray-50">
                                     <td colspan="6" class="py-1 px-2 pb-2">
                                         <div class="flex flex-wrap gap-2">
                                             <template x-for="bu in t.bottles_used" :key="bu.recipe_ingredient">
@@ -125,6 +129,48 @@
                                                     <span x-text="bu.actual_product"></span>
                                                 </span>
                                             </template>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <!-- Inline edit row -->
+                                <tr x-show="editingTastingId === t.id" class="border-b bg-blue-50">
+                                    <td colspan="6" class="py-3 px-3">
+                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                                            <div>
+                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Taster</label>
+                                                <input type="text" x-model="editTastingData.taster_name"
+                                                       class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                            </div>
+                                            <div>
+                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</label>
+                                                <input type="date" x-model="editTastingData.tasting_date"
+                                                       class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                            </div>
+                                            <div>
+                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Score /10</label>
+                                                <input type="number" min="0" max="10" step="0.5" x-model.number="editTastingData.score"
+                                                       class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                            </div>
+                                            <div>
+                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Bartender</label>
+                                                <input type="text" x-model="editTastingData.bartender"
+                                                       class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
+                                            </div>
+                                            <div class="col-span-2 md:col-span-4">
+                                                <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</label>
+                                                <textarea rows="2" x-model="editTastingData.notes"
+                                                          class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm"></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <button @click="saveEditTasting(t.id)"
+                                                    class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded">
+                                                Save
+                                            </button>
+                                            <button @click="editingTastingId = null"
+                                                    class="px-3 py-1.5 bg-white border border-gray-300 hover:border-gray-400 text-gray-700 text-sm font-medium rounded">
+                                                Cancel
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -369,6 +415,8 @@ function cocktailDetailApp(cocktailId) {
         },
         bottleSearchQueries: {},
         bottleResults: {},
+        editingTastingId: null,
+        editTastingData: {},
         showEditForm: false,
         editSaving: false,
         editError: '',
@@ -582,6 +630,38 @@ function cocktailDetailApp(cocktailId) {
                 if (response.ok) window.location.href = '/cocktails';
             } catch (e) {
                 alert('Failed to delete: ' + e.message);
+            }
+        },
+
+        startEditTasting(t) {
+            this.editingTastingId = t.id;
+            this.editTastingData = {
+                taster_name: t.taster_name,
+                tasting_date: t.tasting_date,
+                score: t.score ?? '',
+                notes: t.notes || '',
+                bartender: t.bartender || '',
+            };
+        },
+
+        async saveEditTasting(tastingId) {
+            try {
+                const response = await fetch(`/api/v1/cocktails/${this.cocktailId}/tastings/${tastingId}`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        taster_name: this.editTastingData.taster_name,
+                        tasting_date: this.editTastingData.tasting_date,
+                        score: this.editTastingData.score !== '' ? parseFloat(this.editTastingData.score) : null,
+                        notes: this.editTastingData.notes,
+                        bartender: this.editTastingData.bartender,
+                    }),
+                });
+                if (!response.ok) throw new Error(`Server error ${response.status}`);
+                this.editingTastingId = null;
+                await this.loadTastings();
+            } catch (e) {
+                alert('Failed to save: ' + e.message);
             }
         },
 
