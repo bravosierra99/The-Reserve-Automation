@@ -15,11 +15,25 @@
         </a>
     </div>
 
-    <!-- Search bar -->
-    <div class="mb-6">
+    <!-- Search & Filter bar -->
+    <div class="mb-6 flex flex-wrap gap-3">
         <input type="text" x-model="searchQuery" @input.debounce.300ms="loadCocktails()"
-               placeholder="Search by name, ingredient, method..."
-               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+               placeholder="Search by name or ingredient..."
+               class="flex-1 min-w-48 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+        <select x-model="filterMethod" class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
+            <option value="">All methods</option>
+            <option>shaken</option>
+            <option>stirred</option>
+            <option>built</option>
+            <option>blended</option>
+        </select>
+        <input type="number" x-model="filterMinScore" min="0" max="10" step="0.5"
+               placeholder="Min score"
+               class="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+        <button x-show="filterMethod || filterMinScore" @click="filterMethod=''; filterMinScore=''"
+                class="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-100">
+            Clear filters
+        </button>
     </div>
 
     <!-- Loading -->
@@ -34,9 +48,13 @@
         <p class="text-gray-600 mb-6">Create your first cocktail recipe</p>
     </div>
 
+    <div x-show="!loading && cocktails.length > 0 && filteredCocktails.length === 0" class="bg-white rounded-lg shadow-md p-8 text-center text-gray-500">
+        No cocktails match the current filters.
+    </div>
+
     <!-- Recipe cards -->
-    <div x-show="!loading && cocktails.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <template x-for="cocktail in cocktails" :key="cocktail.id">
+    <div x-show="!loading && filteredCocktails.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <template x-for="cocktail in filteredCocktails" :key="cocktail.id">
             <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6 cursor-pointer"
                  @click="window.location.href = `/cocktails/${cocktail.id}/detail`">
                 <h2 class="text-xl font-bold text-gray-800 mb-2" x-text="cocktail.name"></h2>
@@ -46,9 +64,11 @@
                     <span x-show="cocktail.style" class="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded" x-text="cocktail.style"></span>
                     <span x-show="cocktail.glassware" class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded" x-text="cocktail.glassware"></span>
                 </div>
-                <div class="text-sm text-gray-500">
+                <div class="text-sm text-gray-500 flex items-center gap-3">
                     <span x-text="cocktail.ingredients.length + ' ingredients'"></span>
-                    <span x-show="cocktail.stars && cocktail.stars !== '--'" class="ml-2" x-text="cocktail.stars"></span>
+                    <span x-show="cocktail.avg_score !== null && cocktail.avg_score !== undefined"
+                          class="px-2 py-0.5 bg-green-100 text-green-800 rounded font-medium"
+                          x-text="'★ ' + cocktail.avg_score + '/10'"></span>
                 </div>
             </div>
         </template>
@@ -255,6 +275,8 @@ function cocktailsApp() {
         cocktails: [],
         loading: true,
         searchQuery: '',
+        filterMethod: '',
+        filterMinScore: '',
         showCreateForm: false,
         saving: false,
         formError: '',
@@ -270,6 +292,18 @@ function cocktailsApp() {
         recipeSearching: false,
         recipeSearchError: '',
         recipeSearchSuccess: '',
+
+        get filteredCocktails() {
+            let list = this.cocktails;
+            if (this.filterMethod) {
+                list = list.filter(c => c.method === this.filterMethod);
+            }
+            if (this.filterMinScore !== '' && this.filterMinScore !== null) {
+                const min = parseFloat(this.filterMinScore);
+                list = list.filter(c => c.avg_score !== null && c.avg_score !== undefined && c.avg_score >= min);
+            }
+            return list;
+        },
         newCocktail: {
             name: '', description: '', parent_cocktail: '', method: '', style: '', glassware: '', garnish: '',
             ingredients: [{ingredient: '', amount: null, unit: 'oz', notes: '', optional: false}],

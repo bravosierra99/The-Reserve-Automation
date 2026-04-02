@@ -422,11 +422,12 @@ async def get_all_tastings(
 
         # Also include cocktail tastings from CocktailTastingModel
         from ....db.models.cocktail import CocktailModel
-        from ....db.models.cocktail_tasting import CocktailTastingModel
+        from ....db.models.cocktail_tasting import CocktailTastingModel, CocktailTastingIngredientModel
         cocktail_tastings = _db.query(CocktailTastingModel).all()
         cocktails_by_id = {c.id: c for c in _db.query(CocktailModel).all()}
         for ct in cocktail_tastings:
             cocktail = cocktails_by_id.get(ct.cocktail_id)
+            ingredient_names = [i.recipe_ingredient for i in (ct.bottles_used or [])]
             tastings.append({
                 "id": ct.id,
                 "tasting_kind": "cocktail",
@@ -444,6 +445,7 @@ async def get_all_tastings(
                 "bartender": ct.bartender,
                 "scores": {"score": ct.score},
                 "notes": {"notes": ct.notes or ""},
+                "ingredients": ingredient_names,
                 "producer": None,
                 "variety": None,
                 "country_region": None,

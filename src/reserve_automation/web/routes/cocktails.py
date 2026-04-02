@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
 from ..auth.dependencies import require
 from fastapi.templating import Jinja2Templates
 from loguru import logger
@@ -21,6 +22,7 @@ from ...core.cocktail_tasting import (
 )
 from ...db.repositories import get_cocktail_repo
 from ...db.repositories.cocktail_repo import SQLiteCocktailRepository
+from ...db.engine import get_db
 
 router = APIRouter()
 
@@ -28,7 +30,7 @@ templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=templates_dir)
 
 
-def _cocktail_to_dict(c: CocktailRecipe) -> dict:
+def _cocktail_to_dict(c: CocktailRecipe, avg_score: float | None = None) -> dict:
     """Convert cocktail to API response dict."""
     return {
         "id": c.id,
@@ -52,7 +54,21 @@ def _cocktail_to_dict(c: CocktailRecipe) -> dict:
         "serving_size": c.serving_size,
         "stars": c.stars,
         "photo": c.photo,
+        "avg_score": avg_score,
     }
+
+
+def _compute_avg_scores(db: Session) -> dict[int, float]:
+    """Return a map of cocktail_id -> avg score (non-hidden tastings only)."""
+    from ...db.models.cocktail_tasting import CocktailTastingModel
+    tastings = db.query(CocktailTastingModel).filter(
+        CocktailTastingModel.hidden == False,  # noqa: E712
+        CocktailTastingModel.score != None,    # noqa: E711
+    ).all()
+    scores: dict[int, list[float]] = {}
+    for t in tastings:
+        scores.setdefault(t.cocktail_id, []).append(t.score)
+    return {cid: round(sum(vals) / len(vals), 1) for cid, vals in scores.items()}
 
 
 def _tasting_to_dict(t: CocktailTastingNote) -> dict:
@@ -101,6 +117,7 @@ async def cocktail_detail_page(cocktail_id: str, request: Request):
 async def list_cocktails(
     q: str = None,
     repo: SQLiteCocktailRepository = Depends(get_cocktail_repo),
+    db: Session = Depends(get_db),
 ):
     """List all cocktails, optionally filtered by search query."""
     try:
@@ -109,7 +126,8 @@ async def list_cocktails(
         else:
             cocktails = repo.get_all()
 
-        return [_cocktail_to_dict(c) for c in cocktails]
+        avg_scores = _compute_avg_scores(db)
+        return [_cocktail_to_dict(c, avg_scores.get(int(c.id))) for c in cocktails]
     except Exception as e:
         logger.error(f"Failed to list cocktails: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -136,6 +154,7 @@ async def search_cocktails(
 async def get_cocktail(
     cocktail_id: int,
     repo: SQLiteCocktailRepository = Depends(get_cocktail_repo),
+    db: Session = Depends(get_db),
 ):
     """Get a single cocktail recipe."""
     try:
@@ -143,7 +162,8 @@ async def get_cocktail(
         if not cocktail:
             raise HTTPException(status_code=404, detail="Cocktail not found")
 
-        return _cocktail_to_dict(cocktail)
+        avg_scores = _compute_avg_scores(db)
+        return _cocktail_to_dict(cocktail, avg_scores.get(cocktail_id))
     except HTTPException:
         raise
     except Exception as e:

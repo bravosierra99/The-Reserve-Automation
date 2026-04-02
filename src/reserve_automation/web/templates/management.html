@@ -1286,9 +1286,13 @@ function managementApp() {
             }
             if (this.trFilterSearch) {
                 const q = this.trFilterSearch.toLowerCase();
-                tastings = tastings.filter(t =>
-                    t.bottle_name.toLowerCase().includes(q)
-                );
+                tastings = tastings.filter(t => {
+                    if (t.bottle_name.toLowerCase().includes(q)) return true;
+                    if (t.type === 'cocktail' && Array.isArray(t.ingredients)) {
+                        return t.ingredients.some(i => i.toLowerCase().includes(q));
+                    }
+                    return false;
+                });
             }
             // Type-specific dropdown filters (exact match)
             for (const [key, val] of Object.entries(this.trTypeFilters)) {
