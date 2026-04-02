@@ -6,7 +6,7 @@ from pathlib import Path
 from sqlalchemy import event, create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import StaticPool, NullPool
 
 from .base import Base
 
@@ -53,6 +53,8 @@ def init_db(database_url: str = "sqlite:///data/reserve.db") -> Engine:
     # connection (and thus the same database). Without this, each connection
     # gets its own empty in-memory database.
     extra_kwargs = {}
+    if database_url.startswith("sqlite:///") and ":memory:" not in database_url:
+        extra_kwargs["poolclass"] = NullPool
     if ":memory:" in database_url:
         extra_kwargs["poolclass"] = StaticPool
 
