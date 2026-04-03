@@ -130,9 +130,18 @@ window.tastingReviewModule = function() {
                 trTypeFilterSearch: {},
                 trFilterOptionsData: {},
 
-                // Edit state
+                // Edit state (wine/whiskey inline form)
                 trEditingId: null,   // composite "kind:id" of the tasting being edited
                 trEditData: {},      // working copy of scores/notes for the edit form
+
+                // Cocktail edit modal (same UI as cocktail detail page)
+                trCocktailModalOpen: false,
+                trCocktailModalTasting: null,
+                trCocktailModalRecipe: null,
+                trCocktailEditData: {},
+                trCocktailBottleQueries: {},
+                trCocktailBottleResults: {},
+                trCocktailEditError: '',
             };
         },
 
@@ -301,6 +310,11 @@ window.tastingReviewModule = function() {
 
         trStartEdit(t, event) {
             event.stopPropagation();
+            // Cocktail tastings use the same modal as the cocktail detail page
+            if (t.type === 'cocktail') {
+                this.trOpenCocktailModal(t);
+                return;
+            }
             this.trEditingId = this.trRowKey(t);
             // Deep-copy the mutable fields into the edit buffer
             this.trEditData = {
@@ -418,6 +432,98 @@ window.tastingReviewModule = function() {
             if (key === 'fill_level') return `${val}%`;
             if (typeof val === 'number') return this.trFmt(val);
             return val;
+        },
+
+        // ── Cocktail tasting edit modal ───────────────────────────────────────
+
+        async trOpenCocktailModal(t) {
+            this.trCocktailModalTasting = t;
+            this.trCocktailBottleQueries = {};
+            this.trCocktailBottleResults = {};
+            this.trCocktailEditError = '';
+
+            // Fetch the recipe to get ingredient amounts/units
+            let recipe = null;
+            try {
+                const resp = await fetch(`/api/v1/cocktails/${t.cocktail_id}`);
+                if (resp.ok) recipe = await resp.json();
+            } catch (e) {}
+            this.trCocktailModalRecipe = recipe;
+
+            // Build bottles_used indexed by recipe.ingredients order
+            const buMap = {};
+            (t.bottles_used || []).forEach(bu => { buMap[bu.recipe_ingredient] = bu.actual_product; });
+            const ingredients = recipe ? recipe.ingredients : [];
+            const bottlesArr = ingredients.map((ing, idx) => {
+                const actual = buMap[ing.ingredient] || '';
+                this.trCocktailBottleQueries[idx] = actual;
+                return { recipe_ingredient: ing.ingredient, actual_product: actual };
+            });
+
+            this.trCocktailEditData = {
+                taster_name: t.taster,
+                tasting_date: t.date,
+                score: t.total_score ?? 7,
+                notes: t.notes?.notes || '',
+                bartender: t.bartender || '',
+                bottles_used: bottlesArr,
+            };
+            this.trCocktailModalOpen = true;
+        },
+
+        async trCocktailSearchBottles(bidx, recipeIngredient) {
+            const query = this.trCocktailBottleQueries[bidx] || '';
+            try {
+                const resp = await fetch(`/api/v1/ingredients/search?q=${encodeURIComponent(query || recipeIngredient)}`);
+                if (!resp.ok) return;
+                let results = await resp.json();
+                if (!query) {
+                    const allResp = await fetch('/api/v1/ingredients?flat=true');
+                    if (allResp.ok) {
+                        const allIng = await allResp.json();
+                        const node = allIng.find(i => i.name.toLowerCase() === recipeIngredient.toLowerCase());
+                        if (node) {
+                            const descResp = await fetch(`/api/v1/ingredients/${node.id}/descendants`);
+                            if (descResp.ok) results = [node, ...(await descResp.json())];
+                        }
+                    }
+                }
+                results.sort((a, b) => (a.is_product && !b.is_product ? -1 : !a.is_product && b.is_product ? 1 : 0));
+                this.trCocktailBottleResults[bidx] = results;
+            } catch (e) {}
+        },
+
+        trCocktailSelectBottle(bidx, result, recipeIngredient) {
+            this.trCocktailEditData.bottles_used[bidx] = {
+                recipe_ingredient: recipeIngredient,
+                actual_product: result.name,
+            };
+            this.trCocktailBottleQueries[bidx] = result.name;
+            this.trCocktailBottleResults[bidx] = [];
+        },
+
+        async trCocktailSaveEdit() {
+            this.trCocktailEditError = '';
+            const t = this.trCocktailModalTasting;
+            try {
+                const resp = await fetch(`/api/v1/management/tastings/cocktail/${t.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        taster_name: this.trCocktailEditData.taster_name,
+                        tasting_date: this.trCocktailEditData.tasting_date,
+                        score: this.trCocktailEditData.score !== '' ? parseFloat(this.trCocktailEditData.score) : null,
+                        notes: this.trCocktailEditData.notes,
+                        bartender: this.trCocktailEditData.bartender,
+                        bottles_used: this.trCocktailEditData.bottles_used,
+                    }),
+                });
+                if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+                this.trCocktailModalOpen = false;
+                await this.loadTastings();
+            } catch (e) {
+                this.trCocktailEditError = 'Failed to save: ' + e.message;
+            }
         },
     };
 };

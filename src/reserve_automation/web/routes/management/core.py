@@ -428,10 +428,15 @@ async def get_all_tastings(
         for ct in cocktail_tastings:
             cocktail = cocktails_by_id.get(ct.cocktail_id)
             ingredient_names = [i.recipe_ingredient for i in (ct.bottles_used or [])]
+            bottles_used_full = [
+                {"recipe_ingredient": i.recipe_ingredient, "actual_product": i.actual_product}
+                for i in (ct.bottles_used or [])
+            ]
             tastings.append({
                 "id": ct.id,
                 "tasting_kind": "cocktail",
                 "hidden": ct.hidden,
+                "cocktail_id": ct.cocktail_id,
                 "bottle_name": ct.recipe_name,
                 "bottle_path": f"cocktail/{ct.cocktail_id}",
                 "date": ct.tasting_date,
@@ -446,6 +451,7 @@ async def get_all_tastings(
                 "scores": {"score": ct.score},
                 "notes": {"notes": ct.notes or ""},
                 "ingredients": ingredient_names,
+                "bottles_used": bottles_used_full,
                 "producer": None,
                 "variety": None,
                 "country_region": None,
@@ -511,6 +517,11 @@ async def delete_tasting(kind: str, tasting_id: int):
     return {"status": "deleted", "id": tasting_id}
 
 
+class BottleUsedItem(pydantic_BaseModel):
+    recipe_ingredient: str
+    actual_product: str
+
+
 class UpdateTastingRequest(pydantic_BaseModel):
     hidden: bool | None = None
     taster_name: str | None = None
@@ -536,6 +547,7 @@ class UpdateTastingRequest(pydantic_BaseModel):
     score: float | None = None
     notes: str | None = None
     bartender: str | None = None
+    bottles_used: list[BottleUsedItem] | None = None
     # Whiskey metadata
     days_from_crack: int | None = None
     fill_level: int | None = None
@@ -614,6 +626,18 @@ async def update_tasting(kind: str, tasting_id: int, body: UpdateTastingRequest)
             obj.notes = body.notes
         if body.bartender is not None:
             obj.bartender = body.bartender
+        if body.bottles_used is not None:
+            from ....db.models.cocktail_tasting import CocktailTastingIngredientModel
+            db.query(CocktailTastingIngredientModel).filter(
+                CocktailTastingIngredientModel.cocktail_tasting_id == tasting_id
+            ).delete()
+            for bu in body.bottles_used:
+                if bu.actual_product.strip():
+                    db.add(CocktailTastingIngredientModel(
+                        cocktail_tasting_id=tasting_id,
+                        recipe_ingredient=bu.recipe_ingredient,
+                        actual_product=bu.actual_product.strip(),
+                    ))
     else:
         raise HTTPException(status_code=400, detail="kind must be 'bottle' or 'cocktail'")
 
