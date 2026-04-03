@@ -100,7 +100,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <template x-for="(t, idx) in tastings" :key="t.id">
+                            <template x-for="(t, idx) in tastings" :key="idx">
                                 <>
                                 <tr class="border-b">
                                     <td class="py-2 pr-4" x-text="t.tasting_date"></td>
@@ -111,15 +111,15 @@
                                     </td>
                                     <td class="py-2 pr-4" x-text="t.bartender || '--'"></td>
                                     <td class="py-2 pr-4 text-gray-600" x-text="t.notes || ''"></td>
-                                    <td class="py-2 flex gap-2">
-                                        <button @click="startEditTasting(t)"
-                                                class="text-blue-600 hover:text-blue-800 text-xs">Edit</button>
+                                    <td class="py-2">
+                                        <button @click.stop="startEditTasting(idx, t)"
+                                                class="text-blue-600 hover:text-blue-800 text-xs mr-2">Edit</button>
                                         <button @click="deleteTasting(t.id)"
                                                 class="text-red-600 hover:text-red-800 text-xs">Delete</button>
                                     </td>
                                 </tr>
-                                <!-- Ingredients used row -->
-                                <tr x-show="t.bottles_used && t.bottles_used.length > 0 && editingTastingId !== t.id"
+                                <!-- Ingredients used row (hidden while editing) -->
+                                <tr x-show="t.bottles_used && t.bottles_used.length > 0 && editingTastingIdx !== idx"
                                     class="border-b bg-gray-50">
                                     <td colspan="6" class="py-1 px-2 pb-2">
                                         <div class="flex flex-wrap gap-2">
@@ -133,7 +133,7 @@
                                     </td>
                                 </tr>
                                 <!-- Inline edit row -->
-                                <tr x-show="editingTastingId === t.id" class="border-b bg-blue-50">
+                                <tr x-show="editingTastingIdx === idx" class="border-b bg-blue-50">
                                     <td colspan="6" class="py-3 px-3">
                                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
                                             <div>
@@ -163,11 +163,11 @@
                                             </div>
                                         </div>
                                         <div class="flex gap-2">
-                                            <button @click="saveEditTasting(t.id)"
+                                            <button @click.stop="saveEditTasting(t.id)"
                                                     class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded">
                                                 Save
                                             </button>
-                                            <button @click="editingTastingId = null"
+                                            <button @click.stop="editingTastingIdx = -1"
                                                     class="px-3 py-1.5 bg-white border border-gray-300 hover:border-gray-400 text-gray-700 text-sm font-medium rounded">
                                                 Cancel
                                             </button>
@@ -415,7 +415,7 @@ function cocktailDetailApp(cocktailId) {
         },
         bottleSearchQueries: {},
         bottleResults: {},
-        editingTastingId: null,
+        editingTastingIdx: -1,
         editTastingData: {},
         showEditForm: false,
         editSaving: false,
@@ -633,8 +633,7 @@ function cocktailDetailApp(cocktailId) {
             }
         },
 
-        startEditTasting(t) {
-            this.editingTastingId = t.id;
+        startEditTasting(idx, t) {
             this.editTastingData = {
                 taster_name: t.taster_name,
                 tasting_date: t.tasting_date,
@@ -642,6 +641,7 @@ function cocktailDetailApp(cocktailId) {
                 notes: t.notes || '',
                 bartender: t.bartender || '',
             };
+            this.editingTastingIdx = idx;
         },
 
         async saveEditTasting(tastingId) {
@@ -658,7 +658,7 @@ function cocktailDetailApp(cocktailId) {
                     }),
                 });
                 if (!response.ok) throw new Error(`Server error ${response.status}`);
-                this.editingTastingId = null;
+                this.editingTastingIdx = -1;
                 await this.loadTastings();
             } catch (e) {
                 alert('Failed to save: ' + e.message);
