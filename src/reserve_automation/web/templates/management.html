@@ -1131,11 +1131,14 @@
                                                                             <span class="text-sm text-gray-600 w-20 flex-shrink-0">Bartender</span>
                                                                             <span class="text-sm font-medium text-gray-800" x-text="t.bartender"></span>
                                                                         </div>
-                                                                        <div x-show="t.ingredients && t.ingredients.length > 0">
+                                                                        <div x-show="t.bottles_used && t.bottles_used.length > 0">
                                                                             <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Ingredients Used</span>
                                                                             <div class="flex flex-wrap gap-1.5 mt-1">
-                                                                                <template x-for="ing in (t.ingredients || [])" :key="ing">
-                                                                                    <span class="px-2 py-0.5 bg-orange-50 border border-orange-200 text-orange-700 text-xs rounded" x-text="ing"></span>
+                                                                                <template x-for="bu in (t.bottles_used || [])" :key="bu.recipe_ingredient">
+                                                                                    <span class="px-2 py-0.5 bg-orange-50 border border-orange-200 text-orange-700 text-xs rounded">
+                                                                                        <span class="font-medium" x-text="bu.recipe_ingredient + ':'"></span>
+                                                                                        <span x-text="bu.actual_product"></span>
+                                                                                    </span>
                                                                                 </template>
                                                                             </div>
                                                                         </div>
@@ -1174,7 +1177,6 @@
                 </div>
             </div>
         </div>
-    </div>
 
     <!-- Cocktail Tasting Edit Modal (same UI as cocktail detail page) -->
     <div x-show="trCocktailModalOpen" x-transition
@@ -1269,6 +1271,7 @@
                 <div x-show="trCocktailEditError" class="mt-3 p-3 bg-red-50 text-red-700 rounded-lg text-sm" x-text="trCocktailEditError"></div>
             </div>
         </div>
+    </div>
     </div>
 
     <!-- Include Bottle Editor Modal Component (used by batch mode) -->
@@ -1391,8 +1394,11 @@ function managementApp() {
                 const q = this.trFilterSearch.toLowerCase();
                 tastings = tastings.filter(t => {
                     if (t.bottle_name.toLowerCase().includes(q)) return true;
-                    if (t.type === 'cocktail' && Array.isArray(t.ingredients)) {
-                        return t.ingredients.some(i => i.toLowerCase().includes(q));
+                    if (t.type === 'cocktail' && Array.isArray(t.bottles_used)) {
+                        return t.bottles_used.some(bu =>
+                            bu.recipe_ingredient.toLowerCase().includes(q) ||
+                            bu.actual_product.toLowerCase().includes(q)
+                        );
                     }
                     return false;
                 });
