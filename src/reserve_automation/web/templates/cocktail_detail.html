@@ -142,46 +142,71 @@
         <div x-show="showEditTastingForm" x-transition
              class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
              @click.self="showEditTastingForm = false">
-            <div class="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
                 <div class="p-6">
                     <h2 class="text-xl font-bold mb-4">Edit Tasting</h2>
-                    <div class="space-y-4">
 
-                        <!-- Ingredients Used -->
-                        <div x-show="editTastingData.bottles_used && editTastingData.bottles_used.length > 0">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Ingredients Used</label>
-                            <template x-for="(bu, bidx) in editTastingData.bottles_used" :key="bidx">
-                                <div class="border rounded-lg p-3 bg-gray-50 mb-2">
-                                    <div class="font-medium text-gray-700 text-sm mb-1.5">
-                                        <span class="text-blue-600" x-text="bu.recipe_ingredient"></span>
-                                    </div>
+                    <!-- Products used (mirrors Step 1 of Rate This) -->
+                    <div x-show="cocktail && cocktail.ingredients && cocktail.ingredients.length > 0" class="space-y-3 mb-5">
+                        <p class="text-sm text-gray-600">Update the specific products used for each ingredient.</p>
+                        <template x-for="(ing, bidx) in (cocktail ? cocktail.ingredients : [])" :key="bidx">
+                            <div class="border rounded-lg p-4 bg-gray-50">
+                                <div class="font-medium text-gray-800 mb-2">
+                                    <span x-text="ing.amount || ''"></span>
+                                    <span x-text="ing.unit || ''"></span>
+                                    <span class="text-blue-600" x-text="ing.ingredient"></span>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="block text-xs text-gray-600 mb-1">Product used:</label>
                                     <div class="relative">
                                         <input type="text"
                                                x-model="editBottleQueries[bidx]"
-                                               @input.debounce.300ms="searchEditBottles(bidx, bu.recipe_ingredient)"
-                                               @focus="if (!editBottleResults[bidx]) searchEditBottles(bidx, bu.recipe_ingredient)"
-                                               :placeholder="'Search for ' + bu.recipe_ingredient"
-                                               class="w-full px-3 py-1.5 border rounded focus:ring-2 focus:ring-blue-500 text-sm">
+                                               @input.debounce.300ms="searchEditBottles(bidx, ing.ingredient)"
+                                               @focus="searchEditBottles(bidx, ing.ingredient)"
+                                               :placeholder="'Search or select ' + ing.ingredient"
+                                               class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
                                         <div x-show="editBottleResults[bidx] && editBottleResults[bidx].length > 0"
-                                             class="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                                             class="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
                                             <template x-for="(result, ridx) in editBottleResults[bidx]" :key="ridx">
-                                                <div @click="selectEditBottle(bidx, result)"
-                                                     class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b last:border-0 text-sm">
-                                                    <span class="font-medium" x-text="result.name"></span>
-                                                    <span x-show="result.ancestors && result.ancestors.length > 0"
-                                                          class="text-xs text-gray-400 ml-1"
-                                                          x-text="'(' + result.ancestors.join(' > ') + ')'"></span>
+                                                <div @click="selectEditBottle(bidx, result, ing.ingredient)"
+                                                     class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b last:border-0">
+                                                    <div class="font-medium text-sm" x-text="result.name"></div>
+                                                    <div x-show="result.ancestors && result.ancestors.length > 0"
+                                                         class="text-xs text-gray-400"
+                                                         x-text="result.ancestors.join(' > ')"></div>
+                                                    <div x-show="result.is_product" class="text-xs text-blue-600 mt-0.5">
+                                                        Product
+                                                        <span x-show="result.abv" x-text="'• ' + result.abv + '% ABV'"></span>
+                                                    </div>
                                                 </div>
                                             </template>
                                         </div>
                                     </div>
-                                    <div x-show="bu.actual_product" class="text-xs text-green-700 mt-1">
-                                        Selected: <span class="font-medium" x-text="bu.actual_product"></span>
-                                    </div>
                                 </div>
-                            </template>
-                        </div>
+                                <div x-show="editTastingData.bottles_used && editTastingData.bottles_used[bidx] && editTastingData.bottles_used[bidx].actual_product"
+                                     class="text-sm text-gray-600">
+                                    Selected: <span class="font-medium text-green-700"
+                                                    x-text="editTastingData.bottles_used && editTastingData.bottles_used[bidx] ? editTastingData.bottles_used[bidx].actual_product : ''"></span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
 
+                    <!-- Score / notes / meta -->
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Score (1–10)</label>
+                            <input type="range" x-model.number="editTastingData.score" min="1" max="10" step="0.5" class="w-full">
+                            <div class="text-center text-2xl font-bold text-blue-600" x-text="editTastingData.score"></div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                            <textarea x-model="editTastingData.notes" rows="3" class="w-full px-3 py-2 border rounded-lg" placeholder="How did it taste?"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Bartender</label>
+                            <input type="text" x-model="editTastingData.bartender" class="w-full px-3 py-2 border rounded-lg" placeholder="Who made this?">
+                        </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Taster</label>
@@ -192,24 +217,11 @@
                                 <input type="date" x-model="editTastingData.tasting_date" class="w-full px-3 py-2 border rounded-lg text-sm">
                             </div>
                         </div>
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Score /10</label>
-                                <input type="number" min="0" max="10" step="0.5" x-model.number="editTastingData.score" class="w-full px-3 py-2 border rounded-lg text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Bartender</label>
-                                <input type="text" x-model="editTastingData.bartender" class="w-full px-3 py-2 border rounded-lg text-sm">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                            <textarea rows="3" x-model="editTastingData.notes" class="w-full px-3 py-2 border rounded-lg text-sm"></textarea>
-                        </div>
                     </div>
-                    <div class="flex gap-3 mt-5">
+
+                    <div class="flex gap-3 mt-6">
                         <button @click="saveEditTasting()"
-                                class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
+                                class="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg">
                             Save Changes
                         </button>
                         <button @click="showEditTastingForm = false"
@@ -677,22 +689,24 @@ function cocktailDetailApp(cocktailId) {
 
         openEditTastingModal(t) {
             this.editingTastingId = t.id;
-            // Deep-copy bottles_used so edits don't mutate the table data
-            const bottles = (t.bottles_used || []).map(bu => ({ ...bu }));
+            this.editBottleQueries = {};
+            this.editBottleResults = {};
+            // Build bottles_used indexed by cocktail.ingredients position
+            const buMap = {};
+            (t.bottles_used || []).forEach(bu => { buMap[bu.recipe_ingredient] = bu.actual_product; });
+            const bottles = (this.cocktail ? this.cocktail.ingredients : []).map((ing, idx) => {
+                const actual = buMap[ing.ingredient] || '';
+                this.editBottleQueries[idx] = actual;
+                return { recipe_ingredient: ing.ingredient, actual_product: actual };
+            });
             this.editTastingData = {
                 taster_name: t.taster_name,
                 tasting_date: t.tasting_date,
-                score: t.score ?? '',
+                score: t.score ?? 7,
                 notes: t.notes || '',
                 bartender: t.bartender || '',
                 bottles_used: bottles,
             };
-            // Pre-fill the search query boxes with current selections
-            this.editBottleQueries = {};
-            this.editBottleResults = {};
-            bottles.forEach((bu, idx) => {
-                this.editBottleQueries[idx] = bu.actual_product || '';
-            });
             this.editTastingError = '';
             this.showEditTastingForm = true;
         },
@@ -704,7 +718,6 @@ function cocktailDetailApp(cocktailId) {
                 if (!response.ok) return;
                 let results = await response.json();
                 if (!query) {
-                    // Show descendants of the recipe ingredient node (same logic as Rate This)
                     const allResp = await fetch('/api/v1/ingredients?flat=true');
                     if (allResp.ok) {
                         const allIng = await allResp.json();
@@ -720,8 +733,11 @@ function cocktailDetailApp(cocktailId) {
             } catch (e) {}
         },
 
-        selectEditBottle(bidx, result) {
-            this.editTastingData.bottles_used[bidx].actual_product = result.name;
+        selectEditBottle(bidx, result, recipeIngredient) {
+            this.editTastingData.bottles_used[bidx] = {
+                recipe_ingredient: recipeIngredient,
+                actual_product: result.name,
+            };
             this.editBottleQueries[bidx] = result.name;
             this.editBottleResults[bidx] = [];
         },
