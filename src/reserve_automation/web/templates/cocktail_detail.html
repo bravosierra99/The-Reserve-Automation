@@ -142,10 +142,46 @@
         <div x-show="showEditTastingForm" x-transition
              class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
              @click.self="showEditTastingForm = false">
-            <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
+            <div class="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
                 <div class="p-6">
                     <h2 class="text-xl font-bold mb-4">Edit Tasting</h2>
-                    <div class="space-y-3">
+                    <div class="space-y-4">
+
+                        <!-- Ingredients Used -->
+                        <div x-show="editTastingData.bottles_used && editTastingData.bottles_used.length > 0">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Ingredients Used</label>
+                            <template x-for="(bu, bidx) in editTastingData.bottles_used" :key="bidx">
+                                <div class="border rounded-lg p-3 bg-gray-50 mb-2">
+                                    <div class="font-medium text-gray-700 text-sm mb-1.5">
+                                        <span class="text-blue-600" x-text="bu.recipe_ingredient"></span>
+                                    </div>
+                                    <div class="relative">
+                                        <input type="text"
+                                               x-model="editBottleQueries[bidx]"
+                                               @input.debounce.300ms="searchEditBottles(bidx, bu.recipe_ingredient)"
+                                               @focus="if (!editBottleResults[bidx]) searchEditBottles(bidx, bu.recipe_ingredient)"
+                                               :placeholder="'Search for ' + bu.recipe_ingredient"
+                                               class="w-full px-3 py-1.5 border rounded focus:ring-2 focus:ring-blue-500 text-sm">
+                                        <div x-show="editBottleResults[bidx] && editBottleResults[bidx].length > 0"
+                                             class="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                                            <template x-for="(result, ridx) in editBottleResults[bidx]" :key="ridx">
+                                                <div @click="selectEditBottle(bidx, result)"
+                                                     class="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b last:border-0 text-sm">
+                                                    <span class="font-medium" x-text="result.name"></span>
+                                                    <span x-show="result.ancestors && result.ancestors.length > 0"
+                                                          class="text-xs text-gray-400 ml-1"
+                                                          x-text="'(' + result.ancestors.join(' > ') + ')'"></span>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <div x-show="bu.actual_product" class="text-xs text-green-700 mt-1">
+                                        Selected: <span class="font-medium" x-text="bu.actual_product"></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Taster</label>
@@ -421,6 +457,8 @@ function cocktailDetailApp(cocktailId) {
         editingTastingId: null,
         editTastingData: {},
         editTastingError: '',
+        editBottleQueries: {},
+        editBottleResults: {},
         showEditForm: false,
         editSaving: false,
         editError: '',
@@ -639,15 +677,53 @@ function cocktailDetailApp(cocktailId) {
 
         openEditTastingModal(t) {
             this.editingTastingId = t.id;
+            // Deep-copy bottles_used so edits don't mutate the table data
+            const bottles = (t.bottles_used || []).map(bu => ({ ...bu }));
             this.editTastingData = {
                 taster_name: t.taster_name,
                 tasting_date: t.tasting_date,
                 score: t.score ?? '',
                 notes: t.notes || '',
                 bartender: t.bartender || '',
+                bottles_used: bottles,
             };
+            // Pre-fill the search query boxes with current selections
+            this.editBottleQueries = {};
+            this.editBottleResults = {};
+            bottles.forEach((bu, idx) => {
+                this.editBottleQueries[idx] = bu.actual_product || '';
+            });
             this.editTastingError = '';
             this.showEditTastingForm = true;
+        },
+
+        async searchEditBottles(bidx, recipeIngredient) {
+            const query = this.editBottleQueries[bidx] || '';
+            try {
+                const response = await fetch(`/api/v1/ingredients/search?q=${encodeURIComponent(query || recipeIngredient)}`);
+                if (!response.ok) return;
+                let results = await response.json();
+                if (!query) {
+                    // Show descendants of the recipe ingredient node (same logic as Rate This)
+                    const allResp = await fetch('/api/v1/ingredients?flat=true');
+                    if (allResp.ok) {
+                        const allIng = await allResp.json();
+                        const node = allIng.find(i => i.name.toLowerCase() === recipeIngredient.toLowerCase());
+                        if (node) {
+                            const descResp = await fetch(`/api/v1/ingredients/${node.id}/descendants`);
+                            if (descResp.ok) results = [node, ...(await descResp.json())];
+                        }
+                    }
+                }
+                results.sort((a, b) => (a.is_product && !b.is_product ? -1 : !a.is_product && b.is_product ? 1 : 0));
+                this.editBottleResults[bidx] = results;
+            } catch (e) {}
+        },
+
+        selectEditBottle(bidx, result) {
+            this.editTastingData.bottles_used[bidx].actual_product = result.name;
+            this.editBottleQueries[bidx] = result.name;
+            this.editBottleResults[bidx] = [];
         },
 
         async saveEditTasting() {
@@ -662,6 +738,7 @@ function cocktailDetailApp(cocktailId) {
                         score: this.editTastingData.score !== '' ? parseFloat(this.editTastingData.score) : null,
                         notes: this.editTastingData.notes,
                         bartender: this.editTastingData.bartender,
+                        bottles_used: this.editTastingData.bottles_used,
                     }),
                 });
                 if (!response.ok) throw new Error(`Server error ${response.status}`);

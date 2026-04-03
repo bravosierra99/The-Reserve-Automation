@@ -332,12 +332,18 @@ async def list_cocktail_tastings(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class BottleUsedItem(BaseModel):
+    recipe_ingredient: str
+    actual_product: str
+
+
 class UpdateCocktailTastingRequest(BaseModel):
     taster_name: str | None = None
     tasting_date: str | None = None
     score: float | None = None
     notes: str | None = None
     bartender: str | None = None
+    bottles_used: list[BottleUsedItem] | None = None
 
 
 @router.patch("/api/v1/cocktails/{cocktail_id}/tastings/{tasting_id}", dependencies=[Depends(require("cocktail_tastings.submit"))])
@@ -348,7 +354,8 @@ async def update_cocktail_tasting(
     db: Session = Depends(get_db),
 ):
     """Update a cocktail tasting note."""
-    from ...db.models.cocktail_tasting import CocktailTastingModel
+    from ...db.models.cocktail_tasting import CocktailTastingModel, CocktailTastingIngredientModel
+    from datetime import date as date_type
     try:
         obj = db.query(CocktailTastingModel).filter(CocktailTastingModel.id == tasting_id).first()
         if not obj:
@@ -357,14 +364,26 @@ async def update_cocktail_tasting(
         if request_data.taster_name is not None:
             obj.taster_name = request_data.taster_name
         if request_data.tasting_date is not None:
-            from datetime import date
-            obj.tasting_date = date.fromisoformat(request_data.tasting_date)
+            obj.tasting_date = date_type.fromisoformat(request_data.tasting_date)
         if request_data.score is not None:
             obj.score = request_data.score
         if request_data.notes is not None:
             obj.notes = request_data.notes
         if request_data.bartender is not None:
             obj.bartender = request_data.bartender
+
+        if request_data.bottles_used is not None:
+            # Replace all ingredient records
+            db.query(CocktailTastingIngredientModel).filter(
+                CocktailTastingIngredientModel.cocktail_tasting_id == tasting_id
+            ).delete()
+            for bu in request_data.bottles_used:
+                if bu.actual_product.strip():
+                    db.add(CocktailTastingIngredientModel(
+                        cocktail_tasting_id=tasting_id,
+                        recipe_ingredient=bu.recipe_ingredient,
+                        actual_product=bu.actual_product.strip(),
+                    ))
 
         db.commit()
         db.refresh(obj)
