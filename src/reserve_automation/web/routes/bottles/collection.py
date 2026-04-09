@@ -5,8 +5,9 @@ from fastapi.responses import HTMLResponse
 from loguru import logger
 
 from ...auth.dependencies import require
-from ....db.repositories import get_bottle_repo
+from ....db.repositories import get_bottle_repo, get_tasting_repo
 from ....db.repositories.bottle_repo import SQLiteBottleRepository
+from ....db.repositories.tasting_repo import SQLiteTastingRepository
 from ..management.core import get_bottle_tastings_summary, get_bottle_tastings_list
 
 router = APIRouter(dependencies=[Depends(require("bottles.view"))])
@@ -47,12 +48,20 @@ async def get_bottle_collection(
 
 
 @router.post("/api/v1/bottles/tastings-summary", dependencies=[Depends(require("tastings.view"))])
-async def bottles_tastings_summary(request: Request):
+async def bottles_tastings_summary(
+    request: Request,
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+    tasting_repo: SQLiteTastingRepository = Depends(get_tasting_repo),
+):
     """Proxy to management tastings-summary, requires tastings.view (admin + family)."""
-    return await get_bottle_tastings_summary(request)
+    return await get_bottle_tastings_summary(request, bottle_repo, tasting_repo)
 
 
 @router.post("/api/v1/bottles/tastings-list", dependencies=[Depends(require("tastings.view"))])
-async def bottles_tastings_list(request: Request):
+async def bottles_tastings_list(
+    request: Request,
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+    tasting_repo: SQLiteTastingRepository = Depends(get_tasting_repo),
+):
     """Proxy to management tastings-list, requires tastings.view (admin + family)."""
-    return await get_bottle_tastings_list(request)
+    return await get_bottle_tastings_list(request, bottle_repo, tasting_repo)
