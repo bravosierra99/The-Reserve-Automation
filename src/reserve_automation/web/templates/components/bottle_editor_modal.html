@@ -600,7 +600,7 @@
                     <!-- Current Label Display -->
                     <div class="mb-4">
                         <img x-show="bottleEditor.mode === 'management'"
-                             :src="`/api/v1/labels/view?id=${encodeURIComponent(bottleEditor.bottleId)}&t=${bottleEditor.currentLabelTimestamp}`"
+                             :src="bottleEditor.bottleId ? `/api/v1/labels/view?id=${encodeURIComponent(bottleEditor.bottleId)}&t=${bottleEditor.currentLabelTimestamp}` : '/static/images/no-label.svg'"
                              alt="Current Label"
                              class="max-w-md mx-auto rounded-lg shadow-md"
                              @error="$el.src='/static/images/no-label.svg'">

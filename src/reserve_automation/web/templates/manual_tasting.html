@@ -739,6 +739,24 @@ function manualTastingWizard() {
                 this.beverageType = localStorage.getItem('tasting_beverage_type') || 'wine';
                 this.tastingData.place = localStorage.getItem('tasting_place') || '';
             }
+
+            // Pre-select bottle if navigated from the bottles page
+            if (!this.participantSession) {
+                const preselectData = sessionStorage.getItem('preselect_bottle');
+                if (preselectData) {
+                    try {
+                        const bottle = JSON.parse(preselectData);
+                        sessionStorage.removeItem('preselect_bottle');
+                        this.selectedBottle = bottle;
+                        if (bottle.beverage_type && (bottle.beverage_type === 'wine' || bottle.beverage_type === 'whiskey')) {
+                            this.beverageType = bottle.beverage_type;
+                            localStorage.setItem('tasting_beverage_type', bottle.beverage_type);
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse preselected bottle:', e);
+                    }
+                }
+            }
         },
 
         getParticipantSession(eventId) {

@@ -15,6 +15,7 @@ class TastingNote(BaseModel):
     """Represents a single tasting note for a wine or whiskey."""
 
     # Identification
+    id: Optional[int] = Field(default=None, description="DB primary key (set after save)")
     bottle_name: str = Field(description="Name of the bottle being tasted")
     taster_name: str = Field(description="Name of the person tasting")
     tasting_date: date = Field(description="Date of the tasting")

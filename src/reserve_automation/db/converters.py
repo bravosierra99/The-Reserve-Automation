@@ -111,6 +111,7 @@ def pydantic_to_bottle(p: BottleMetadata, existing: BottleModel | None = None) -
 def tasting_to_pydantic(db: TastingNoteModel) -> TastingNote:
     """Convert a TastingNoteModel to a TastingNote Pydantic model."""
     return TastingNote(
+        id=db.id,
         bottle_name=db.bottle_name,
         taster_name=db.taster_name,
         tasting_date=db.tasting_date,
