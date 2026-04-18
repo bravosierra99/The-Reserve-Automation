@@ -69,6 +69,22 @@ class SQLiteBottleRepository:
         )
         return [bottle_to_pydantic(b) for b in results]
 
+    def find_exact(
+        self, producer: str, name: str, year: int | None, bottle_type: str
+    ) -> BottleMetadata | None:
+        """Find a bottle matching the unique constraint (producer, name, year, type)."""
+        query = self.db.query(BottleModel).filter(
+            BottleModel.producer == producer,
+            BottleModel.name == name,
+            BottleModel.type == bottle_type,
+        )
+        if year is not None:
+            query = query.filter(BottleModel.year == year)
+        else:
+            query = query.filter(BottleModel.year.is_(None))
+        result = query.first()
+        return bottle_to_pydantic(result) if result else None
+
     def find_duplicates(
         self, producer: str, name: str, year: int | None = None
     ) -> list[BottleMetadata]:

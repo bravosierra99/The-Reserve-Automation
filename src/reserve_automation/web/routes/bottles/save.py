@@ -96,7 +96,7 @@ async def save_bottle(
 
         # Check for duplicates (unless force_save or replacing)
         if not request.force_save and not request.replace_bottle_id:
-            duplicates = bottle_repo.find_duplicates(bottle, threshold=0.7)
+            duplicates = bottle_repo.find_duplicates(bottle.producer, bottle.name, bottle.year)
 
             if duplicates:
                 logger.info(f"Found {len(duplicates)} potential duplicates")
@@ -121,6 +121,19 @@ async def save_bottle(
                 created = bottle_repo.create(bottle)
                 bottle_id = str(created.id)
                 logger.info(f"Created new bottle id={bottle_id}")
+        elif request.force_save:
+            # force_save: upsert — update exact match if one exists, otherwise create.
+            # Prevents a DB UNIQUE constraint error when the user overrides detection
+            # for a truly identical bottle (e.g. re-scanning the same label).
+            exact = bottle_repo.find_exact(bottle.producer, bottle.name, bottle.year, bottle.type)
+            if exact:
+                updated = bottle_repo.update(int(exact.id), bottle)
+                bottle_id = str(exact.id)
+                logger.info(f"force_save: updated exact-match bottle id={bottle_id}")
+            else:
+                created = bottle_repo.create(bottle)
+                bottle_id = str(created.id)
+                logger.info(f"force_save: created new bottle id={bottle_id}")
         else:
             # New bottle
             created = bottle_repo.create(bottle)
@@ -196,7 +209,7 @@ async def check_duplicates_manual(
         logger.info(f"  Bottle type: {bottle.type}")
 
         # Check for duplicates with low threshold to show all potential matches
-        duplicates = bottle_repo.find_duplicates(bottle, threshold=0.3)
+        duplicates = bottle_repo.find_duplicates(bottle.producer, bottle.name, bottle.year)
 
         logger.info(f"Found {len(duplicates)} potential duplicates")
 
