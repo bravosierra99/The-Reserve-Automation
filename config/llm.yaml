@@ -9,7 +9,8 @@ providers:
     provider: lm_studio
     base_url: "http://localhost:1234/v1"  # UPDATE with your PC's IP
     model: "qwen/qwen3-vl-8b"            # Vision-language model for OCR tasks
-    timeout: 180
+    timeout: 180                          # Normal inference timeout
+    model_load_timeout: 360              # Extended timeout used only when model must load
     max_retries: 2
     context_length: 16384
 
@@ -19,7 +20,8 @@ providers:
     provider: lm_studio
     base_url: "http://localhost:1234/v1"  # UPDATE with your PC's IP
     model: "qwen/qwen3-vl-8b"
-    timeout: 120
+    timeout: 120                          # Normal inference timeout
+    model_load_timeout: 240              # Extended timeout used only when model must load
     max_retries: 2
     # max_results: 5   # DuckDuckGo results per enrichment search (benchmark default)
     # max_iterations: 5  # Max tool-call loops (only used for non-enrichment tool calls)

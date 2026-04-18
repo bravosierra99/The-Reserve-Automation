@@ -14,7 +14,7 @@
 {% block content %}
 <div x-data="uploadBottlesApp()" class="max-w-6xl mx-auto">
     <!-- Upload Form -->
-    <div x-show="!uploadInProgress && !uploadComplete" class="bg-white rounded-lg shadow-md p-6 mb-6">
+    <div x-show="!uploadInProgress && !uploadComplete && !uploadError" class="bg-white rounded-lg shadow-md p-6 mb-6">
         <h2 class="text-2xl font-bold text-gray-800 mb-6">Upload Bottles</h2>
 
         <form @submit.prevent="submitUpload()" enctype="multipart/form-data">
@@ -95,8 +95,18 @@
     <!-- Upload Progress -->
     <div x-show="uploadInProgress" class="bg-white rounded-lg shadow-md p-6 mb-6 text-center">
         <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
-        <h3 class="text-xl font-bold text-gray-800 mb-2">Extracting Bottle Data...</h3>
-        <p class="text-gray-600">This may take a moment while we analyze the image.</p>
+        <h3 class="text-xl font-bold text-gray-800 mb-2" x-text="statusHeading">Processing...</h3>
+        <p class="text-gray-600" x-text="statusMessage">Please wait...</p>
+    </div>
+
+    <!-- Upload Error -->
+    <div x-show="uploadError" class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <h3 class="text-xl font-bold text-red-600 mb-2">Upload Failed</h3>
+        <p class="text-gray-700 mb-4" x-text="uploadErrorMessage"></p>
+        <button @click="resetForm()"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
+            ← Try Again
+        </button>
     </div>
 
     <!-- Upload Complete - Bottles Extracted -->
@@ -161,6 +171,12 @@ function uploadBottlesApp() {
         // Upload progress
         uploadInProgress: false,
         uploadComplete: false,
+        uploadError: false,
+        uploadErrorMessage: '',
+
+        // Status feedback during extraction
+        statusHeading: 'Processing...',
+        statusMessage: 'Please wait...',
 
         // Extracted data
         uploadId: null,
@@ -176,11 +192,36 @@ function uploadBottlesApp() {
             this.selectedFile = event.target.files[0];
         },
 
-        // Submit upload
+        // Reset form after an error
+        resetForm() {
+            this.uploadInProgress = false;
+            this.uploadComplete = false;
+            this.uploadError = false;
+            this.uploadErrorMessage = '';
+            this.statusHeading = 'Processing...';
+            this.statusMessage = 'Please wait...';
+        },
+
+        // Map SSE status codes to heading text
+        _headingFor(status) {
+            const headings = {
+                uploading: 'Uploading...',
+                checking_model: 'Connecting to LM Studio...',
+                model_loading: 'Loading Model...',
+                model_ready: 'Model Ready',
+                extracting: 'Analyzing Image...',
+            };
+            return headings[status] || 'Processing...';
+        },
+
+        // Submit upload via SSE streaming endpoint
         async submitUpload() {
             if (!this.selectedFile) return;
 
             this.uploadInProgress = true;
+            this.uploadError = false;
+            this.statusHeading = 'Uploading...';
+            this.statusMessage = 'Saving image...';
 
             try {
                 const formData = new FormData();
@@ -195,35 +236,75 @@ function uploadBottlesApp() {
                 }
                 formData.append('inventory', this.inventory);
 
-                const response = await fetch('/api/v1/bottles/upload', {
+                const response = await fetch('/api/v1/bottles/upload/stream', {
                     method: 'POST',
                     body: formData
                 });
 
                 if (!response.ok) {
-                    throw new Error('Upload failed');
+                    let detail = `Server error ${response.status}`;
+                    try {
+                        const err = await response.json();
+                        detail = err.detail || detail;
+                    } catch (_) {}
+                    throw new Error(detail);
                 }
 
-                const result = await response.json();
+                // Read the SSE stream
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
 
-                // Store extracted data in client-side state
-                this.uploadId = result.upload_id;
-                this.extractedBottles = result.bottles;
-                this.isManifest = result.is_manifest;
-                this.uploadComplete = true;
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
 
-                // Auto-open editor for single bottle
-                if (this.extractedBottles.length === 1) {
-                    this.$nextTick(() => {
-                        this.openBottleEditor(0);
-                    });
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // SSE events are separated by double newlines
+                    const parts = buffer.split('\n\n');
+                    buffer = parts.pop(); // keep incomplete trailing chunk
+
+                    for (const part of parts) {
+                        const line = part.trim();
+                        if (!line.startsWith('data: ')) continue;
+                        let event;
+                        try {
+                            event = JSON.parse(line.slice(6));
+                        } catch (_) {
+                            continue;
+                        }
+
+                        const status = event.status;
+
+                        if (status === 'complete') {
+                            this.uploadId = event.upload_id;
+                            this.extractedBottles = event.bottles || [];
+                            this.isManifest = event.is_manifest || false;
+                            this.uploadInProgress = false;
+                            this.uploadComplete = true;
+
+                            if (this.extractedBottles.length === 1) {
+                                this.$nextTick(() => this.openBottleEditor(0));
+                            }
+                            return;
+
+                        } else if (status === 'error') {
+                            throw new Error(event.message || 'Extraction failed');
+
+                        } else {
+                            // Intermediate status — update display
+                            this.statusHeading = this._headingFor(status);
+                            this.statusMessage = event.message || '';
+                        }
+                    }
                 }
 
             } catch (error) {
                 console.error('Upload failed:', error);
-                alert('Upload failed: ' + error.message);
-            } finally {
                 this.uploadInProgress = false;
+                this.uploadError = true;
+                this.uploadErrorMessage = error.message || 'An unexpected error occurred. Please try again.';
             }
         },
 

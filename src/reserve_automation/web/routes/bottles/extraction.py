@@ -1,10 +1,15 @@
 """Bottle upload and extraction endpoints - STATELESS (no sessions)."""
 
+import asyncio
+import json
+import shutil
 import uuid
 from pathlib import Path
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Request, Cookie
+from fastapi.responses import StreamingResponse
 from ...auth.dependencies import require
 from fastapi.templating import Jinja2Templates
 from loguru import logger
@@ -12,6 +17,44 @@ from loguru import logger
 from ...services.upload_service import UploadService
 from ...services.extraction_service import ExtractionService
 from ...sessions import SessionManager
+
+
+def _sse(data: dict) -> str:
+    """Format a server-sent event."""
+    return f"data: {json.dumps(data)}\n\n"
+
+
+def _format_extraction_error(e: Exception) -> str:
+    """Convert exceptions into user-friendly error messages."""
+    err_str = str(e)
+    err_lower = err_str.lower()
+
+    if isinstance(e, httpx.TimeoutException) or "timed out" in err_lower or "timeout" in err_lower:
+        return (
+            "Request timed out. The model may be loading — this can take 2–5 minutes "
+            "for large models. Please wait a moment and try again."
+        )
+    if isinstance(e, httpx.ConnectError) or "connection refused" in err_lower or "connect" in err_lower:
+        return (
+            "Cannot connect to LM Studio. Please make sure LM Studio is running "
+            "and a model is loaded."
+        )
+    if "model" in err_lower and ("not loaded" in err_lower or "load" in err_lower):
+        return (
+            "The model is not loaded in LM Studio. Please open LM Studio, "
+            "load a vision model, and try again."
+        )
+    if "failed to extract" in err_lower or "none" in err_lower:
+        return (
+            "Could not extract bottle data from the image. "
+            "Make sure the label is clearly visible and try again."
+        )
+    if "file too large" in err_lower:
+        return "File is too large. Please use a smaller image."
+    if "invalid file type" in err_lower:
+        return "Invalid file type. Please upload a JPEG, PNG, or PDF."
+    # Fall back to the raw message, stripped of internal details
+    return f"Extraction failed: {err_str}"
 
 router = APIRouter()
 
@@ -131,6 +174,215 @@ async def upload_bottle(
         if 'session_id' in locals():
             upload_service.cleanup_session_files(session_id)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/bottles/upload/stream", dependencies=[Depends(require("bottles.create"))])
+async def upload_bottle_stream(
+    file: UploadFile = File(...),
+    upload_type: str = Form("bottle_image"),
+    beverage_type: str = Form("auto"),
+    expected_count: Optional[int] = Form(None),
+    purchase_source: Optional[str] = Form(None),
+    inventory: int = Form(0),
+):
+    """
+    Upload and extract bottle data with real-time status updates via SSE.
+
+    Returns a text/event-stream where each event is a JSON object:
+      { "status": "uploading"|"checking_model"|"extracting"|"complete"|"error",
+        "message": "...",
+        ... extra fields on "complete" }
+
+    On "complete":
+      { "status": "complete", "upload_id": str, "bottles": [...], "is_manifest": bool }
+    On "error":
+      { "status": "error", "message": "..." }
+    """
+    from ...app import upload_service, core_config
+
+    if not upload_service or not core_config:
+        raise HTTPException(status_code=500, detail="Service not initialized")
+
+    # Read the file content NOW (before the generator starts — UploadFile is not re-readable)
+    file_content = await file.read()
+    file_name = file.filename or "upload"
+    upload_id = str(uuid.uuid4())
+
+    # Determine which LM Studio model/URL will be used for status messages
+    routing = core_config.llm.get("routing", {})
+    providers_cfg = core_config.llm.get("providers", {})
+    ocr_provider_name = routing.get("ocr", "lm_studio_vision")
+    ocr_cfg = providers_cfg.get(ocr_provider_name, {})
+    model_name = ocr_cfg.get("model", "vision model")
+    lm_base_url = ocr_cfg.get("base_url", "http://localhost:1234/v1")
+
+    async def run_pipeline(on_status):
+        """Run the full upload → extract pipeline, calling on_status at each stage."""
+        try:
+            # ── Stage 1: Save upload ──────────────────────────────────────────
+            await on_status("uploading", "Saving image...")
+
+            ext = Path(file_name).suffix or ".jpg"
+            session_dir = upload_service.temp_dir / upload_id
+            session_dir.mkdir(parents=True, exist_ok=True)
+            file_path = session_dir / f"original{ext}"
+            with open(file_path, "wb") as f:
+                f.write(file_content)
+
+            # Copy to labels subdirectory (used by the review modal)
+            labels_dir = session_dir / "labels"
+            labels_dir.mkdir(exist_ok=True)
+            shutil.copy(file_path, labels_dir / "label.jpg")
+
+            # ── Stage 2: Check / wait for model ──────────────────────────────
+            await on_status(
+                "checking_model",
+                f"Connecting to LM Studio ({model_name})..."
+            )
+            model_ready = await _poll_for_model(lm_base_url, model_name, on_status)
+            if not model_ready:
+                await on_status(
+                    "error",
+                    f"Model '{model_name}' did not become available. "
+                    "Please open LM Studio, load the model, and try again."
+                )
+                return
+
+            # ── Stage 3: Extract ──────────────────────────────────────────────
+            if upload_type == "bottle_image":
+                await on_status("extracting", "Analyzing bottle label...")
+            elif upload_type == "manifest":
+                await on_status("extracting", "Processing manifest — this may take several minutes...")
+            else:
+                await on_status("error", f"Unsupported upload type: {upload_type}")
+                return
+
+            extraction_service = ExtractionService(core_config)
+
+            if upload_type == "bottle_image":
+                bottle, _ = await extraction_service.extract_bottle_from_image(
+                    image_path=file_path,
+                    beverage_type=beverage_type
+                )
+                if purchase_source:
+                    bottle.purchase_source = purchase_source
+                bottle.inventory = inventory
+                bottles = [extraction_service.bottle_to_dict(bottle)]
+
+            else:  # manifest
+                extracted = await extraction_service.extract_bottles_from_manifest(
+                    file_path=file_path,
+                    beverage_type=beverage_type,
+                    expected_count=expected_count
+                )
+                for b in extracted:
+                    if purchase_source:
+                        b.purchase_source = purchase_source
+                    b.inventory = inventory
+                bottles = [extraction_service.bottle_to_dict(b) for b in extracted]
+
+            logger.info(f"Stream extraction complete: {upload_id}, {len(bottles)} bottle(s)")
+
+            # ── Stage 4: Done ─────────────────────────────────────────────────
+            await on_status(
+                "complete",
+                f"Done! Found {len(bottles)} bottle(s).",
+                upload_id=upload_id,
+                bottles=bottles,
+                is_manifest=upload_type == "manifest",
+            )
+
+        except Exception as e:
+            logger.error(f"Stream pipeline failed: {e}", exc_info=True)
+            await on_status("error", _format_extraction_error(e))
+
+    async def event_stream():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def on_status(status: str, message: str, **extra):
+            await queue.put({"status": status, "message": message, **extra})
+
+        task = asyncio.create_task(run_pipeline(on_status))
+
+        try:
+            while True:
+                item = await queue.get()
+                yield _sse(item)
+                if item.get("status") in ("complete", "error"):
+                    break
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+async def _poll_for_model(
+    base_url: str,
+    model_name: str,
+    on_status,
+    max_wait_seconds: int = 300,
+    poll_interval: int = 8,
+) -> bool:
+    """
+    Check whether the model is available in LM Studio.
+
+    If not immediately available, stream "model_loading" status events and poll
+    every poll_interval seconds until the model appears or max_wait_seconds elapses.
+
+    Returns True if model became available, False on timeout.
+    """
+    import time
+
+    async def _is_loaded() -> bool:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"{base_url}/models")
+                if resp.status_code == 200:
+                    loaded = resp.json().get("data", [])
+                    for m in loaded:
+                        mid = m.get("id", "")
+                        if model_name in mid or mid in model_name:
+                            return True
+        except Exception:
+            pass
+        return False
+
+    # Fast path — model already loaded
+    if await _is_loaded():
+        return True
+
+    # Model not yet available — stream waiting messages
+    start = time.monotonic()
+    while True:
+        elapsed = int(time.monotonic() - start)
+        if elapsed >= max_wait_seconds:
+            return False
+
+        remaining = max_wait_seconds - elapsed
+        await on_status(
+            "model_loading",
+            f"Waiting for model to load... ({elapsed}s elapsed, "
+            f"up to {remaining}s remaining). "
+            "Large models can take 2–5 minutes to load into memory."
+        )
+
+        await asyncio.sleep(poll_interval)
+
+        if await _is_loaded():
+            await on_status("model_ready", "Model is ready!")
+            return True
 
 
 @router.get("/api/v1/bottles/search", dependencies=[Depends(require("bottles.view"))])

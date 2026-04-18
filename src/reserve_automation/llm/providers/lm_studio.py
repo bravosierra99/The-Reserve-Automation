@@ -26,29 +26,37 @@ class LMStudioProvider(BaseLLMProvider):
     def __init__(self, config: dict):
         super().__init__(config)
         self.base_url = config.get("base_url", "http://localhost:1234/v1")
+        # model_load_timeout is used only when the model isn't loaded yet;
+        # once it's confirmed loaded we use the normal self.timeout.
+        self.model_load_timeout = config.get("model_load_timeout", self.timeout * 2)
         self.client = None
         self._client_loop = None
+        self._active_timeout = self.timeout  # adjusted per request based on load state
         self.max_iterations = config.get("max_iterations", 10)
         self.tool_executor = ToolExecutor(max_results=config.get("max_results", 10))
         self._model_load_attempted = False  # Track if we've tried loading the model
 
-    def _ensure_client(self):
-        """Ensure httpx client is using the current event loop."""
+    def _ensure_client(self, timeout: Optional[float] = None):
+        """Ensure httpx client is using the current event loop, with the given timeout."""
         try:
             current_loop = asyncio.get_running_loop()
         except RuntimeError:
-            # No running loop yet, will be created when async context starts
             current_loop = None
 
-        # Recreate client if loop changed or client doesn't exist
-        if self.client is None or self._client_loop != current_loop:
-            # Don't try to close old client - just replace it
-            # The old client will be garbage collected
+        effective_timeout = timeout if timeout is not None else self.timeout
+
+        # Recreate client if loop changed, client doesn't exist, or timeout changed
+        if (
+            self.client is None
+            or self._client_loop != current_loop
+            or self._active_timeout != effective_timeout
+        ):
             self.client = httpx.AsyncClient(
                 base_url=self.base_url,
-                timeout=self.timeout,
+                timeout=effective_timeout,
             )
             self._client_loop = current_loop
+            self._active_timeout = effective_timeout
 
     async def _is_model_loaded(self) -> bool:
         """
@@ -105,38 +113,41 @@ class LMStudioProvider(BaseLLMProvider):
         )
         return False
 
-    async def _ensure_model_loaded(self) -> None:
+    async def _ensure_model_loaded(self) -> bool:
         """
-        Ensure the model is loaded, attempting to load it if necessary.
+        Check whether the model is loaded.
+
+        Returns:
+            True if model is already loaded, False if it needs to load.
 
         Raises:
-            LLMError: If model cannot be loaded
+            LLMError: If model cannot be loaded via API at all.
         """
-        # Only try loading once per session to avoid repeated failures
+        # Only probe once per provider instance to avoid hammering the API
         if self._model_load_attempted:
-            return
+            return True  # Assume it's loaded; timeout handling covers the edge case
 
         self._model_load_attempted = True
 
-        # Check if model is already loaded
         if await self._is_model_loaded():
             logger.debug(f"Model {self.model} already loaded")
-            return
+            return True
 
-        # Try to load the model
         logger.info(f"Model {self.model} not loaded, attempting to load...")
         if not await self._load_model():
-            raise LLMError(
-                f"Failed to load model {self.model} in LM Studio. "
-                f"Please load the model manually in LM Studio."
+            # LM Studio doesn't support API-driven loading — caller decides whether
+            # to raise or just use the extended timeout and let LM Studio handle it
+            logger.warning(
+                f"Model {self.model} not in LM Studio loaded list. "
+                "Will use extended timeout and let LM Studio load it on first request."
             )
+            return False
 
-        # Wait a moment for model to initialize
         await asyncio.sleep(2)
+        return False  # Loaded via API (future), treat as needing extended timeout
 
     def supports_vision(self) -> bool:
         """LM Studio supports vision if a vision model is loaded."""
-        # Check if model name suggests vision capability
         vision_indicators = ["llava", "bakllava", "vision", "vl", "qwen3-vl"]
         return any(ind in self.model.lower() for ind in vision_indicators)
 
@@ -154,8 +165,18 @@ class LMStudioProvider(BaseLLMProvider):
         Raises:
             LLMError: If request fails
         """
-        # Ensure client is using the current event loop
-        self._ensure_client()
+        # Check model state and choose the appropriate timeout:
+        #   • model already loaded → normal self.timeout
+        #   • model not yet loaded → self.model_load_timeout (LM Studio loads on first request)
+        model_is_loaded = await self._ensure_model_loaded()
+        request_timeout = self.timeout if model_is_loaded else self.model_load_timeout
+        if not model_is_loaded:
+            logger.info(
+                f"Model {self.model} not confirmed loaded — using extended timeout "
+                f"({request_timeout}s) to allow LM Studio to load it."
+            )
+
+        self._ensure_client(timeout=request_timeout)
 
         # Ensure model is loaded (will auto-load if needed)
         await self._ensure_model_loaded()
@@ -307,34 +328,57 @@ class LMStudioProvider(BaseLLMProvider):
             # Max iterations reached
             raise LLMError(f"Tool calling exceeded max iterations ({max_iterations})")
 
-        except httpx.HTTPStatusError as e:
-            logger.error(f"LM Studio HTTP error: {e.response.status_code} - {e.response.text}")
+        except httpx.TimeoutException as e:
+            logger.error(f"LM Studio request timed out after {request_timeout}s")
+            if not model_is_loaded:
+                raise LLMError(
+                    f"Request timed out after {request_timeout}s while waiting for the model to load. "
+                    "The model is taking longer than expected — please wait a minute and try again, "
+                    f"or increase 'model_load_timeout' in config/llm.yaml (currently {self.model_load_timeout}s)."
+                )
+            raise LLMError(
+                f"Request timed out after {request_timeout}s. "
+                "The model may be overloaded — try again in a moment."
+            )
 
-            # If we haven't retried yet, try loading the model and retry once
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            body = e.response.text[:200]
+            logger.error(f"LM Studio HTTP error: {status} - {body}")
+
+            if status == 503:
+                raise LLMError(
+                    "LM Studio returned 503 — the model may still be loading. "
+                    "Please wait a moment and try again."
+                )
+
+            # If we haven't retried yet, reset and retry with fresh model-load detection
             if not _retry:
-                logger.info("Retrying after attempting to reload model...")
-                self._model_load_attempted = False  # Reset to allow reload attempt
+                logger.info("Retrying after HTTP error...")
+                self._model_load_attempted = False  # Re-probe on retry
 
                 try:
-                    await self._ensure_model_loaded()
-                    # Retry the request by calling complete recursively with retry flag
                     return await self.complete(request, _retry=True)
                 except Exception as retry_error:
                     logger.error(f"Retry failed: {retry_error}")
 
-            raise LLMError(f"LM Studio request failed: {e.response.status_code}")
+            raise LLMError(f"LM Studio request failed with HTTP {status}")
+
+        except httpx.ConnectError as e:
+            logger.error(f"LM Studio connection refused at {self.base_url}")
+            raise LLMError(
+                f"Cannot connect to LM Studio at {self.base_url}. "
+                "Please make sure LM Studio is running and accessible."
+            )
 
         except httpx.RequestError as e:
             logger.error(f"LM Studio connection error: {e}")
 
-            # If we haven't retried yet, try loading the model and retry once
             if not _retry:
-                logger.info("Connection failed - retrying after attempting to reload model...")
-                self._model_load_attempted = False  # Reset to allow reload attempt
+                logger.info("Connection failed - retrying once...")
+                self._model_load_attempted = False  # Re-probe on retry
 
                 try:
-                    await self._ensure_model_loaded()
-                    # Retry the request by calling complete recursively with retry flag
                     return await self.complete(request, _retry=True)
                 except Exception as retry_error:
                     logger.error(f"Retry failed: {retry_error}")
