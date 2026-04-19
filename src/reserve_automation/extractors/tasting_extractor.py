@@ -172,13 +172,25 @@ TABLE SECTION (one row per wine):
 4. Combine multi-line wine names into a single string
 
 === NOTES EXTRACTION ===
-Wine tasting cards sometimes have handwritten text notes alongside the numeric scores.
-If you see written text (words, not just numbers) in or near a column, extract it:
-- Written text near the Aroma/Bouquet column → nose_notes (array of strings)
-- Written text near the Taste/Texture column → palate_notes (array of strings)
-- Written text near the Aftertaste column → finish_notes (array of strings)
-- Any general written comments for a row → overall_notes (single string)
-If a column has only a number and no written text, leave that notes field as an empty array or null.
+This card may have handwritten text notes in addition to numeric scores.
+Notes can appear two ways — handle both:
+
+Layout A (table columns): written text inside or adjacent to a score column cell.
+Layout B (labeled sections): a clearly labeled section header (e.g. "Aroma:", "Nose:",
+  "Taste:", "Palate:", "Finish:", "Aftertaste:", "Overall:") followed by handwritten text.
+
+Map notes to fields as follows — these are the ONLY valid destinations:
+  "Aroma", "Bouquet", "Nose", "Smell"          → nose_notes   (array of strings)
+  "Taste", "Texture", "Palate", "Mouth"         → palate_notes (array of strings)
+  "Finish", "Aftertaste", "Length"              → finish_notes (array of strings)
+  "Overall", "Comments", "Notes", other general → overall_notes (single string)
+
+Rules:
+- Extract ALL written text you can read, even partial words or short phrases.
+- Each distinct descriptor or phrase should be a separate string in the array.
+- If a section has a number AND written text, extract both (score in the score field, text in the notes field).
+- Do NOT put notes from one section into another section's field.
+- If a section has only a number with no written text, leave that notes field as null.
 
 === OUTPUT FORMAT ===
 Return ONLY this JSON, no markdown, no explanation:
@@ -386,12 +398,15 @@ Table fields (per wine row):
 Do NOT put the theme value into bottle_name. Do NOT put a wine name into theme.
 
 === NOTES EXTRACTION ===
-If any column cell contains written text (not just a number), extract it:
-  - Text in/near the Aroma/Bouquet column → nose_notes
-  - Text in/near the Taste/Texture column → palate_notes
-  - Text in/near the Aftertaste column → finish_notes
-  - General comments → overall_notes
-If a cell has only a number, leave the corresponding notes field null.
+Notes may appear as written text in table cells OR in clearly labeled sections
+(e.g. "Aroma:", "Nose:", "Taste:", "Palate:", "Finish:", "Aftertaste:", "Overall:").
+Map them to fields using these labels — these are the ONLY valid destinations:
+  "Aroma" / "Bouquet" / "Nose" / "Smell"        → nose_notes   (array of strings)
+  "Taste" / "Texture" / "Palate" / "Mouth"       → palate_notes (array of strings)
+  "Finish" / "Aftertaste" / "Length"             → finish_notes (array of strings)
+  "Overall" / "Comments" / "Notes" / other       → overall_notes (string)
+Extract ALL readable text. Each phrase = one string in the array.
+If a section has only a number with no written text, leave notes null.
 
 === OUTPUT ===
 {{{{
