@@ -27,6 +27,9 @@ llm:
       model_load_timeout: 360
       max_retries: 2
       context_length: 16384
+      reasoning_effort: "none"   # Disable thinking: OCR/extraction needs direct JSON output,
+                                  # not reasoning tokens. Without this, thinking models burn
+                                  # max_tokens on <think> blocks and return empty content.
 
     lm_studio_text:
       provider: lm_studio
@@ -35,6 +38,7 @@ llm:
       timeout: 120
       model_load_timeout: 240
       max_retries: 2
+      reasoning_effort: "none"   # Same reason as lm_studio_vision.
 
     lm_studio_agent:
       provider: lm_studio
@@ -43,6 +47,7 @@ llm:
       timeout: 300
       max_retries: 1
       context_length: 16384
+      # reasoning_effort intentionally absent — agent tasks benefit from thinking.
 
     anthropic_sonnet:
       provider: anthropic
