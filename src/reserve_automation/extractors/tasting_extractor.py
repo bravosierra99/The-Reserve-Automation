@@ -148,65 +148,61 @@ Return ONLY the template type as a single word:
         prompt = """
 Extract ALL tasting notes from this AWS Wine Evaluation Chart image.
 
-The chart has the following structure:
-- Header: Name (taster), Date, Place, Theme
-- Table with ROWS for each wine. Each ROW has columns: Wine | Price | Appearance (3 max) | Aroma/Bouquet (6 max) | Taste/Texture (6 max) | Aftertaste (3 max) | Overall Impression (2 max) | Total Score (20 max)
+=== CARD LAYOUT ===
+TOP SECTION (header metadata — filled in once for the whole session):
+  Name:  <taster's personal name, e.g. "Ben" or "Sarah">
+  Date:  <date of the tasting event>
+  Place: <location where the tasting took place>
+  Theme: <name of the tasting EVENT or SESSION, e.g. "French Reds Night", "Burgundy Blind #3",
+          "My First Band of Tasting". This is NOT a wine name — it describes the whole evening.>
 
-CRITICAL - Row Detection Rules:
-1. The table has EXACTLY 4 ROWS for wines (look for horizontal lines separating rows)
-2. Each ROW is a SINGLE wine, even if the wine name spans multiple lines within that row
-3. A row is considered "filled out" ONLY if it has at least one score value (Appearance, Aroma, Taste, Aftertaste, Overall, or Total)
-4. Empty rows (no scores written) should be SKIPPED entirely
-5. Wine names may wrap to multiple lines within a single row - combine them into one name
-6. Do NOT split a single wine name into multiple wines
+TABLE SECTION (one row per wine):
+  Each horizontal row = one specific wine being evaluated.
+  Columns: Wine Name | Price | Appearance (0-3) | Aroma/Bouquet (0-6) | Taste/Texture (0-6) | Aftertaste (0-3) | Overall Impression (0-2) | Total Score (0-20)
 
-For EACH filled-out row, extract:
-1. Wine name (combine all text in the Wine column for that row)
-2. Price (if filled in)
-3. Appearance score (0-3)
-4. Aroma/Bouquet score (0-6)
-5. Taste/Texture score (0-6)
-6. Aftertaste score (0-3)
-7. Overall Impression score (0-2)
-8. Total Score (0-20)
+=== CRITICAL FIELD DISTINCTIONS ===
+- "theme" = the EVENT name from the header (e.g. "My First Band of Tasting"). It describes the session, not a wine.
+- "bottle_name" = the WINE name from the left-most column of a TABLE ROW (e.g. "Chateau Margaux 2018", "Opus One").
+  These are DIFFERENT fields. Do NOT put the theme value into bottle_name or vice versa.
 
-Also extract the header information:
-- Taster name
-- Date (format as YYYY-MM-DD, if year missing use current year)
-- Place (location)
-- Theme (tasting theme/event)
+=== ROW EXTRACTION RULES ===
+1. The table has exactly 4 rows for wines (separated by horizontal lines)
+2. Each row is ONE wine, even if the name wraps across multiple lines within that row
+3. Skip rows with no scores filled in
+4. Combine multi-line wine names into a single string
 
-Return a JSON object with this structure:
+=== NOTES EXTRACTION ===
+Wine tasting cards sometimes have handwritten text notes alongside the numeric scores.
+If you see written text (words, not just numbers) in or near a column, extract it:
+- Written text near the Aroma/Bouquet column → nose_notes (array of strings)
+- Written text near the Taste/Texture column → palate_notes (array of strings)
+- Written text near the Aftertaste column → finish_notes (array of strings)
+- Any general written comments for a row → overall_notes (single string)
+If a column has only a number and no written text, leave that notes field as an empty array or null.
+
+=== OUTPUT FORMAT ===
+Return ONLY this JSON, no markdown, no explanation:
 {
-  "taster_name": "...",
+  "taster_name": "name from the Name field at the top",
   "tasting_date": "YYYY-MM-DD",
-  "place": "...",
-  "theme": "...",
+  "place": "location from Place field",
+  "theme": "event name from Theme field (NOT a wine name)",
   "tastings": [
     {
-      "bottle_name": "Complete wine name from that row",
-      "price": "...",
+      "bottle_name": "wine name from this table row (NOT the theme)",
+      "price": "price if filled in, else null",
       "wine_appearance": 2.5,
       "wine_aroma": 5.0,
       "wine_taste": 5.5,
       "wine_aftertaste": 2.5,
       "wine_overall": 1.5,
-      "nose_notes": ["array", "of", "strings describing nose/aroma notes, if present"],
-      "palate_notes": ["array", "of", "strings describing palate/taste notes, if present"],
-      "finish_notes": ["array", "of", "strings describing finish/aftertaste notes, if present"],
-      "overall_notes": "string with overall tasting notes if present"
+      "nose_notes": ["written text near Aroma column, if any"],
+      "palate_notes": ["written text near Taste column, if any"],
+      "finish_notes": ["written text near Aftertaste column, if any"],
+      "overall_notes": "any general written comments for this wine"
     }
   ]
 }
-
-Important:
-- ONLY include rows that have at least one score filled in
-- Each physical table row = one wine entry (even if name wraps)
-- Count the horizontal lines to identify separate rows
-- If a score is partially filled or unclear, estimate it
-- If date is missing the year, use 2025
-- Extract any handwritten tasting notes if present in the row (nose, palate, finish, overall observations)
-- Return valid JSON only, no other text
 """
 
         # Read image file as bytes
@@ -234,6 +230,8 @@ Important:
                 raw_text=response.content,
                 confidence=0.0,
             )
+
+        data = self._validate_aws_wine_data(data)
 
         tastings = []
         for i, wine_data in enumerate(data.get("tastings", [])):
@@ -366,39 +364,59 @@ Important:
             return await self._extract_aws_wine_llm(image_path)
 
         # Step 2: Build prompt that uses the layout-preserving text
-        prompt = f"""Extract ALL wines from this tasting table. Return ONLY valid JSON, no markdown, no explanations.
+        prompt = f"""Extract all wines from this AWS Wine Evaluation Chart. Return ONLY valid JSON, no markdown, no explanations.
 
-Table:
+=== TABLE TEXT (layout-preserving) ===
 {layout_text}
 
-Extract the shared metadata (taster, date, place) and ALL wine rows. Return this exact JSON structure:
+=== FIELD DISTINCTIONS — READ CAREFULLY ===
+The card has a header section (filled once per session) and a table section (one row per wine).
 
+Header fields:
+  "taster_name" — the person's name (Name field at top)
+  "tasting_date" — date of the tasting session
+  "place" — location of the tasting
+  "theme" — the EVENT or SESSION name (e.g. "My First Band of Tasting", "French Reds Night").
+             This is NOT a wine name. It describes the whole evening, not a single bottle.
+
+Table fields (per wine row):
+  "bottle_name" — the specific wine/bottle name from that row's Wine column.
+                  This is NOT the same as theme. Each row has a different wine name.
+
+Do NOT put the theme value into bottle_name. Do NOT put a wine name into theme.
+
+=== NOTES EXTRACTION ===
+If any column cell contains written text (not just a number), extract it:
+  - Text in/near the Aroma/Bouquet column → nose_notes
+  - Text in/near the Taste/Texture column → palate_notes
+  - Text in/near the Aftertaste column → finish_notes
+  - General comments → overall_notes
+If a cell has only a number, leave the corresponding notes field null.
+
+=== OUTPUT ===
 {{{{
   "taster_name": "string",
   "tasting_date": "YYYY-MM-DD",
   "place": "string or null",
-  "theme": "string or null",
+  "theme": "event/session name from header — NOT a wine name",
   "tastings": [
     {{{{
-      "bottle_name": "string",
-      "beverage_type": "wine",
+      "bottle_name": "wine name from this table row — NOT the theme",
       "price": "string or null",
       "wine_appearance": number or null,
       "wine_aroma": number or null,
       "wine_taste": number or null,
       "wine_aftertaste": number or null,
       "wine_overall": number or null,
-      "nose_notes": ["array", "of", "strings"] or null,
-      "palate_notes": ["array", "of", "strings"] or null,
-      "finish_notes": ["array", "of", "strings"] or null,
+      "nose_notes": ["text near Aroma column"] or null,
+      "palate_notes": ["text near Taste column"] or null,
+      "finish_notes": ["text near Aftertaste column"] or null,
       "overall_notes": "string or null"
     }}}}
   ]
 }}}}
 
-CRITICAL: Extract EVERY wine row from the table. Each row is a separate object in the "tastings" array. Do not skip any rows.
-
-Return ONLY the JSON object."""
+Extract EVERY wine row. Return ONLY the JSON object."""
 
         # Read image file as bytes
         with open(image_path, 'rb') as f:
@@ -429,6 +447,7 @@ Return ONLY the JSON object."""
                 confidence=0.0,
             )
 
+        data = self._validate_aws_wine_data(data)
         logger.debug(f"Parsed JSON data successfully")
 
         tastings = []
@@ -711,6 +730,76 @@ Return valid JSON only, no other text.
             raw_text=response.content,
             confidence=0.8,
         )
+
+    def _validate_aws_wine_data(self, data: dict) -> dict:
+        """
+        Post-extraction sanity checks for AWS wine card data.
+
+        Catches common LLM mistakes:
+        - theme/bottle_name swapped (theme looks like a wine, bottle_name looks like an event)
+        - notes all lumped into overall_notes when they belong in category fields
+        """
+        import re
+
+        theme = (data.get("theme") or "").strip()
+        tastings = data.get("tastings") or []
+
+        # --- Check 1: theme/bottle_name swap ---
+        # Heuristics: a theme that contains a 4-digit year, or a well-known varietal/producer
+        # keyword, is probably a wine name that ended up in the wrong field.
+        wine_pattern = re.compile(
+            r'\b(19|20)\d{2}\b'                              # vintage year
+            r'|cabernet|merlot|pinot|chardonnay|sauvignon'  # varietals
+            r'|chateau|domaine|castello|bodega'              # producer words
+            r'|blanc|rouge|noir|gris',
+            re.IGNORECASE
+        )
+        event_pattern = re.compile(
+            r'\bfirst\b|\bband\b|\bnight\b|\bclub\b|\bblind\b|\bsession\b|\bevent\b|\btasting\b',
+            re.IGNORECASE
+        )
+
+        if theme and wine_pattern.search(theme):
+            # Theme looks like a wine name — check if any bottle_name looks like an event
+            for tasting in tastings:
+                bottle = (tasting.get("bottle_name") or "").strip()
+                if bottle and event_pattern.search(bottle) and not wine_pattern.search(bottle):
+                    logger.warning(
+                        f"Detected likely theme/bottle_name swap: "
+                        f"theme='{theme}' ↔ bottle_name='{bottle}'. Swapping."
+                    )
+                    tasting["bottle_name"] = theme
+                    data["theme"] = bottle
+                    break
+            else:
+                # No clear swap candidate — just warn
+                logger.warning(
+                    f"theme='{theme}' looks like a wine name but no swap candidate found. "
+                    f"Review manually."
+                )
+
+        # --- Check 2: all notes in overall_notes, category fields empty ---
+        # If overall_notes is populated but nose/palate/finish are all empty,
+        # try to split overall_notes on common delimiters into the category fields.
+        # This is a best-effort recovery, not guaranteed to be accurate.
+        for tasting in tastings:
+            overall = (tasting.get("overall_notes") or "").strip()
+            has_category_notes = any([
+                tasting.get("nose_notes"),
+                tasting.get("palate_notes"),
+                tasting.get("finish_notes"),
+            ])
+            if overall and not has_category_notes:
+                logger.info(
+                    f"Wine '{tasting.get('bottle_name')}': all notes in overall_notes, "
+                    f"category note fields empty — leaving as-is (wine cards often have "
+                    f"no per-category text notes, only scores)."
+                )
+                # We intentionally do NOT auto-split: splitting prose into nose/palate/finish
+                # without knowing the card layout would produce worse results than leaving
+                # everything in overall_notes.
+
+        return data
 
     def _rating_to_scores(self, rating: int) -> dict[str, float]:
         """
