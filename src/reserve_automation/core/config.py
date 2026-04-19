@@ -14,10 +14,10 @@ class Config(BaseModel):
     """
     Application configuration.
 
-    Loads from multiple YAML files with precedence:
-      1. user.yaml (highest priority, gitignored)
+    Loads from YAML files with precedence (highest to lowest):
+      1. user.yaml   — gitignored, deployment-specific overrides
       2. Environment variables
-      3. default.yaml
+      3. default.yaml — committed defaults (providers, routing, etc.)
     """
 
     # Project
@@ -92,7 +92,7 @@ class Config(BaseModel):
             ConfigurationError: If configuration is invalid
         """
         try:
-            # 1. Load default config
+            # 1. Load default config (includes LLM provider defaults)
             default_path = Path("config/default.yaml")
             if not default_path.exists():
                 raise ConfigurationError(f"Default config not found: {default_path}")
@@ -100,22 +100,14 @@ class Config(BaseModel):
             with open(default_path) as f:
                 config = yaml.safe_load(f) or {}
 
-            # 2. Load LLM config
-            llm_path = Path(config.get("llm", {}).get("config_file", "config/llm.yaml"))
-            if llm_path.exists():
-                with open(llm_path) as f:
-                    config["llm"] = yaml.safe_load(f) or {}
-            else:
-                raise ConfigurationError(f"LLM config not found: {llm_path}")
-
-            # 3. Load user config if exists
+            # 2. Load user config if exists (gitignored, deployment-specific)
             user_path = config_file or Path("config/user.yaml")
             if user_path.exists():
                 with open(user_path) as f:
                     user_config = yaml.safe_load(f) or {}
                     config = cls._deep_merge(config, user_config)
 
-            # 4. Override with environment variables
+            # 3. Override with environment variables
             config = cls._apply_env_overrides(config)
 
             return cls(**config)
