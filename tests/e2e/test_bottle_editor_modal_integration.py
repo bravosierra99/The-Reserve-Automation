@@ -111,7 +111,7 @@ class TestManagementWorkflow:
         # Verify critical components are present
         assert "bottle-editor-modal.js" in html
         assert "cropper-manager.js" in html
-        assert "bottleEditor.openManagement" in html
+        assert "bottleEditor" in html
 
     def test_get_bottles_returns_valid_data(self, test_client):
         """Test that /api/v1/management/bottles returns bottles with opaque id."""

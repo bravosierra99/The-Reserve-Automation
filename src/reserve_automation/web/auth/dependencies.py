@@ -34,8 +34,7 @@ def require(permission: str):
         # Load auth config from app state
         auth_config = getattr(request.app.state, "auth_config", None)
         if auth_config is None:
-            # No auth config = no permission enforcement (backwards compat)
-            return user
+            raise HTTPException(status_code=503, detail="Authorization system not configured")
 
         if not auth_config.has_permission(user.role, permission):
             raise HTTPException(

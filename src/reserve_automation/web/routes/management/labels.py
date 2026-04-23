@@ -240,17 +240,17 @@ async def download_label_image(
         logger.info(f"Final URL: {image_url}")
 
         # SSRF protection: validate URL doesn't target internal networks
-        from ....utils.url_validation import validate_url_not_internal
+        from ....utils.url_validation import validate_url_not_internal_async
         try:
-            validate_url_not_internal(image_url)
+            await validate_url_not_internal_async(image_url)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
         # Save to /tmp instead of media dir
         temp_dir = get_temp_label_dir(bottle_id)
 
-        # Download image
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        # Download image — follow_redirects=False prevents redirect-based SSRF bypass
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
             response = await client.get(image_url)
             response.raise_for_status()
             image_bytes = response.content

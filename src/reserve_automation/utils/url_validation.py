@@ -1,5 +1,6 @@
 """URL validation utilities for SSRF protection."""
 
+import asyncio
 import ipaddress
 import socket
 from urllib.parse import urlparse
@@ -67,3 +68,12 @@ def validate_url_not_internal(url: str) -> str:
             )
 
     return url
+
+
+async def validate_url_not_internal_async(url: str) -> str:
+    """Async variant of validate_url_not_internal for use in async route handlers.
+
+    Offloads the blocking DNS resolution to a thread pool so the event loop
+    is not blocked.
+    """
+    return await asyncio.to_thread(validate_url_not_internal, url)

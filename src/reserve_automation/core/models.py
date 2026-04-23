@@ -1,11 +1,9 @@
 """Data models for The Reserve Automation."""
 
 #CLAUDE_REQ: When adding/modifying BottleMetadata fields, verify coherence with:
-#CLAUDE_REQ: - Obsidian FileClass definitions (the-reserve/Cellar/8_FileClass/*.md)
-#CLAUDE_REQ: - Templates (templates/*.md.j2 and the-reserve/Cellar/9_Templates/)
-#CLAUDE_REQ: - Generator context (generators/obsidian.py _prepare_context)
-#CLAUDE_REQ: - Vault reader parsing (utils/vault_reader.py)
-#CLAUDE_REQ: - Field name mapping (web/routes/management.py field_name_map)
+#CLAUDE_REQ: - SQLAlchemy model (db/models/bottle.py BottleModel)
+#CLAUDE_REQ: - DB converter (db/converters.py bottle_model_to_metadata / metadata_to_bottle_model)
+#CLAUDE_REQ: - Field name mapping (web/routes/management/labels.py and management/__init__.py field_name_map)
 
 from datetime import datetime
 from enum import Enum

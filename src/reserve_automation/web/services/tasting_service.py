@@ -18,6 +18,11 @@ from ..schemas.tasting import (
 )
 
 
+_AUTO_SELECT_THRESHOLD = 0.8
+_PERFECT_MATCH_CONFIDENCE = 1.0
+_PARTIAL_MATCH_CONFIDENCE = 0.8
+
+
 class TastingService:
     """Service for managing tasting extraction and review workflow."""
 
@@ -77,7 +82,7 @@ class TastingService:
 
             # Auto-select best match if confidence is high
             selected_match = None
-            if match_candidates and match_candidates[0].confidence >= 0.8:
+            if match_candidates and match_candidates[0].confidence >= _AUTO_SELECT_THRESHOLD:
                 selected_match = match_candidates[0].bottle_path
 
             # Check for duplicate tasting
@@ -232,7 +237,7 @@ class TastingService:
                         bottle_path=bottle.get("bottle_id", bottle.get("bottle_path", "")),
                         bottle_name=display_name,
                         producer="",
-                        confidence=1.0 if bottle_name.lower() == bottle.get("bottle_name", "").lower() else 0.8,
+                        confidence=_PERFECT_MATCH_CONFIDENCE if bottle_name.lower() == bottle.get("bottle_name", "").lower() else _PARTIAL_MATCH_CONFIDENCE,
                         thumbnail_url=None,
                         beverage_type=beverage_type
                     )

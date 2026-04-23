@@ -16,6 +16,12 @@ class ToolExecutor:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
+        # ACCEPTED RISK: follow_redirects=True is intentional.
+        # URLs here come from LLM-generated DuckDuckGo search results, not direct user input.
+        # Disabling redirects would break legitimate fetches (HTTP→HTTPS, www→bare domain, etc.).
+        # The redirect-based SSRF bypass risk is accepted: it requires a malicious search result
+        # *and* a redirect target on the internal network — low probability in this threat model.
+        # User-supplied URLs (label downloads) use a separate client with follow_redirects=False.
         self.http_client = httpx.Client(
             timeout=30.0,
             follow_redirects=True,
