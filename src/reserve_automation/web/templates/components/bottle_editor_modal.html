@@ -19,12 +19,12 @@
 
             <!-- Header -->
             <div class="sticky top-0 bg-white border-b-2 border-gray-300 p-6 z-10">
-                <div class="flex justify-between items-start">
-                    <div>
-                        <h2 class="text-3xl font-bold text-gray-800 mb-2">
+                <div class="flex justify-between items-start gap-3">
+                    <div class="min-w-0">
+                        <h2 class="text-xl lg:text-3xl font-bold text-gray-800 mb-2 leading-tight">
                             <span x-text="bottleEditor.bottle?.producer"></span> - <span x-text="bottleEditor.bottle?.name"></span>
                         </h2>
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-gray-700">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-sm text-gray-700">
                             <div><span class="font-semibold">Type:</span> <span x-text="bottleEditor.bottle?.beverage_type"></span></div>
                             <div><span class="font-semibold">Year:</span> <span x-text="bottleEditor.bottle?.year || 'N/A'"></span></div>
                             <div x-show="bottleEditor.bottle?.variety">
@@ -98,7 +98,7 @@
                                                    class="mt-1 w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500">
                                             <div class="flex-1">
                                                 <label class="block text-sm font-bold text-gray-800 mb-2" x-text="bottleEditor.getFieldLabel(field)"></label>
-                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
                                                     <div>
                                                         <span class="text-xs text-gray-600 block mb-1">Current:</span>
                                                         <div class="px-3 py-2 bg-red-50 border-2 border-red-300 rounded text-gray-800 line-through text-sm"
@@ -135,7 +135,7 @@
                     </div>
 
                     <!-- Editable Fields -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <!-- Producer -->
                         <div>
                             <label class="block text-sm font-bold text-gray-700 mb-2">
@@ -181,7 +181,7 @@
 
                         <!-- Wine-specific fields -->
                         <template x-if="bottleEditor.bottle?.type === 'wine'">
-                            <div class="col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Country</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.country"
@@ -223,7 +223,7 @@
 
                         <!-- Whiskey-specific fields -->
                         <template x-if="bottleEditor.bottle?.type !== 'wine'">
-                            <div class="col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Region</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.region"
@@ -406,7 +406,7 @@
                                 <span x-text="bottleEditor.showTastingsList ? '▲ Collapse' : '▼ Expand'"></span>
                             </span>
                         </div>
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                             <div>
                                 <span class="font-semibold block text-gray-600">Total Tastings:</span>
                                 <span class="text-2xl font-bold text-gray-800" x-text="bottleEditor.tastingSummary?.tasting_count || 0"></span>
@@ -744,7 +744,7 @@
             </div>
 
             <!-- Footer Actions -->
-            <div class="sticky bottom-0 bg-white border-t-2 border-gray-300 p-6 flex justify-between items-center">
+            <div class="sticky bottom-0 bg-white border-t-2 border-gray-300 px-4 py-3 lg:p-6 flex flex-wrap justify-between items-center gap-3">
                 <div class="flex gap-3">
                     <!-- Navigation (Upload/Manifest Mode) -->
                     <button x-show="bottleEditor.manifestContext && (bottleEditor.manifestContext.currentIndex || 0) > 0"

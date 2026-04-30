@@ -21,40 +21,57 @@
 </head>
 <body class="bg-gray-50 min-h-screen">
     <style>[x-cloak] { display: none !important; }</style>
-    <nav class="bg-blue-600 text-white p-4 shadow-lg" x-data="authNav()" x-cloak>
-        <div class="container mx-auto">
-            <div class="flex justify-between items-center">
+    <nav class="bg-blue-600 text-white shadow-lg" x-data="authNav()" x-cloak>
+        <div class="container mx-auto px-4">
+            <!-- Title row + hamburger button (hamburger hidden on lg+) -->
+            <div class="flex justify-between items-center py-3">
                 <div>
-                    <h1 class="text-2xl font-bold">The Reserve</h1>
-                    <p class="text-sm text-blue-100">Bottle & Tasting Management</p>
+                    <h1 class="text-xl font-bold leading-tight">The Reserve</h1>
+                    <p class="text-xs text-blue-100">Bottle & Tasting Management</p>
                 </div>
-                <div class="flex gap-4 items-center">
-                    <a x-show="p.bottles_view" href="/bottles" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
+                <button @click="mobileOpen = !mobileOpen"
+                        class="lg:hidden flex items-center justify-center w-10 h-10 rounded-lg hover:bg-blue-700 transition-colors"
+                        :aria-expanded="mobileOpen.toString()">
+                    <!-- Hamburger icon -->
+                    <svg x-show="!mobileOpen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                    </svg>
+                    <!-- Close icon -->
+                    <svg x-show="mobileOpen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Nav links: hidden on mobile until hamburger opens, always visible on lg+ -->
+            <div class="nav-links" :class="{ 'is-open': mobileOpen }">
+                <div class="flex flex-col lg:flex-row flex-wrap gap-2">
+                    <a x-show="p.bottles_view" href="/bottles" class="px-3 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors text-sm">
                         Bottles
                     </a>
-                    <a x-show="p.tastings_submit" href="/manual-tasting" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-colors">
+                    <a x-show="p.tastings_submit" href="/manual-tasting" class="px-3 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-colors text-sm">
                         Tastings
                     </a>
-                    <a x-show="p.upload_access" href="/upload" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
+                    <a x-show="p.upload_access" href="/upload" class="px-3 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors text-sm">
                         Import
                     </a>
-                    <a x-show="p.ingredients_view" href="/ingredients" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
+                    <a x-show="p.ingredients_view" href="/ingredients" class="px-3 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors text-sm">
                         Ingredients
                     </a>
-                    <a x-show="p.cocktails_view" href="/cocktails" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
+                    <a x-show="p.cocktails_view" href="/cocktails" class="px-3 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors text-sm">
                         Cocktails
                     </a>
-                    <a x-show="p.events_view" href="/events" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
+                    <a x-show="p.events_view" href="/events" class="px-3 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors text-sm">
                         Events
                     </a>
-                    <a x-show="p.management_access" href="/management" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors">
+                    <a x-show="p.management_access" href="/management" class="px-3 py-2 bg-blue-700 hover:bg-blue-800 rounded-lg font-semibold transition-colors text-sm">
                         Management
                     </a>
-                    <!-- Identity display -->
-                    <div x-show="displayName" class="ml-2 text-sm text-blue-100 border-l border-blue-400 pl-4">
-                        <span x-text="displayName"></span>
-                        <span x-show="role" class="text-blue-200">(<span x-text="role"></span>)</span>
-                    </div>
+                </div>
+                <!-- Identity display -->
+                <div x-show="displayName" class="text-sm text-blue-100 pt-2 lg:pt-0 lg:border-l lg:border-blue-400 lg:pl-3">
+                    <span x-text="displayName"></span>
+                    <span x-show="role" class="text-blue-200">(<span x-text="role"></span>)</span>
                 </div>
             </div>
         </div>
@@ -64,7 +81,8 @@
         return {
             displayName: '',
             role: '',
-            p: {},  // permissions
+            p: {},
+            mobileOpen: false,
             async init() {
                 try {
                     const resp = await fetch('/api/v1/me');

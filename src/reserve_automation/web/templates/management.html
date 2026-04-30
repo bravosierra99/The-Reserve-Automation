@@ -215,7 +215,7 @@
                                                                    class="mt-1 w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500">
                                                             <div class="flex-1">
                                                                 <label class="block text-sm font-bold text-gray-800 mb-2" x-text="field.label"></label>
-                                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
                                                                     <div>
                                                                         <span class="text-xs text-gray-600 block mb-1">Current:</span>
                                                                         <div class="px-3 py-2 bg-red-50 border-2 border-red-300 rounded text-gray-800 line-through"
@@ -948,7 +948,7 @@
                                             <!-- Edit Form (shown when editing) -->
                                             <div x-show="trIsEditing(t)" class="px-5 py-4 border-b border-blue-100 bg-blue-50" @click.stop>
                                                 <h4 class="font-semibold text-blue-700 mb-4 text-xs uppercase tracking-wider">Edit Tasting</h4>
-                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                                     <!-- Common fields -->
                                                     <div>
                                                         <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Taster</label>
@@ -961,7 +961,7 @@
 
                                                     <!-- Whiskey scores -->
                                                     <template x-if="t.type === 'whiskey'">
-                                                        <div class="md:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                        <div class="lg:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-3">
                                                             <div>
                                                                 <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nose /3</label>
                                                                 <input type="number" min="0" max="3" step="0.1" x-model="trEditData.nose" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
@@ -986,19 +986,19 @@
                                                                 <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Fill Level %</label>
                                                                 <input type="number" min="0" max="100" x-model="trEditData.fill_level" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
                                                             </div>
-                                                            <div class="md:col-span-4">
+                                                            <div class="col-span-2 md:col-span-4">
                                                                 <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nose Notes (comma-separated)</label>
                                                                 <input type="text" x-model="trEditData.nose_notes" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
                                                             </div>
-                                                            <div class="md:col-span-4">
+                                                            <div class="col-span-2 md:col-span-4">
                                                                 <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Palate Notes</label>
                                                                 <input type="text" x-model="trEditData.palate_notes" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
                                                             </div>
-                                                            <div class="md:col-span-4">
+                                                            <div class="col-span-2 md:col-span-4">
                                                                 <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Finish Notes</label>
                                                                 <input type="text" x-model="trEditData.finish_notes" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
                                                             </div>
-                                                            <div class="md:col-span-4">
+                                                            <div class="col-span-2 md:col-span-4">
                                                                 <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Overall Notes</label>
                                                                 <textarea rows="2" x-model="trEditData.overall_notes" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm"></textarea>
                                                             </div>
@@ -1007,7 +1007,7 @@
 
                                                     <!-- Wine scores -->
                                                     <template x-if="t.type === 'wine'">
-                                                        <div class="md:col-span-2 grid grid-cols-2 md:grid-cols-5 gap-3">
+                                                        <div class="lg:col-span-2 grid grid-cols-2 md:grid-cols-5 gap-3">
                                                             <div>
                                                                 <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Appearance /3</label>
                                                                 <input type="number" min="0" max="3" step="0.1" x-model="trEditData.appearance" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
@@ -1028,7 +1028,7 @@
                                                                 <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Overall /2</label>
                                                                 <input type="number" min="0" max="2" step="0.1" x-model="trEditData.overall" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">
                                                             </div>
-                                                            <div class="md:col-span-5">
+                                                            <div class="col-span-2 md:col-span-5">
                                                                 <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Overall Notes</label>
                                                                 <textarea rows="2" x-model="trEditData.overall_notes" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm"></textarea>
                                                             </div>
@@ -1037,7 +1037,7 @@
 
                                                     <!-- Cocktail fields -->
                                                     <template x-if="t.type === 'cocktail'">
-                                                        <div class="md:col-span-2 grid grid-cols-2 gap-3">
+                                                        <div class="lg:col-span-2 grid grid-cols-2 gap-3">
                                                             <div>
                                                                 <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Score /10</label>
                                                                 <input type="number" min="0" max="10" step="0.5" x-model="trEditData.score" class="mt-1 w-full border border-gray-300 rounded px-2 py-1 text-sm">

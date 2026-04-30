@@ -1,25 +1,44 @@
 /* Custom styles for The Reserve Automation */
 
-/* Ensure full height on mobile */
 html, body {
     height: 100%;
 }
 
-/* Improve touch targets for mobile */
-button, a, input[type="file"] {
-    min-height: 44px;
+/* Hamburger-collapsible nav links
+   Hidden on mobile by default; shown when .is-open is toggled by Alpine.
+   Always shown as flex row on lg+ (1024px). */
+.nav-links {
+    display: none;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-bottom: 0.75rem;
+}
+.nav-links.is-open {
+    display: flex;
+}
+@media (min-width: 1024px) {
+    .nav-links {
+        display: flex !important;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding-bottom: 0.75rem;
+    }
 }
 
-/* Smooth transitions */
-* {
-    transition: all 0.2s ease-in-out;
+/* Prevent iOS Safari from auto-zooming when focusing inputs whose font-size < 16px */
+@media (max-width: 767px) {
+    input, select, textarea {
+        font-size: 16px !important;
+    }
 }
 
 /* Loading spinner */
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
-
 .animate-spin {
     animation: spin 1s linear infinite;
 }
