@@ -82,9 +82,13 @@
             <input
                 type="text"
                 x-model="purchaseSource"
+                list="ac-purchase-source"
                 placeholder="e.g., Total Wine, Local liquor store, Online"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
+            <datalist id="ac-purchase-source">
+                <template x-for="v in acPurchaseSources" :key="v"><option :value="v"></option></template>
+            </datalist>
         </div>
 
         <div>
@@ -331,6 +335,7 @@ function uploadForm() {
         errorMessage: '',
         expectedCount: null,  // Expected number of tastings (1-4)
         purchaseSource: '',  // Where bottle was purchased
+        acPurchaseSources: [],  // Autocomplete suggestions for purchase source
         inventory: 0,  // Number of bottles in inventory
         imageLoadHandled: false,  // Flag to ensure we only auto-scroll once
 
@@ -338,9 +343,18 @@ function uploadForm() {
         manifestBottles: [],
         showManifestPanel: false,
 
-        init() {
+        async init() {
             // Initialize bottle editor modal after all scripts have loaded
             this.bottleEditor = window.bottleEditorModal ? window.bottleEditorModal() : {};
+            if (this.bottleEditor && this.bottleEditor.loadAutocomplete) {
+                this.bottleEditor.loadAutocomplete();
+            }
+
+            // Load purchase_source autocomplete
+            try {
+                const resp = await fetch('/api/v1/autocomplete/bottles/purchase_source');
+                if (resp.ok) this.acPurchaseSources = await resp.json();
+            } catch (e) { /* ignore */ }
 
             // Prevent iOS scroll restoration on page load
             if ('scrollRestoration' in history) {

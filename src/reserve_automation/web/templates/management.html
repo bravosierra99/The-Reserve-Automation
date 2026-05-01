@@ -60,6 +60,13 @@
                     <h3 class="font-bold text-lg mb-2">Tasting Review</h3>
                     <p class="text-sm text-gray-600">Browse, filter, and sort all your tasting notes</p>
                 </button>
+
+                <button @click="selectMode('data-cleanup')"
+                        class="p-6 border-2 border-gray-300 rounded-lg transition-all bg-orange-50 hover:bg-orange-100">
+                    <div class="text-4xl mb-2">🧹</div>
+                    <h3 class="font-bold text-lg mb-2">Data Cleanup</h3>
+                    <p class="text-sm text-gray-600">Normalize inconsistent field values across your collection</p>
+                </button>
             </div>
 
             <div class="mt-6">
@@ -1274,6 +1281,86 @@
     </div>
     </div>
 
+    <!-- Data Cleanup Mode -->
+    <div x-show="mode === 'data-cleanup'" class="space-y-4">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-2xl font-bold mb-2 text-gray-800">Data Cleanup</h2>
+            <p class="text-sm text-gray-500 mb-6">Rename field values in bulk. Updating one value changes every matching record at once.</p>
+
+            <!-- Field selector -->
+            <div class="space-y-3 mb-6">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Bottles</p>
+                    <div class="flex flex-wrap gap-2">
+                        <button @click="dcSelectField('bottles','producer')" :class="dcTab==='bottles'&&dcField==='producer'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Producer</button>
+                        <button @click="dcSelectField('bottles','beverage_type')" :class="dcTab==='bottles'&&dcField==='beverage_type'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Beverage Type</button>
+                        <button @click="dcSelectField('bottles','country')" :class="dcTab==='bottles'&&dcField==='country'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Country</button>
+                        <button @click="dcSelectField('bottles','region')" :class="dcTab==='bottles'&&dcField==='region'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Region</button>
+                        <button @click="dcSelectField('bottles','variety')" :class="dcTab==='bottles'&&dcField==='variety'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Variety</button>
+                        <button @click="dcSelectField('bottles','purchase_source')" :class="dcTab==='bottles'&&dcField==='purchase_source'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Where Purchased</button>
+                    </div>
+                </div>
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Tastings</p>
+                    <div class="flex flex-wrap gap-2">
+                        <button @click="dcSelectField('tastings','taster_name')" :class="dcTab==='tastings'&&dcField==='taster_name'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Taster Name</button>
+                        <button @click="dcSelectField('tastings','place')" :class="dcTab==='tastings'&&dcField==='place'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Place</button>
+                        <button @click="dcSelectField('tastings','theme')" :class="dcTab==='tastings'&&dcField==='theme'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Theme / Event</button>
+                    </div>
+                </div>
+            </div>
+
+            <div x-show="dcLoading" class="text-center py-8 text-gray-500 text-sm">Loading...</div>
+            <div x-show="!dcLoading && dcValues.length === 0" class="text-center py-8 text-gray-400 text-sm">No values found for this field.</div>
+
+            <div x-show="!dcLoading && dcValues.length > 0">
+                <p class="text-xs text-gray-400 mb-3">
+                    <span x-text="dcValues.length" class="font-semibold"></span> unique values.
+                    Type a new value and press <strong>Rename</strong> (or Enter) to update all matching records.
+                </p>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                <th class="pb-2 pr-4">Current Value</th>
+                                <th class="pb-2 pr-4 text-center w-16">Records</th>
+                                <th class="pb-2 pr-4">Rename To</th>
+                                <th class="pb-2"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="item in dcValues" :key="item.value">
+                                <tr class="border-b border-gray-100 hover:bg-gray-50">
+                                    <td class="py-2 pr-4 font-mono text-sm text-gray-700" x-text="item.value"></td>
+                                    <td class="py-2 pr-4 text-center text-gray-500" x-text="item.count"></td>
+                                    <td class="py-2 pr-4">
+                                        <input type="text"
+                                               x-model="dcRenames[item.value]"
+                                               :placeholder="item.value"
+                                               @keydown.enter="dcApplyRename(item.value)"
+                                               class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 font-mono">
+                                    </td>
+                                    <td class="py-2 whitespace-nowrap">
+                                        <button @click="dcApplyRename(item.value)"
+                                                :disabled="!dcRenames[item.value] || dcRenames[item.value] === item.value || dcSaving[item.value]"
+                                                class="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-xs font-semibold rounded transition-colors">
+                                            <span x-show="!dcSaving[item.value]">Rename</span>
+                                            <span x-show="dcSaving[item.value]">...</span>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <button @click="mode = null" class="text-blue-600 hover:text-blue-800 font-semibold">← Back to Mode Selection</button>
+        </div>
+    </div>
+
     <!-- Include Bottle Editor Modal Component (used by batch mode) -->
     {% include 'components/bottle_editor_modal.html' %}
 <script>
@@ -1339,6 +1426,14 @@ function managementApp() {
         bulkError: '',
         bulkSuccess: '',
         bulkIngredientNames: [],
+
+        // Data cleanup mode
+        dcTab: 'tastings',
+        dcField: 'taster_name',
+        dcValues: [],
+        dcLoading: false,
+        dcRenames: {},
+        dcSaving: {},
 
         // Toast notifications
         toasts: [],
@@ -1476,6 +1571,10 @@ function managementApp() {
                     if (me.display_name) this.eventHostName = me.display_name;
                 }
             } catch (e) { /* ignore */ }
+            // Pre-load autocomplete data for bottle editor forms
+            if (this.bottleEditor && this.bottleEditor.loadAutocomplete) {
+                this.bottleEditor.loadAutocomplete();
+            }
         },
 
         selectMode(m) {
@@ -1486,6 +1585,51 @@ function managementApp() {
                 this.loadBulkIngredientNames();
             } else if (m === 'tasting-review') {
                 this.loadTastings();
+            } else if (m === 'data-cleanup') {
+                this.loadCleanupValues();
+            }
+        },
+
+        async loadCleanupValues() {
+            this.dcLoading = true;
+            this.dcValues = [];
+            this.dcRenames = {};
+            this.dcSaving = {};
+            try {
+                const resp = await fetch(`/api/v1/management/field-values?scope=${this.dcTab}&field=${this.dcField}`);
+                if (resp.ok) this.dcValues = await resp.json();
+            } catch (e) { console.error(e); }
+            finally { this.dcLoading = false; }
+        },
+
+        dcSelectField(tab, field) {
+            this.dcTab = tab;
+            this.dcField = field;
+            this.loadCleanupValues();
+        },
+
+        async dcApplyRename(oldValue) {
+            const newValue = (this.dcRenames[oldValue] || '').trim();
+            if (!newValue || newValue === oldValue) return;
+            this.dcSaving = { ...this.dcSaving, [oldValue]: true };
+            try {
+                const resp = await fetch('/api/v1/management/bulk-rename', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scope: this.dcTab, field: this.dcField, old_value: oldValue, new_value: newValue }),
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    this.showToast(`Renamed ${data.updated} record${data.updated !== 1 ? 's' : ''}: "${oldValue}" → "${newValue}"`, 'success', 3000);
+                    await this.loadCleanupValues();
+                } else {
+                    const err = await resp.json().catch(() => ({}));
+                    this.showToast(err.detail || 'Rename failed', 'error', 4000);
+                }
+            } catch (e) {
+                this.showToast('Rename failed: ' + e.message, 'error', 4000);
+            } finally {
+                this.dcSaving = { ...this.dcSaving, [oldValue]: false };
             }
         },
 

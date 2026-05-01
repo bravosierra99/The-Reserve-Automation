@@ -66,11 +66,33 @@ window.bottleEditorModal = function() {
         selectedTasting: null,      // Currently selected tasting for detail view
         loadingTastings: false,     // Loading state
 
+        // Autocomplete data (populated once per page load)
+        acData: {
+            producer: [], region: [], country: [], variety: [],
+            beverage_type: [], style: [], vineyard: [], purchase_source: [],
+        },
+        _acLoaded: false,
+
         // UI state
         saving: false,
         saveSuccess: false,
+        savedBottleId: null,     // Set after single-bottle upload save; enables post-save nav buttons
         labelActionInProgress: false,
         currentLabelTimestamp: Date.now(),
+
+        async loadAutocomplete() {
+            if (this._acLoaded) return;
+            try {
+                const fields = Object.keys(this.acData);
+                const results = await Promise.all(
+                    fields.map(f => fetch(`/api/v1/autocomplete/bottles/${f}`).then(r => r.ok ? r.json() : []))
+                );
+                fields.forEach((f, i) => { this.acData[f] = results[i]; });
+                this._acLoaded = true;
+            } catch (e) {
+                console.warn('Autocomplete load failed:', e);
+            }
+        },
 
         /**
          * Open modal in management mode (existing bottle from vault)
@@ -194,6 +216,7 @@ window.bottleEditorModal = function() {
             this._onSkipCallback = null;
             this.saving = false;
             this.saveSuccess = false;
+            this.savedBottleId = null;
             this.labelActionInProgress = false;
             this.labelSearchResults = [];
             this.duplicates = [];
@@ -230,6 +253,25 @@ window.bottleEditorModal = function() {
                 this.editableBottle = {};
                 this.resetState();
             }, 300);
+        },
+
+        /**
+         * After a single-bottle upload save, navigate to manual tasting with the bottle pre-selected
+         */
+        startTasting() {
+            const bottle = this.bottle;
+            const id = this.savedBottleId;
+            if (!bottle || !id) return;
+
+            const preselect = {
+                bottle_path: id,
+                bottle_name: `${bottle.producer} - ${bottle.name}`,
+                producer: bottle.producer,
+                beverage_type: bottle.type,
+                thumbnail_url: `/api/v1/labels/thumbnail?id=${encodeURIComponent(id)}&size=200`,
+            };
+            sessionStorage.setItem('preselect_bottle', JSON.stringify(preselect));
+            window.location.href = '/manual-tasting';
         },
 
         /**
@@ -390,8 +432,8 @@ window.bottleEditorModal = function() {
                         this._onSaveCallback = null;
                         // advanceToNextReady (called from callback) handles close and navigation
                     } else {
-                        // Wait briefly for user to see success, then close
-                        setTimeout(() => this.close(), 800);
+                        // Show post-save actions so user can go straight to tasting
+                        this.savedBottleId = result.id;
                     }
                 }
 

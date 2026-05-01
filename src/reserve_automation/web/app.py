@@ -11,7 +11,7 @@ from loguru import logger
 
 from .config import load_web_config, load_auth_config
 from .logging_config import setup_web_logging
-from .routes import upload, review, health, bottles, tastings, management, events, ingredients, cocktails
+from .routes import upload, review, health, bottles, tastings, management, events, ingredients, cocktails, autocomplete
 from .services.upload_service import UploadService
 from ..db.engine import init_db
 
@@ -116,6 +116,11 @@ templates.env.auto_reload = True
 templates.env.cache = None
 
 # Include routers
+# #CLAUDE_REQ: Every router included here MUST enforce auth via Depends(require(...)).
+# Either at router level (APIRouter(dependencies=[Depends(require(...))])) or on each
+# individual route. health.router is the only intentional exception (public /health).
+# See config/auth.yaml for the full permission → role mapping.
+# When adding a new router: grep its file for require() before including it here.
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(upload.router, tags=["upload"])  # Unified upload page (/upload) and /review-bottles routes
 app.include_router(review.router, tags=["review"])  # Tasting card review page (/review) and API endpoints
@@ -125,6 +130,7 @@ app.include_router(management.router, tags=["management"])  # Management page fo
 app.include_router(events.router, tags=["events"])  # Event system for multi-user tastings
 app.include_router(ingredients.router, tags=["ingredients"])  # Ingredient tree management
 app.include_router(cocktails.router, tags=["cocktails"])  # Cocktail recipe management
+app.include_router(autocomplete.router, tags=["autocomplete"])  # Autocomplete suggestions for form fields
 
 
 @app.get("/")

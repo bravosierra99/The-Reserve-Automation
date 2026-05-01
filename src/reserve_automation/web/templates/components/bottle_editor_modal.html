@@ -143,6 +143,7 @@
                             </label>
                             <input type="text"
                                    x-model="bottleEditor.editableBottle.producer"
+                                   list="be-ac-producer"
                                    :disabled="bottleEditor.readOnly"
                                    class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                         </div>
@@ -174,6 +175,7 @@
                             <label class="block text-sm font-bold text-gray-700 mb-2">Type</label>
                             <input type="text"
                                    x-model="bottleEditor.editableBottle.beverage_type"
+                                   list="be-ac-beverage-type"
                                    placeholder="e.g., Bourbon, Cabernet Sauvignon, Reposado Tequila"
                                    :disabled="bottleEditor.readOnly"
                                    class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
@@ -185,24 +187,28 @@
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Country</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.country"
+                                           list="be-ac-country"
                                            :disabled="bottleEditor.readOnly"
                                    class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Region</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.region"
+                                           list="be-ac-region"
                                            :disabled="bottleEditor.readOnly"
                                    class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Variety</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.variety"
+                                           list="be-ac-variety"
                                            :disabled="bottleEditor.readOnly"
                                    class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Vineyard</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.vineyard"
+                                           list="be-ac-vineyard"
                                            :disabled="bottleEditor.readOnly"
                                    class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
@@ -215,6 +221,7 @@
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Style</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.style"
+                                           list="be-ac-style"
                                            :disabled="bottleEditor.readOnly"
                                    class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
@@ -227,6 +234,7 @@
                                 <div>
                                     <label class="block text-sm font-bold text-gray-700 mb-2">Region</label>
                                     <input type="text" x-model="bottleEditor.editableBottle.region"
+                                           list="be-ac-region"
                                            :disabled="bottleEditor.readOnly"
                                    class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:text-gray-500">
                                 </div>
@@ -743,6 +751,15 @@
 
             </div>
 
+            <!-- Autocomplete datalists (referenced by list= attributes on inputs above) -->
+            <datalist id="be-ac-producer"><template x-for="v in bottleEditor.acData.producer" :key="v"><option :value="v"></option></template></datalist>
+            <datalist id="be-ac-beverage-type"><template x-for="v in bottleEditor.acData.beverage_type" :key="v"><option :value="v"></option></template></datalist>
+            <datalist id="be-ac-country"><template x-for="v in bottleEditor.acData.country" :key="v"><option :value="v"></option></template></datalist>
+            <datalist id="be-ac-region"><template x-for="v in bottleEditor.acData.region" :key="v"><option :value="v"></option></template></datalist>
+            <datalist id="be-ac-variety"><template x-for="v in bottleEditor.acData.variety" :key="v"><option :value="v"></option></template></datalist>
+            <datalist id="be-ac-vineyard"><template x-for="v in bottleEditor.acData.vineyard" :key="v"><option :value="v"></option></template></datalist>
+            <datalist id="be-ac-style"><template x-for="v in bottleEditor.acData.style" :key="v"><option :value="v"></option></template></datalist>
+
             <!-- Footer Actions -->
             <div class="sticky bottom-0 bg-white border-t-2 border-gray-300 px-4 py-3 lg:p-6 flex flex-wrap justify-between items-center gap-3">
                 <div class="flex gap-3">
@@ -760,7 +777,21 @@
                     </button>
                 </div>
 
-                <div class="flex gap-3">
+                <!-- Post-save actions (single bottle upload only) -->
+                <div x-show="bottleEditor.savedBottleId" class="flex flex-wrap gap-3 items-center">
+                    <span class="text-green-700 font-semibold text-sm">✓ Saved!</span>
+                    <button @click="bottleEditor.startTasting()"
+                            class="px-5 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
+                        Record a Tasting →
+                    </button>
+                    <button @click="bottleEditor.close()"
+                            class="px-5 py-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg">
+                        Done
+                    </button>
+                </div>
+
+                <!-- Normal save/cancel buttons (hidden after save) -->
+                <div x-show="!bottleEditor.savedBottleId" class="flex gap-3">
                     <button @click="bottleEditor.close()"
                             class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg">
                         <span x-text="bottleEditor.mode === 'upload' ? 'Cancel' : 'Close'"></span>

@@ -12,8 +12,12 @@ from pydantic import BaseModel as pydantic_BaseModel
 from ...auth.dependencies import require
 from fastapi.responses import HTMLResponse
 from loguru import logger
+from sqlalchemy import select, func, update
+from sqlalchemy.orm import Session
 
 from ....core.models import BottleMetadata
+from ....db.engine import get_db
+from ....db.models.bottle import BottleModel, TastingNoteModel
 from ....db.repositories import get_bottle_repo, get_tasting_repo
 from ....db.repositories.bottle_repo import SQLiteBottleRepository
 from ....db.repositories.tasting_repo import SQLiteTastingRepository
@@ -1235,6 +1239,82 @@ async def update_bottle_fields(
     except Exception as e:
         logger.error(f"Failed to update bottle fields: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Data Cleanup Routes
+# ============================================================================
+
+# #CLAUDE_REQ: These field sets must stay in sync with autocomplete.py BOTTLE_AUTOCOMPLETE_FIELDS
+# #CLAUDE_REQ: and TASTING_AUTOCOMPLETE_FIELDS
+_BOTTLE_CLEANUP_FIELDS = frozenset([
+    "producer", "region", "country", "variety", "beverage_type",
+    "style", "vineyard", "purchase_source", "barrel_type",
+])
+_TASTING_CLEANUP_FIELDS = frozenset(["taster_name", "place", "theme"])
+
+
+class BulkRenameRequest(pydantic_BaseModel):
+    scope: str
+    field: str
+    old_value: str
+    new_value: str
+
+
+@router.get("/api/v1/management/field-values")
+def get_field_values(scope: str, field: str, db: Session = Depends(get_db)):
+    """Return unique values with record counts for a given bottle or tasting field."""
+    if scope == "bottles":
+        if field not in _BOTTLE_CLEANUP_FIELDS:
+            raise HTTPException(status_code=400, detail=f"Field '{field}' not allowed")
+        col = getattr(BottleModel, field)
+    elif scope == "tastings":
+        if field not in _TASTING_CLEANUP_FIELDS:
+            raise HTTPException(status_code=400, detail=f"Field '{field}' not allowed")
+        col = getattr(TastingNoteModel, field)
+    else:
+        raise HTTPException(status_code=400, detail=f"Scope '{scope}' not allowed")
+
+    rows = db.execute(
+        select(col, func.count().label("count"))
+        .where(col.isnot(None), col != "")
+        .group_by(col)
+        .order_by(func.count().desc(), col)
+    ).all()
+    return [{"value": row[0], "count": row[1]} for row in rows]
+
+
+@router.post("/api/v1/management/bulk-rename")
+def bulk_rename(body: BulkRenameRequest, db: Session = Depends(get_db)):
+    """Rename all occurrences of old_value to new_value for a given field."""
+    new_value = body.new_value.strip()
+    if not new_value:
+        raise HTTPException(status_code=400, detail="new_value cannot be empty")
+
+    if body.scope == "bottles":
+        if body.field not in _BOTTLE_CLEANUP_FIELDS:
+            raise HTTPException(status_code=400, detail=f"Field '{body.field}' not allowed")
+        col = getattr(BottleModel, body.field)
+        result = db.execute(
+            update(BottleModel)
+            .where(col == body.old_value)
+            .values({body.field: new_value})
+        )
+    elif body.scope == "tastings":
+        if body.field not in _TASTING_CLEANUP_FIELDS:
+            raise HTTPException(status_code=400, detail=f"Field '{body.field}' not allowed")
+        col = getattr(TastingNoteModel, body.field)
+        result = db.execute(
+            update(TastingNoteModel)
+            .where(col == body.old_value)
+            .values({body.field: new_value})
+        )
+    else:
+        raise HTTPException(status_code=400, detail=f"Scope '{body.scope}' not allowed")
+
+    db.commit()
+    logger.info(f"Bulk rename: {body.scope}.{body.field} '{body.old_value}' -> '{new_value}' ({result.rowcount} rows)")
+    return {"updated": result.rowcount}
 
 
 # ============================================================================
