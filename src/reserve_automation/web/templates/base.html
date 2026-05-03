@@ -76,6 +76,54 @@
             </div>
         </div>
     </nav>
+
+    <!-- Backup status banner (admin only, hidden when healthy) -->
+    <div x-data="backupBanner()" x-cloak>
+        <div x-show="visible && !dismissed"
+             :class="level === 'red' ? 'bg-red-600 text-white' : 'bg-amber-400 text-amber-900'"
+             class="w-full px-4 py-2 flex items-center justify-between text-sm font-medium">
+            <span x-text="message"></span>
+            <button @click="dismissed = true" class="ml-4 opacity-70 hover:opacity-100 text-lg leading-none">&times;</button>
+        </div>
+    </div>
+
+    <script>
+    function backupBanner() {
+        return {
+            visible: false,
+            dismissed: false,
+            level: 'amber',
+            message: '',
+            async init() {
+                try {
+                    const me = await fetch('/api/v1/me').then(r => r.json());
+                    if (!me.permissions?.management_access) return;
+                    const bs = await fetch('/api/v1/admin/backup-status').then(r => r.ok ? r.json() : null);
+                    if (!bs) return;
+                    if (bs.status === 'error') {
+                        this.level = 'red';
+                        this.message = `Backup error: ${bs.error || 'unknown error'}`;
+                        this.visible = true;
+                    } else if (bs.status === 'unknown') {
+                        this.level = 'amber';
+                        this.message = 'Backup status unknown — status file missing';
+                        this.visible = true;
+                    } else if (bs.age_minutes !== null && bs.age_minutes >= 120) {
+                        this.level = 'red';
+                        const hours = Math.round(bs.age_minutes / 60 * 10) / 10;
+                        this.message = `Backup alert: backups have not run in ${hours} hour${hours !== 1 ? 's' : ''}`;
+                        this.visible = true;
+                    } else if (bs.age_minutes !== null && bs.age_minutes >= 30) {
+                        this.level = 'amber';
+                        this.message = `Backup warning: last successful backup was ${bs.age_minutes} minutes ago`;
+                        this.visible = true;
+                    }
+                } catch (e) { /* silent — don't break the page */ }
+            }
+        };
+    }
+    </script>
+
     <script>
     function authNav() {
         return {

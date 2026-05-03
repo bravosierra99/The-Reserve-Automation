@@ -172,6 +172,41 @@ async def health_check_details():
     return response
 
 
+_BACKUP_STATUS_PATH = Path("/app/data/backup_status.json")
+_UNKNOWN_RESPONSE = {"status": "unknown", "last_success": None, "last_attempt": None, "age_minutes": None}
+
+
+@router.get("/admin/backup-status", dependencies=[Depends(require("management.access"))])
+async def get_backup_status():
+    """Return the most recent backup status written by the backup cron job."""
+    if not _BACKUP_STATUS_PATH.exists():
+        return _UNKNOWN_RESPONSE
+
+    try:
+        data = json.loads(_BACKUP_STATUS_PATH.read_text())
+    except (json.JSONDecodeError, OSError):
+        return _UNKNOWN_RESPONSE
+
+    last_success = data.get("last_success")
+    age_minutes = None
+    if last_success:
+        try:
+            ts = datetime.fromisoformat(last_success.rstrip("Z"))
+            age_minutes = int((datetime.utcnow() - ts).total_seconds() / 60)
+        except (ValueError, TypeError):
+            pass
+
+    result = {
+        "status": data.get("status", "unknown"),
+        "last_success": last_success,
+        "last_attempt": data.get("last_attempt"),
+        "age_minutes": age_minutes,
+    }
+    if data.get("status") == "error" and data.get("error"):
+        result["error"] = data["error"]
+    return result
+
+
 @router.get("/me")
 async def get_current_user_info(request: Request):
     """Return the current authenticated user's identity and permissions.
