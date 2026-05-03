@@ -1314,38 +1314,59 @@
             <div x-show="!dcLoading && dcValues.length === 0" class="text-center py-8 text-gray-400 text-sm">No values found for this field.</div>
 
             <div x-show="!dcLoading && dcValues.length > 0">
-                <p class="text-xs text-gray-400 mb-3">
-                    <span x-text="dcValues.length" class="font-semibold"></span> unique values.
-                    Type a new value and press <strong>Rename</strong> (or Enter) to update all matching records.
-                </p>
+                <!-- Search + sort toolbar -->
+                <div class="flex flex-wrap gap-2 items-center mb-3">
+                    <input type="text"
+                           x-model="dcSearch"
+                           placeholder="Filter values…"
+                           class="flex-1 min-w-[160px] px-2 py-1 border border-gray-300 rounded text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200">
+                    <select x-model="dcSort" class="px-2 py-1 border border-gray-300 rounded text-sm text-gray-700 bg-white">
+                        <option value="count-desc">Count ↓ (most first)</option>
+                        <option value="count-asc">Count ↑ (least first)</option>
+                        <option value="value-asc">Value A → Z</option>
+                        <option value="value-desc">Value Z → A</option>
+                    </select>
+                    <span class="text-xs text-gray-400">
+                        <span x-text="dcFilteredValues.length"></span> / <span x-text="dcValues.length"></span> values
+                    </span>
+                </div>
+                <p class="text-xs text-gray-400 mb-3">Type a new value and press <strong>Rename</strong> (or Enter) to update all matching records.</p>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead>
                             <tr class="border-b-2 border-gray-200 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                <th class="pb-2 pr-4">Current Value</th>
-                                <th class="pb-2 pr-4 text-center w-16">Records</th>
+                                <th class="pb-2 pr-4 cursor-pointer select-none" @click="dcSort = dcSort === 'value-asc' ? 'value-desc' : 'value-asc'">
+                                    Current Value
+                                    <span x-show="dcSort === 'value-asc'">↑</span>
+                                    <span x-show="dcSort === 'value-desc'">↓</span>
+                                </th>
+                                <th class="pb-2 pr-4 text-center w-16 cursor-pointer select-none" @click="dcSort = dcSort === 'count-desc' ? 'count-asc' : 'count-desc'">
+                                    Records
+                                    <span x-show="dcSort === 'count-desc'">↓</span>
+                                    <span x-show="dcSort === 'count-asc'">↑</span>
+                                </th>
                                 <th class="pb-2 pr-4">Rename To</th>
                                 <th class="pb-2"></th>
                             </tr>
                         </thead>
                         <tbody>
-                            <template x-for="item in dcValues" :key="item.value">
+                            <template x-for="item in dcFilteredValues" :key="item.value">
                                 <tr class="border-b border-gray-100 hover:bg-gray-50">
                                     <td class="py-2 pr-4 font-mono text-sm text-gray-700" x-text="item.value"></td>
                                     <td class="py-2 pr-4 text-center text-gray-500" x-text="item.count"></td>
                                     <td class="py-2 pr-4">
                                         <input type="text"
-                                               x-model="dcRenames[item.value]"
+                                               x-model="item.renameInput"
                                                :placeholder="item.value"
-                                               @keydown.enter="dcApplyRename(item.value)"
+                                               @keydown.enter="dcApplyRename(item)"
                                                class="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 font-mono">
                                     </td>
                                     <td class="py-2 whitespace-nowrap">
-                                        <button @click="dcApplyRename(item.value)"
-                                                :disabled="!dcRenames[item.value] || dcRenames[item.value] === item.value || dcSaving[item.value]"
+                                        <button @click="dcApplyRename(item)"
+                                                :disabled="!item.renameInput || item.renameInput === item.value || item.saving"
                                                 class="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-xs font-semibold rounded transition-colors">
-                                            <span x-show="!dcSaving[item.value]">Rename</span>
-                                            <span x-show="dcSaving[item.value]">...</span>
+                                            <span x-show="!item.saving">Rename</span>
+                                            <span x-show="item.saving">...</span>
                                         </button>
                                     </td>
                                 </tr>
@@ -1432,8 +1453,8 @@ function managementApp() {
         dcField: 'taster_name',
         dcValues: [],
         dcLoading: false,
-        dcRenames: {},
-        dcSaving: {},
+        dcSearch: '',
+        dcSort: 'count-desc',
 
         // Toast notifications
         toasts: [],
@@ -1593,13 +1614,26 @@ function managementApp() {
         async loadCleanupValues() {
             this.dcLoading = true;
             this.dcValues = [];
-            this.dcRenames = {};
-            this.dcSaving = {};
+            this.dcSearch = '';
             try {
                 const resp = await fetch(`/api/v1/management/field-values?scope=${this.dcTab}&field=${this.dcField}`);
-                if (resp.ok) this.dcValues = await resp.json();
+                if (resp.ok) {
+                    const rows = await resp.json();
+                    this.dcValues = rows.map(r => ({ ...r, renameInput: '', saving: false }));
+                }
             } catch (e) { console.error(e); }
             finally { this.dcLoading = false; }
+        },
+
+        get dcFilteredValues() {
+            let items = this.dcValues;
+            const q = this.dcSearch.trim().toLowerCase();
+            if (q) items = items.filter(i => i.value.toLowerCase().includes(q));
+            const [by, dir] = this.dcSort.split('-');
+            return [...items].sort((a, b) => {
+                if (by === 'value') return dir === 'asc' ? a.value.localeCompare(b.value) : b.value.localeCompare(a.value);
+                return dir === 'asc' ? a.count - b.count : b.count - a.count;
+            });
         },
 
         dcSelectField(tab, field) {
@@ -1608,19 +1642,19 @@ function managementApp() {
             this.loadCleanupValues();
         },
 
-        async dcApplyRename(oldValue) {
-            const newValue = (this.dcRenames[oldValue] || '').trim();
-            if (!newValue || newValue === oldValue) return;
-            this.dcSaving = { ...this.dcSaving, [oldValue]: true };
+        async dcApplyRename(item) {
+            const newValue = (item.renameInput || '').trim();
+            if (!newValue || newValue === item.value) return;
+            item.saving = true;
             try {
                 const resp = await fetch('/api/v1/management/bulk-rename', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ scope: this.dcTab, field: this.dcField, old_value: oldValue, new_value: newValue }),
+                    body: JSON.stringify({ scope: this.dcTab, field: this.dcField, old_value: item.value, new_value: newValue }),
                 });
                 if (resp.ok) {
                     const data = await resp.json();
-                    this.showToast(`Renamed ${data.updated} record${data.updated !== 1 ? 's' : ''}: "${oldValue}" → "${newValue}"`, 'success', 3000);
+                    this.showToast(`Renamed ${data.updated} record${data.updated !== 1 ? 's' : ''}: "${item.value}" → "${newValue}"`, 'success', 3000);
                     await this.loadCleanupValues();
                 } else {
                     const err = await resp.json().catch(() => ({}));
@@ -1629,7 +1663,7 @@ function managementApp() {
             } catch (e) {
                 this.showToast('Rename failed: ' + e.message, 'error', 4000);
             } finally {
-                this.dcSaving = { ...this.dcSaving, [oldValue]: false };
+                item.saving = false;
             }
         },
 
