@@ -20,6 +20,35 @@ class ImageMetadataExtractor:
     then enriches with web search for complete metadata.
     """
 
+    # Canonical wine sub-categories, in keyword-match order (most specific first)
+    _WINE_TYPE_MAP = [
+        (["rosé champagne", "rose champagne", "pink champagne"],  "Rosé Champagne"),
+        (["champagne"],                                           "Champagne"),
+        (["prosecco", "cava", "crémant", "cremant", "sparkling", "pétillant", "petillant", "mousseux", "frizzante"], "Sparkling wine"),
+        (["port", "porto", "sherry", "madeira", "marsala", "fortified"], "Fortified wine"),
+        (["ice wine", "icewine", "sauternes", "beerenauslese", "trockenbeerenauslese", "dessert"], "Dessert wine"),
+        (["rosé", "rose"],                                        "Rosé"),
+        (["white", "blanc", "bianco", "weiss", "blanco"],         "White wine"),
+        (["red", "rouge", "tinto", "rosso", "rot"],               "Red wine"),
+    ]
+
+    @staticmethod
+    def _normalize_wine_beverage_type(raw: str) -> str | None:
+        """
+        Map a raw LLM type string to a standard wine category.
+
+        Returns a standardized category (e.g. "Red wine", "Rosé") or None
+        if the value is unrecognizable (wine name, variety, or empty).
+        """
+        if not raw:
+            return None
+        lower = raw.lower().strip()
+        for keywords, label in ImageMetadataExtractor._WINE_TYPE_MAP:
+            if any(kw in lower for kw in keywords):
+                return label
+        # "wine" alone or unrecognizable (wine name / variety) — let enrichment fill it in
+        return None
+
     def __init__(self, llm_gateway: LLMGateway):
         """
         Initialize image metadata extractor.
@@ -74,7 +103,7 @@ Return a JSON object with this exact structure:
   "producer": "brand or company name",
   "name": "product name",
   "year": "year if visible, otherwise null",
-  "type": "specific beverage type (e.g., Bourbon, Red Wine, Single Malt Scotch, Reposado Tequila) - max 80 characters",
+  "type": "standardized beverage category — for wine use ONLY: 'Red wine', 'White wine', 'Rosé', 'Champagne', 'Rosé Champagne', 'Sparkling wine', 'Dessert wine', 'Fortified wine'; for spirits use: 'Bourbon', 'Scotch', 'Irish Whiskey', 'Japanese Whisky', 'Rye Whiskey', 'Single Malt Scotch', 'Blended Scotch', 'Vodka', 'Gin', 'Rum', 'Tequila', 'Mezcal', 'Brandy', 'Cognac'; do NOT use the wine name or variety here",
   "beverage_type": "wine OR whiskey OR vodka OR gin OR rum OR tequila OR brandy OR other",
   "alcohol": "alcohol content if shown",
   "region": "location if shown",
@@ -480,10 +509,12 @@ Return only the JSON, nothing else."""
             ),
             "year": year,
             "type": beverage_type,
-            "beverage_type": LLMResponseParser.sanitize_string(
-                extracted_data.get("type"),
-                max_length=100,
-                field_name="beverage_type"
+            "beverage_type": (
+                self._normalize_wine_beverage_type(extracted_data.get("type", ""))
+                if beverage_type == "wine"
+                else LLMResponseParser.sanitize_string(
+                    extracted_data.get("type"), max_length=100, field_name="beverage_type"
+                )
             ),
             "country": LLMResponseParser.sanitize_string(
                 extracted_data.get("country"),
