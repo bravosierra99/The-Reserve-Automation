@@ -80,6 +80,10 @@ Return a JSON object with this exact structure:
   "region": "location if shown",
   "variety": "grape or grain type if shown",
   "country": "country if shown",
+  "age_statement": "age statement for whiskey if shown (e.g., '12 years', '15'), otherwise null",
+  "proof": "proof number for whiskey if shown (numeric, e.g., 100), otherwise null",
+  "vineyard": "specific vineyard name for wine if shown, otherwise null",
+  "style": "wine style (e.g., 'Cabernet Sauvignon') or whiskey style (e.g., 'Bourbon', 'Single Malt') if shown, otherwise null",
   "additional_details": "any other text from label",
   "confidence": "high OR medium OR low",
   "missing_year": true or false
@@ -410,6 +414,42 @@ Return only the JSON, nothing else."""
 
                     logger.debug(f"Parsed alcohol '{alcohol_str}' -> ABV: {abv}%, Proof: {proof}")
 
+        # Parse age_statement (whiskey-specific): may arrive as "12 years", "12", or 12
+        age_statement = None
+        age_raw = extracted_data.get("age_statement")
+        if age_raw is not None and age_raw != "":
+            try:
+                # If the LLM returned a string like "12 years", extract the first integer
+                if isinstance(age_raw, str):
+                    import re
+                    age_match = re.search(r'\d+', age_raw)
+                    if age_match:
+                        age_statement = int(age_match.group(0))
+                else:
+                    age_statement = int(age_raw)
+            except (ValueError, TypeError):
+                age_statement = None
+
+        # Parse proof field directly from extraction (separate from alcohol field parsing above).
+        # If the schema field "proof" is set and we didn't already derive proof from "alcohol",
+        # use it.
+        proof_raw = extracted_data.get("proof")
+        if proof is None and proof_raw is not None and proof_raw != "":
+            try:
+                if isinstance(proof_raw, str):
+                    import re
+                    proof_match = re.search(r'\d+\.?\d*', proof_raw)
+                    if proof_match:
+                        proof = float(proof_match.group(0))
+                else:
+                    proof = float(proof_raw)
+
+                # If we got proof but no abv, derive abv
+                if proof is not None and abv is None:
+                    abv = proof / 2
+            except (ValueError, TypeError):
+                pass
+
         # Build bottle metadata with robust field sanitization
         bottle_data = {
             "producer": LLMResponseParser.sanitize_string(
@@ -445,6 +485,17 @@ Return only the JSON, nothing else."""
                 extracted_data.get("variety"),
                 field_name="variety"
             ),
+            "vineyard": LLMResponseParser.sanitize_string(
+                extracted_data.get("vineyard"),
+                max_length=200,
+                field_name="vineyard"
+            ),
+            "style": LLMResponseParser.sanitize_string(
+                extracted_data.get("style"),
+                max_length=100,
+                field_name="style"
+            ),
+            "age_statement": age_statement,
             "abv": abv,
             "proof": proof,
             "price": 0.0,  # Will be enriched or set by user

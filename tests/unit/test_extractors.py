@@ -251,24 +251,40 @@ class TestBottleExtractor:
 
     @pytest.mark.asyncio
     async def test_auto_detect_type_fallback(self, extractor, mock_llm, sample_parser_result):
-        """Test auto-detection fallback when detection fails."""
-        # Type detection fails
+        """Test auto-detection fallback when detection fails.
+
+        When the primary type-detection call raises, _detect_beverage_type
+        retries with a verification call. If that succeeds, extraction
+        proceeds normally.
+        """
+        # Primary detection raises -> verification call returns 'wine' ->
+        # extraction returns one bottle.
         mock_llm.complete.side_effect = [
             Exception("Type detection failed"),
+            LLMResponse(
+                content="wine",
+                tokens_used=5,
+                cost=0.001,
+                model="test",
+                provider="test",
+                latency_ms=50.0,
+            ),
             LLMResponse(
                 content='[{"producer": "Test", "name": "Wine", "type": "wine"}]',
                 tokens_used=100,
                 cost=0.005,
                 model="test",
                 provider="test",
-            latency_ms=100.0,
+                latency_ms=100.0,
             ),
         ]
 
-        # Should still extract successfully
+        # Should still extract successfully via verification fallback
         bottles = await extractor.extract(sample_parser_result, beverage_type="auto")
 
         assert len(bottles) == 1
+        # Three LLM calls: primary detection (fails), verification, extraction
+        assert mock_llm.complete.call_count == 3
 
 
 # ============================================================================

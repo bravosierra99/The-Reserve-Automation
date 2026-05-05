@@ -101,11 +101,21 @@ class BottleExtractor:
         """
         Auto-detect if text contains wine, whiskey, or both.
 
+        Uses a two-pass approach:
+        1. Primary call with TYPE_DETECTION_PROMPT.
+        2. If primary returns 'unknown' or an unexpected value, a second
+           verification call asks the LLM to look for explicit keywords
+           (proof, ABV, age statement, distillery, winery, vineyard, grape
+           variety) and classify accordingly.
+        3. If the verification call also fails to classify, default to 'wine'
+           (the more common case in this collection) so downstream extraction
+           still produces useful output.
+
         Args:
             text: Text to analyze
 
         Returns:
-            'wine', 'whiskey', 'mixed', or 'auto' (if uncertain)
+            'wine', 'whiskey', or 'mixed'
         """
         # Use a small sample of text for detection (first 1000 chars)
         sample = text[:1000]
@@ -125,12 +135,79 @@ class BottleExtractor:
             if detected in ["wine", "whiskey", "mixed"]:
                 return detected
 
-            logger.warning(f"Type detection returned unexpected value: {detected}")
-            return "auto"
+            # Primary returned 'unknown' or something unexpected - try a
+            # second, more direct verification call.
+            logger.warning(
+                f"Type detection returned unexpected value: '{detected}', "
+                "running verification call"
+            )
+            return await self._verify_beverage_type(sample)
 
         except Exception as e:
-            logger.warning(f"Type detection failed, defaulting to auto: {e}")
-            return "auto"
+            logger.warning(
+                f"Type detection failed, attempting verification call: {e}"
+            )
+            try:
+                return await self._verify_beverage_type(sample)
+            except Exception as e2:
+                logger.warning(
+                    f"Verification call also failed, defaulting to 'wine': {e2}"
+                )
+                return "wine"
+
+    async def _verify_beverage_type(self, sample: str) -> str:
+        """
+        Second-pass beverage type detection using explicit keyword cues.
+
+        Used when the primary TYPE_DETECTION_PROMPT returns 'unknown' or an
+        unexpected value. Asks the LLM to scan for unambiguous keywords
+        (proof, ABV %, age statement, distillery, winery, vineyard, grape
+        variety) and classify based on which set dominates.
+
+        Args:
+            sample: Text sample to analyze (already truncated to ~1000 chars).
+
+        Returns:
+            'wine', 'whiskey', 'mixed', or 'wine' as default if still
+            indeterminate.
+        """
+        verify_prompt = f"""Look at the following text and classify it based on EXPLICIT keyword evidence.
+
+Whiskey indicators: "proof", "distillery", "bourbon", "rye", "scotch", "single malt", "barrel", "cask", "mash bill", "age statement"
+Wine indicators: "vineyard", "winery", "vintage", "appellation", "grape variety" (Cabernet, Merlot, Chardonnay, Pinot, etc.), "ABV" without "proof"
+
+Rules:
+- If you see whiskey indicators ONLY → respond "whiskey"
+- If you see wine indicators ONLY → respond "wine"
+- If you see BOTH whiskey and wine indicators → respond "mixed"
+- If you see NEITHER (no clear evidence) → respond "wine" (default)
+
+Text:
+---
+{sample}
+---
+
+Respond with ONLY one word: wine, whiskey, or mixed"""
+
+        response = await self.llm.complete(
+            task_type="type_detection",
+            prompt=verify_prompt,
+            max_tokens=10,
+            temperature=0.0,
+        )
+
+        detected = response.content.strip().lower()
+        logger.info(f"Verification call result: '{detected}'")
+
+        if detected in ["wine", "whiskey", "mixed"]:
+            return detected
+
+        # Verification still inconclusive - default to wine.
+        logger.warning(
+            f"Verification call returned unexpected value '{detected}', "
+            "defaulting to 'wine'"
+        )
+        return "wine"
 
     def _parse_llm_response(
         self,
@@ -201,6 +278,11 @@ class BottleExtractor:
                 "variety": LLMResponseParser.sanitize_string(
                     bottle_dict.get("variety"),
                     field_name=f"bottle[{i}].variety"
+                ),
+                "vineyard": LLMResponseParser.sanitize_string(
+                    bottle_dict.get("vineyard"),
+                    max_length=200,
+                    field_name=f"bottle[{i}].vineyard"
                 ),
                 "style": LLMResponseParser.sanitize_string(
                     bottle_dict.get("style"),

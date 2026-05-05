@@ -49,6 +49,14 @@ WINE_SCHEMA = {
                 "type": ["string", "null"],
                 "description": "Grape variety or blend (e.g., 'Cabernet Sauvignon', 'Bordeaux Blend')",
             },
+            "vineyard": {
+                "type": ["string", "null"],
+                "description": "Specific vineyard name if mentioned (e.g., 'To Kalon Vineyard')",
+            },
+            "style": {
+                "type": ["string", "null"],
+                "description": "Wine style/varietal name (e.g., 'Cabernet Sauvignon', 'Pinot Noir')",
+            },
             "region": {
                 "type": ["string", "null"],
                 "description": "Wine region (e.g., 'Napa Valley', 'Bordeaux')",
@@ -104,6 +112,18 @@ WHISKEY_SCHEMA = {
             "proof": {
                 "type": ["number", "null"],
                 "description": "Proof (US measurement, e.g., 100)",
+            },
+            "mash_bill": {
+                "type": ["string", "null"],
+                "description": "Mash bill / grain composition (e.g., '70% corn, 21% rye, 9% malted barley')",
+            },
+            "barrel_type": {
+                "type": ["string", "null"],
+                "description": "Barrel/cask type (e.g., 'New American oak', 'Sherry cask finish')",
+            },
+            "style": {
+                "type": ["string", "null"],
+                "description": "Whiskey style (e.g., 'Bourbon', 'Single Malt', 'Rye')",
             },
             "region": {
                 "type": ["string", "null"],
