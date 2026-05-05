@@ -14,6 +14,10 @@ from ..sessions import SessionManager
 from ..services.upload_service import UploadService
 from ..services.extraction_service import ExtractionService
 
+# ACCEPTED RISK: No rate limiting on this router.
+# All LLM extraction calls originate here, but the router requires "upload.access"
+# which is admin-only. Guests and family cannot reach these endpoints, so there is
+# no meaningful attack surface for LLM abuse from authenticated-but-untrusted users.
 router = APIRouter(dependencies=[Depends(require("upload.access"))])
 
 # Templates

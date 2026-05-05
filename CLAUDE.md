@@ -2,6 +2,33 @@
 
 This file contains permanent instructions for Claude Code when working with this codebase.
 
+## Adding New Routes — Mandatory Auth Checklist
+
+**Every new route or router MUST have permission enforcement. No exceptions except `/health`.**
+
+When adding a new route file or router:
+
+1. **Router-level auth** (preferred) — set on the `APIRouter` itself so it applies to all routes automatically:
+   ```python
+   router = APIRouter(dependencies=[Depends(require("something.permission"))])
+   ```
+
+2. **Per-route auth** — only if routes in the same file need *different* permissions:
+   ```python
+   @router.get("/foo", dependencies=[Depends(require("foo.view"))])
+   ```
+
+3. **Before including in `app.py`** — grep the new file to confirm:
+   ```bash
+   grep -n "require(" src/reserve_automation/web/routes/your_new_router.py
+   ```
+
+4. **Add the permission to `config/auth.yaml`** — map the new permission to the appropriate roles.
+
+**Why:** Cloudflare Access authenticates every user but does not enforce app-level permissions. An omitted `require()` means any authenticated Google user (guest role) can hit the endpoint. See `config/auth.yaml` for the role hierarchy.
+
+---
+
 ## Version Bumping
 
 **CRITICAL: Always use the unified version bump script when bumping versions.**

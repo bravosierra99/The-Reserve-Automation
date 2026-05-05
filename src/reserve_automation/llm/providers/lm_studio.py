@@ -187,9 +187,16 @@ class LMStudioProvider(BaseLLMProvider):
             # Build messages in OpenAI format
             messages = []
 
-            # Add system message if provided
-            if request.system:
-                messages.append({"role": "system", "content": request.system})
+            # Add system message if provided.
+            # When reasoning_effort is "none", prepend /no_think so qwen3-series
+            # models skip their <think> block and return content directly.
+            # reasoning_effort payload alone isn't reliably respected by LM Studio.
+            disable_thinking = self.config.get("reasoning_effort") == "none"
+            system_content = request.system or ""
+            if disable_thinking and not system_content.startswith("/no_think"):
+                system_content = "/no_think\n\n" + system_content if system_content else "/no_think"
+            if system_content:
+                messages.append({"role": "system", "content": system_content})
 
             # Handle vision requests (images)
             if request.images:
@@ -309,7 +316,15 @@ class LMStudioProvider(BaseLLMProvider):
                     continue
 
                 # No tool calls - this is the final response
-                content = message.get("content", "")
+                # Defensive: qwen3 in thinking mode puts output in reasoning_content
+                # and leaves content empty. Log a warning so it's visible in debug.
+                content = message.get("content") or ""
+                if not content and message.get("reasoning_content"):
+                    logger.warning(
+                        "LLM returned empty content with non-empty reasoning_content "
+                        "(thinking mode active). Set reasoning_effort: 'none' in config "
+                        "for this provider to disable thinking mode."
+                    )
                 latency_ms = (time.time() - start_time) * 1000
 
                 logger.debug(

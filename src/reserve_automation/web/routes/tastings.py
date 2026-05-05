@@ -25,6 +25,10 @@ from ..schemas.tasting import (
     SaveManualTastingRequest,
 )
 
+# ACCEPTED RISK: No rate limiting on this router.
+# LLM-touching endpoints (upload-card, manual-tasting/save) require "tastings.submit"
+# which is admin+family only — a small, trusted set of users. Guests cannot reach
+# any endpoint in this router (router-level "tastings.view" gates all of them).
 router = APIRouter(dependencies=[Depends(require("tastings.view"))])
 
 # Templates

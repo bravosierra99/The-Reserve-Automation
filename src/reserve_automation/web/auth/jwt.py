@@ -17,7 +17,8 @@ class CloudflareJWTValidator:
         self.config = config
         self._jwks: Optional[dict] = None
         self._jwks_fetched_at: float = 0
-        self._cache_ttl: int = 3600  # 1 hour
+        self._cache_ttl: int = 3600       # 1 hour: refresh interval
+        self._cache_max_age: int = 86400  # 24 hours: hard cap on stale cache use
 
     @property
     def certs_url(self) -> str:
@@ -42,8 +43,18 @@ class CloudflareJWTValidator:
                 logger.error(f"Failed to fetch JWKS: {e}")
                 if self._jwks is None:
                     raise
-                # Use stale cache if fetch fails
-                logger.warning("Using stale JWKS cache")
+                # Use stale cache on transient failures, but not indefinitely.
+                # If the cache is older than _cache_max_age, refuse to serve it —
+                # a key rotation may have occurred and continuing with old keys
+                # could allow forged tokens to pass validation.
+                cache_age = now - self._jwks_fetched_at
+                if cache_age > self._cache_max_age:
+                    logger.error(
+                        f"JWKS cache is {cache_age:.0f}s old (max {self._cache_max_age}s) "
+                        "and refresh failed — refusing stale keys"
+                    )
+                    raise
+                logger.warning(f"Using stale JWKS cache ({cache_age:.0f}s old)")
         return self._jwks
 
     async def validate_token(self, token: str) -> Optional[dict]:

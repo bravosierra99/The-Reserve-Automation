@@ -28,6 +28,10 @@ while [[ $# -gt 0 ]]; do
             DRY_RUN=true
             shift
             ;;
+        --yes|-y)
+            YES=true
+            shift
+            ;;
         *)
             BUMP_TYPE="$1"
             shift
@@ -96,18 +100,20 @@ if [ "$DRY_RUN" = true ]; then
     exit 0
 fi
 
-# Confirm with user
+# Confirm with user (skip if --yes)
 echo -e "\n${YELLOW}This will:${NC}"
 echo "  1. Update pyproject.toml to version $NEW_VERSION"
 echo "  2. Commit the change"
 echo "  3. Create git tag v$NEW_VERSION"
 echo "  4. Push to origin (commits + tags)"
 echo ""
-read -p "Continue? [y/N] " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}Aborted${NC}"
-    exit 0
+if [[ "${YES}" != "true" ]]; then
+    read -p "Continue? [y/N] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}Aborted${NC}"
+        exit 0
+    fi
 fi
 
 # Update pyproject.toml

@@ -414,6 +414,13 @@ Return only the JSON, nothing else."""
 
                     logger.debug(f"Parsed alcohol '{alcohol_str}' -> ABV: {abv}%, Proof: {proof}")
 
+        # Sanity check: wine proof can't exceed ~50 (25% ABV fortified max).
+        # Values like "75 CL" in the alcohol field produce proof=75 — discard them.
+        if proof is not None and beverage_type == "wine" and proof > 50:
+            logger.debug(f"Discarding implausible wine proof={proof} (likely bottle volume in alcohol field)")
+            proof = None
+            abv = None
+
         # Parse age_statement (whiskey-specific): may arrive as "12 years", "12", or 12
         age_statement = None
         age_raw = extracted_data.get("age_statement")
@@ -447,6 +454,13 @@ Return only the JSON, nothing else."""
                 # If we got proof but no abv, derive abv
                 if proof is not None and abv is None:
                     abv = proof / 2
+
+                # Sanity check: wine proof can't exceed ~50 (25% ABV fortified max).
+                # Values like 75 are bottle volumes (75 CL), not proof — discard them.
+                if proof is not None and beverage_type == "wine" and proof > 50:
+                    logger.debug(f"Discarding implausible wine proof={proof} (likely bottle volume)")
+                    proof = None
+                    abv = None
             except (ValueError, TypeError):
                 pass
 

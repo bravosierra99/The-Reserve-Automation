@@ -217,7 +217,7 @@ CRITICAL - Read carefully:
 - Missing even one wine is considered a failure{count_instruction}
 
 Important rules:
-- REQUIRED FIELDS (producer, name, type) MUST NEVER be null - if you can't determine them, skip that bottle entirely
+- REQUIRED FIELDS (producer, name, type): if you truly cannot determine them, use "Unknown" as a placeholder — NEVER return an empty array when there is wine-related text present
 - Use null for OPTIONAL fields only
 - year = vintage year (4 digits)
 - Standardize country names
@@ -244,7 +244,7 @@ CRITICAL - Read carefully:
 - Missing even one whiskey is considered a failure{count_instruction}
 
 Important rules:
-- REQUIRED FIELDS (producer, name, type) MUST NEVER be null - if you can't determine them, skip that bottle entirely
+- REQUIRED FIELDS (producer, name, type): if you truly cannot determine them, use "Unknown" as a placeholder — NEVER return an empty array when there is whiskey-related text present
 - Use null for OPTIONAL fields only
 - year = release year (if mentioned)
 - age_statement = age in years (e.g., 12 for "12 Year Old")

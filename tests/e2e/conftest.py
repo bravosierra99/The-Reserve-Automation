@@ -48,107 +48,81 @@ def pytest_runtest_teardown(item, nextitem):
 
 
 @pytest.fixture(scope="function")
-def test_vault(request):
-    """Create a test vault with necessary structure and fixture bottles.
+def test_db(tmp_path):
+    """Create a seeded SQLite file DB for an e2e test server subprocess.
 
-    Copies fixture bottles WITH LABELS from tests/fixtures/vault_bottles/
-    to enable testing of label operations (crop, replace, etc.)
+    The app uses DATABASE_URL from the environment. In-memory SQLite cannot be
+    shared across processes, so e2e tests use a temp file DB pre-seeded with
+    representative bottles.
 
-    Uses unique path per test to ensure complete isolation between tests.
+    Yields the file path string (pass as DATABASE_URL=sqlite:///path to the
+    subprocess env).
     """
-    import shutil
-    import uuid
+    import os
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
 
-    # Use test name + uuid for unique path to ensure complete isolation
-    test_name = request.node.name.replace("[", "_").replace("]", "_")
-    unique_id = str(uuid.uuid4())[:8]
-    test_vault_path = Path(f"/tmp/test-vault-{test_name}-{unique_id}")
+    db_path = tmp_path / "e2e_test.db"
+    db_url = f"sqlite:///{db_path}"
 
-    # Clean up any existing test vault
-    if test_vault_path.exists():
-        shutil.rmtree(test_vault_path)
+    # Initialise schema using the app's own init_db
+    from reserve_automation.db.engine import init_db as app_init_db
+    from reserve_automation.db.repositories.bottle_repo import SQLiteBottleRepository
+    from reserve_automation.core.models import BottleMetadata, BeverageType
 
-    # Create vault directory structure
-    test_vault_path.mkdir(parents=True)
-    (test_vault_path / "1_Whiskeys").mkdir()
-    (test_vault_path / "1_Wines").mkdir()
-    (test_vault_path / "1_Spirits").mkdir()
+    engine = app_init_db(db_url)
+    from reserve_automation.db.engine import _SessionLocal
+    session = _SessionLocal()
 
-    # Copy fixture bottles WITH LABELS from tests/fixtures/vault_bottles/
-    fixtures_dir = Path(__file__).parent.parent / "fixtures" / "vault_bottles"
-    if fixtures_dir.exists():
-        for bottle_dir in fixtures_dir.iterdir():
-            if bottle_dir.is_dir():
-                # Determine destination based on bottle type
-                bottle_md = list(bottle_dir.glob("*.md"))
-                if bottle_md:
-                    content = bottle_md[0].read_text()
-                    if "fileClass: Whiskey" in content:
-                        dest_dir = test_vault_path / "1_Whiskeys" / bottle_dir.name
-                    elif "fileClass: Wine" in content:
-                        dest_dir = test_vault_path / "1_Wines" / bottle_dir.name
-                    else:
-                        dest_dir = test_vault_path / "1_Spirits" / bottle_dir.name
+    repo = SQLiteBottleRepository(session)
+    repo.create(BottleMetadata(
+        producer="Weller",
+        name="Original Wheated Bourbon",
+        type=BeverageType.WHISKEY,
+        inventory=2,
+    ))
+    repo.create(BottleMetadata(
+        producer="Buffalo Trace",
+        name="Kentucky Straight Bourbon",
+        type=BeverageType.WHISKEY,
+        inventory=1,
+    ))
+    repo.create(BottleMetadata(
+        producer="Caymus",
+        name="Cabernet Sauvignon 2021",
+        type=BeverageType.WINE,
+        inventory=3,
+    ))
+    session.close()
+    engine.dispose()
 
-                    # Copy entire bottle directory including labels/
-                    shutil.copytree(bottle_dir, dest_dir)
-                    print(f"  Copied fixture bottle: {bottle_dir.name}")
+    yield str(db_path)
 
-    # Also create a simple Weller bottle for duplicate detection testing
-    # (in case fixture bottles aren't available)
-    weller_bottle_dir = test_vault_path / "1_Whiskeys" / "Weller - THE ORIGINAL WHEATED BOURBON"
-    if not weller_bottle_dir.exists():
-        weller_bottle_dir.mkdir()
 
-        weller_md = weller_bottle_dir / "Weller - THE ORIGINAL WHEATED BOURBON.md"
-        weller_md.write_text("""---
-fileClass: Whiskey
-Name: Weller - THE ORIGINAL WHEATED BOURBON
-Distiller: Weller
-WhiskeyName: THE ORIGINAL WHEATED BOURBON
-AgeStatement:
-Year:
-Type: Kentucky Straight Bourbon Whiskey
-MashBill:
-BarrelType:
-Proof: 90.0
-Region-State: Kentucky
-BatchNumber:
-BottleNumber:
-Price:
-PurchaseSource:
-PurchaseLink:
-Inventory: 1
-Buy: 0
-Stars: --
-ValueForMoney:
-BottleOpenedDate:
-BottleImage:
----
-
-## Bottle Information
-
-### Product Details
-
-This is a test fixture bottle for E2E duplicate detection tests.
-""")
-
-    yield test_vault_path
-
-    # Cleanup after test
-    if test_vault_path.exists():
-        shutil.rmtree(test_vault_path)
+# Keep test_vault for any test that still needs the old vault-based fixture
+# (deprecated — remove once all e2e tests are migrated to test_db)
+@pytest.fixture(scope="function")
+def test_vault(tmp_path):
+    """Deprecated vault fixture kept for backward compat. Prefer test_db."""
+    vault_path = tmp_path / "vault"
+    vault_path.mkdir()
+    (vault_path / "1_Whiskeys").mkdir()
+    (vault_path / "1_Wines").mkdir()
+    yield vault_path
 
 
 @pytest.fixture(scope="function")
-def web_server(test_vault):
-    """Start the web server for browser testing."""
+def web_server(test_db):
+    """Start an isolated web server for browser testing.
+
+    Uses a seeded temp SQLite file so the server has realistic data without
+    touching the production database. Prior fixture used RESERVE_VAULT_PATH
+    which the app no longer reads for data — that caused tests to silently run
+    against prod data or an empty DB.
+    """
     import tempfile
     import os
     import signal
-
-    # E2E tests use a temporary test vault, NOT the real vault
-    os.environ["RESERVE_VAULT_PATH"] = str(test_vault)
 
     # Kill any existing test servers on port 9000
     subprocess.run(["pkill", "-9", "-f", "uvicorn.*reserve_automation"], stderr=subprocess.DEVNULL)
@@ -161,6 +135,12 @@ def web_server(test_vault):
     # Get the automation directory
     automation_dir = Path(__file__).parent.parent.parent
 
+    # Build subprocess env: inherit parent + override DATABASE_URL and dev auth
+    server_env = os.environ.copy()
+    server_env["DATABASE_URL"] = f"sqlite:///{test_db}"
+    # Ensure dev mode auth is active so tests can reach guarded endpoints
+    server_env.setdefault("WEB_SECRET_KEY", "e2e-test-secret-key-not-secure-32chars")
+
     # Start server WITHOUT --reload to avoid subprocess complexity in tests
     # Use port 9000 to avoid conflicts with the main server on 8000
     server_process = subprocess.Popen(
@@ -169,7 +149,7 @@ def web_server(test_vault):
         cwd=str(automation_dir),
         stdout=stdout_file,
         stderr=stderr_file,
-        env=os.environ.copy(),
+        env=server_env,
         preexec_fn=os.setsid  # Create new process group for easier cleanup
     )
 

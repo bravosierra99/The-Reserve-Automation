@@ -53,13 +53,22 @@ def validate_url_not_internal(url: str) -> str:
     if not hostname:
         raise ValueError("URL has no hostname")
 
-    # Resolve hostname to IP and check it's not private
+    # Resolve hostname to IP and check it's not private.
+    # getaddrinfo returns both IPv4 (AF_INET) and IPv6 (AF_INET6) records;
+    # we check every address in the result, so dual-stack hosts are covered.
+    # KNOWN LIMITATION: TOCTOU DNS rebinding — the HTTP client will resolve DNS
+    # again at request time, so a sufficiently low TTL record could change
+    # between this check and the actual connection. Mitigated by setting
+    # follow_redirects=False on clients that fetch user-supplied URLs.
     try:
         resolved_ips = socket.getaddrinfo(hostname, None)
     except socket.gaierror:
         raise ValueError(f"Could not resolve hostname: {hostname}")
 
-    for family, _, _, _, sockaddr in resolved_ips:
+    if not resolved_ips:
+        raise ValueError(f"No addresses resolved for hostname: {hostname}")
+
+    for _family, _, _, _, sockaddr in resolved_ips:
         ip_str = sockaddr[0]
         if _is_private_ip(ip_str):
             raise ValueError(

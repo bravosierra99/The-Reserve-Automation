@@ -60,17 +60,38 @@ BOTTLE_IMAGES = [
 MODEL_LOAD_PARAMS: dict[str, dict] = {
     "qwen/qwen3-vl-4b": {"context_length": 16532},
     "qwen/qwen3-vl-8b": {"context_length": 16532},
+    "qwen/qwen3-8b": {"context_length": 16384},
+    "qwen/qwen3.5-9b": {"context_length": 16384},
+    "qwen3.5-27b-claude-4.6-opus-reasoning-distilled@iq4_xs": {"context_length": 16384},
+    "qwen3.5-27b-claude-4.6-opus-reasoning-distilled@iq3_m": {"context_length": 16384},
     "mistralai/magistral-small-2509": {"context_length": 16384},
+    "qwen3.5-35b-a3b": {"context_length": 16384},
+}
+
+# Per-model gateway config extras (merged into the provider config sent to LMStudioProvider).
+# Used to pass reasoning_effort="none" to models that default thinking on, which otherwise
+# exhaust the entire token budget in reasoning and return empty content.
+MODEL_GATEWAY_EXTRAS: dict[str, dict] = {
+    "qwen/qwen3.5-9b":   {"reasoning_effort": "none"},
+    "qwen3.5-27b-claude-4.6-opus-reasoning-distilled@iq4_xs": {"reasoning_effort": "none"},
+    "qwen3.5-27b-claude-4.6-opus-reasoning-distilled@iq3_m":  {"reasoning_effort": "none"},
+    "qwen3.5-35b-a3b":   {"reasoning_effort": "none"},
 }
 
 # Models available for benchmarking — add/remove as needed
+# NOTE: The 27b models below are text-only (no VL suffix) — PDF mode only, not image.
 ALL_MODELS = [
-    "qwen/qwen3-vl-4b",
-    "qwen/qwen3-vl-8b",
-    "qwen/qwen3-vl-30b",
-    "mistralai/magistral-small-2509",
-    "zai-org/glm-4.6v-flash",
-    "mistralai/devstral-small-2-2512",
+    "qwen/qwen3-8b",        # text 8b baseline
+    "qwen/qwen3.5-9b",      # text 9b
+    #"qwen3.5-27b-claude-4.6-opus-reasoning-distilled@iq4_xs",  # 27b reasoning (higher quality)
+    "qwen3.5-27b-claude-4.6-opus-reasoning-distilled@iq3_m", # 27b reasoning (smaller/faster)
+    # "qwen3.5-35b-a3b",  # Too slow on this hardware (CPU-offloaded, ~5-8 tok/s → PDF times out)
+    # "qwen/qwen3-vl-8b",   # vision 8b — use --mode image or both for vision comparison
+    # "qwen/qwen3-vl-4b",
+    # "qwen/qwen3-vl-30b",
+    # "mistralai/magistral-small-2509",
+    # "zai-org/glm-4.6v-flash",
+    # "mistralai/devstral-small-2-2512",
 ]
 
 # Ground-truth expectations for PDF manifest (12 bottles)
@@ -169,16 +190,17 @@ def _gateway_config(model_key: str, for_vision: bool = False) -> dict:
     """
     provider_name = "lm_studio_vision" if for_vision else "lm_studio_text"
 
+    provider_cfg: dict = {
+        "provider": "lm_studio",
+        "base_url": CHAT_BASE,
+        "model": model_key,
+        "timeout": 300,
+        "max_retries": 1,
+        **MODEL_GATEWAY_EXTRAS.get(model_key, {}),
+    }
+
     config = {
-        "providers": {
-            provider_name: {
-                "provider": "lm_studio",
-                "base_url": CHAT_BASE,
-                "model": model_key,
-                "timeout": 300,
-                "max_retries": 1,
-            }
-        },
+        "providers": {provider_name: provider_cfg},
         "routing": {
             "extraction": provider_name,
             "type_detection": provider_name,

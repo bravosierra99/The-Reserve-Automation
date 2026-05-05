@@ -79,10 +79,18 @@ async def extraction_pipeline(
 
     # Step 2: Extract bottles using LLM
     try:
-
-        # Extract bottles
-        extractor = BottleExtractor(llm_gateway)
-        bottles = await extractor.extract(parser_result, beverage_type=beverage_type)
+        # For image inputs, use the vision model directly (better than OCR→text for labels)
+        if parser_result.source_type == "image":
+            from .extractors.image_extractor import ImageMetadataExtractor
+            image_extractor = ImageMetadataExtractor(llm_gateway)
+            bottle, meta = await image_extractor.extract_from_image(
+                input_file,
+                beverage_type=beverage_type if beverage_type != "auto" else None,
+            )
+            bottles = [bottle] if bottle else []
+        else:
+            extractor = BottleExtractor(llm_gateway)
+            bottles = await extractor.extract(parser_result, beverage_type=beverage_type)
 
         logger.info(f"Extracted {len(bottles)} bottles")
 
