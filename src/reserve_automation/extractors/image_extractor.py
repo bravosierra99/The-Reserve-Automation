@@ -23,10 +23,9 @@ class ImageMetadataExtractor:
     # Canonical wine sub-categories, in keyword-match order (most specific first)
     _WINE_TYPE_MAP = [
         (["rosé champagne", "rose champagne", "pink champagne"],  "Rosé Champagne"),
-        (["champagne"],                                           "Champagne"),
-        (["prosecco", "cava", "crémant", "cremant", "sparkling", "pétillant", "petillant", "mousseux", "frizzante"], "Sparkling wine"),
+        (["champagne", "prosecco", "cava", "crémant", "cremant", "sparkling", "pétillant", "petillant", "mousseux", "frizzante"], "Sparkling wine"),
         (["port", "porto", "sherry", "madeira", "marsala", "fortified"], "Fortified wine"),
-        (["ice wine", "icewine", "sauternes", "beerenauslese", "trockenbeerenauslese", "dessert"], "Dessert wine"),
+        (["dessert", "ice wine", "icewine", "sauternes", "beerenauslese", "trockenbeerenauslese"], "Dessert wine"),
         (["rosé", "rose"],                                        "Rosé"),
         (["white", "blanc", "bianco", "weiss", "blanco"],         "White wine"),
         (["red", "rouge", "tinto", "rosso", "rot"],               "Red wine"),
@@ -103,7 +102,7 @@ Return a JSON object with this exact structure:
   "producer": "brand or company name",
   "name": "product name",
   "year": "year if visible, otherwise null",
-  "type": "standardized beverage category — for wine use ONLY: 'Red wine', 'White wine', 'Rosé', 'Champagne', 'Rosé Champagne', 'Sparkling wine', 'Dessert wine', 'Fortified wine'; for spirits use: 'Bourbon', 'Scotch', 'Irish Whiskey', 'Japanese Whisky', 'Rye Whiskey', 'Single Malt Scotch', 'Blended Scotch', 'Vodka', 'Gin', 'Rum', 'Tequila', 'Mezcal', 'Brandy', 'Cognac'; do NOT use the wine name or variety here",
+  "type": "standardized beverage category — for wine use ONLY: 'Red wine', 'White wine', 'Rosé', 'Rosé Champagne', 'Sparkling wine', 'Dessert wine', 'Fortified wine'; for spirits use: 'Bourbon', 'Scotch', 'Irish Whiskey', 'Japanese Whisky', 'Rye Whiskey', 'Single Malt Scotch', 'Blended Scotch', 'Vodka', 'Gin', 'Rum', 'Tequila', 'Mezcal', 'Brandy', 'Cognac'; do NOT use the wine name or variety here",
   "beverage_type": "wine OR whiskey OR vodka OR gin OR rum OR tequila OR brandy OR other",
   "alcohol": "alcohol content if shown",
   "region": "location if shown",
