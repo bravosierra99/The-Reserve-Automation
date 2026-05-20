@@ -8,12 +8,20 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
+from PIL import Image
 
 from .config import load_web_config, load_auth_config
 from .logging_config import setup_web_logging
 from .routes import upload, review, health, bottles, tastings, management, events, ingredients, cocktails, autocomplete
 from .services.upload_service import UploadService
 from ..db.engine import init_db
+
+# Cap the per-image pixel count so a maliciously-crafted decompression bomb
+# (small file, huge pixel grid) can't OOM the container. 50 MP = ~150 MB at
+# 3 bytes/pixel — well below the 2 GB container limit but large enough for any
+# legitimate bottle-label photo. PIL raises Image.DecompressionBombError above
+# this; we want that to bubble up as a 500 rather than silently allocating.
+Image.MAX_IMAGE_PIXELS = 50_000_000
 
 
 # Global services (initialized on startup)

@@ -6,9 +6,16 @@ cloudflare:
   jwt_header: "Cf-Access-Jwt-Assertion"
 
 dev:
-  enabled: true
+  # PRODUCTION DEFAULT: false. Dev mode bypasses Cloudflare Access entirely
+  # and grants admin to any request without a Cf-Access-Jwt-Assertion header,
+  # so it must NEVER be true on a host reachable outside the Cloudflare Tunnel.
+  # Override via the AUTH_DEV_ENABLED env var (see web/auth/config.py) for
+  # local development, not by flipping this committed value.
+  enabled: false
   mock_user_email: "admin@localhost"
   mock_user_role: "admin"
+  # When dev.enabled is true, dev-mode auth is ALSO restricted to clients
+  # whose source IP falls inside one of these CIDR blocks.
   toolbar_subnets: ["192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12", "127.0.0.0/8"]
 
 roles:

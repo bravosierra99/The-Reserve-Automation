@@ -11,20 +11,21 @@ from loguru import logger
 class ToolExecutor:
     """Execute tool calls from LLM responses."""
 
+    # Hard cap on follow-by-hand redirects so a malicious site can't bounce us forever.
+    _MAX_REDIRECTS = 5
+
     def __init__(self, max_results: int = 10):
         # Add User-Agent to avoid blocking
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-        # ACCEPTED RISK: follow_redirects=True is intentional.
-        # URLs here come from LLM-generated DuckDuckGo search results, not direct user input.
-        # Disabling redirects would break legitimate fetches (HTTP→HTTPS, www→bare domain, etc.).
-        # The redirect-based SSRF bypass risk is accepted: it requires a malicious search result
-        # *and* a redirect target on the internal network — low probability in this threat model.
-        # User-supplied URLs (label downloads) use a separate client with follow_redirects=False.
+        # follow_redirects=False because httpx would otherwise follow a redirect
+        # to a private IP without re-validating it against validate_url_not_internal.
+        # We follow redirects manually in _fetch_with_validated_redirects, calling
+        # validate_url_not_internal on every Location target.
         self.http_client = httpx.Client(
             timeout=30.0,
-            follow_redirects=True,
+            follow_redirects=False,
             headers=headers
         )
         self.max_results = max_results
@@ -110,18 +111,10 @@ class ToolExecutor:
         if not url:
             return {"error": "No URL provided"}
 
-        # SSRF protection: validate URL doesn't target internal networks
-        from ..utils.url_validation import validate_url_not_internal
-        try:
-            validate_url_not_internal(url)
-        except ValueError as e:
-            logger.warning(f"Blocked internal URL fetch attempt: {url} - {e}")
-            return {"error": f"URL blocked: {e}"}
-
         logger.info(f"Fetching: {url}")
 
         try:
-            response = self.http_client.get(url)
+            response = self._fetch_with_validated_redirects(url)
             response.raise_for_status()
 
             content = response.text
@@ -156,6 +149,35 @@ class ToolExecutor:
         except Exception as e:
             logger.error(f"Web fetch failed: {e}")
             return {"error": f"Fetch failed: {str(e)}"}
+
+    def _fetch_with_validated_redirects(self, url: str) -> httpx.Response:
+        """GET `url`, manually following redirects while re-validating every hop
+        against validate_url_not_internal. Raises ValueError if any hop targets
+        a private/internal address, and httpx errors for transport failures.
+
+        Re-validating per-hop prevents a search-result-poisoning SSRF: even if
+        the originally-supplied URL is public, a 30x to http://169.254.169.254
+        (or any RFC1918 host) is rejected before we make the follow-up request.
+        """
+        from urllib.parse import urljoin
+        from ..utils.url_validation import validate_url_not_internal
+
+        current_url = url
+        for hop in range(self._MAX_REDIRECTS + 1):
+            validate_url_not_internal(current_url)
+            response = self.http_client.get(current_url)
+            if not response.is_redirect:
+                return response
+
+            location = response.headers.get("location")
+            if not location:
+                return response
+
+            # Resolve relative redirects against the URL we just hit.
+            current_url = urljoin(str(response.url), location)
+            logger.info(f"Following redirect ({hop + 1}): {current_url}")
+
+        raise ValueError(f"Too many redirects (>{self._MAX_REDIRECTS}) starting from {url}")
 
     def close(self):
         """Close HTTP client."""

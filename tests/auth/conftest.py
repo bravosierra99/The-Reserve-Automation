@@ -27,6 +27,7 @@ def test_auth_yaml(tmp_path_factory):
             "mock_user_email": "admin@localhost",
             "mock_user_role": "admin",
             "toolbar_subnets": ["127.0.0.0/8", "10.0.0.0/8"],
+            "require_local_subnet": False,
         },
         "roles": {
             "admin": {"emails": ["admin@test.com", "admin2@test.com"]},

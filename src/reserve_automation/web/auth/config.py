@@ -31,6 +31,11 @@ class DevConfig(BaseModel):
     toolbar_subnets: list[str] = Field(
         default=["192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12", "127.0.0.0/8"]
     )
+    # When enabled is true, the middleware additionally requires the request's
+    # source IP to fall inside toolbar_subnets. The test suite flips this to
+    # False because Starlette's TestClient uses "testclient" as the peer host,
+    # which isn't a valid IP. Never set this to False in a deployed config.
+    require_local_subnet: bool = True
 
 
 class RoleConfig(BaseModel):
@@ -112,9 +117,16 @@ def load_auth_config(config_path: Optional[Path] = None) -> AuthConfig:
         else:
             roles[role_name] = RoleConfig()
 
+    dev_data = data.get("dev", {})
+    # AUTH_DEV_ENABLED env var overrides the committed dev.enabled value so the
+    # checked-in config can stay false. Truthy values: 1/true/yes/on.
+    dev_env = os.environ.get("AUTH_DEV_ENABLED")
+    if dev_env is not None:
+        dev_data = {**dev_data, "enabled": dev_env.strip().lower() in ("1", "true", "yes", "on")}
+
     config = AuthConfig(
         cloudflare=CloudflareConfig(**data.get("cloudflare", {})),
-        dev=DevConfig(**data.get("dev", {})),
+        dev=DevConfig(**dev_data),
         roles=roles,
         permissions=data.get("permissions", {}),
     )

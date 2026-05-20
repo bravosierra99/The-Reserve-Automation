@@ -55,11 +55,15 @@ def enable_dev_mode_for_tests():
     import reserve_automation.web.app as app_module
 
     # 1. Enable dev mode on the already-loaded module-level config
+    # require_local_subnet is also disabled because TestClient uses "testclient"
+    # as the source IP, which isn't a valid IP and would fail the subnet check.
     app_module._startup_auth_config.dev.enabled = True
+    app_module._startup_auth_config.dev.require_local_subnet = False
 
     # 2. Enable dev mode on app.state.auth_config (set at module level)
     if hasattr(app_module.app.state, "auth_config") and app_module.app.state.auth_config is not None:
         app_module.app.state.auth_config.dev.enabled = True
+        app_module.app.state.auth_config.dev.require_local_subnet = False
 
     # 3. Patch load_auth_config so lifespan re-loads also get dev mode
     _original = config_module.load_auth_config
@@ -67,6 +71,7 @@ def enable_dev_mode_for_tests():
     def _load_with_dev_enabled(*args, **kwargs):
         config = _original(*args, **kwargs)
         config.dev.enabled = True
+        config.dev.require_local_subnet = False
         return config
 
     config_module.load_auth_config = _load_with_dev_enabled

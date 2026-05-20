@@ -753,6 +753,18 @@ async def keep_original_label(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# Filenames the temp-label workflow can produce. `path=` callers are restricted
+# to these names so a client can't aim view_label_image at arbitrary files that
+# happen to live under /tmp/reserve-automation.
+_ALLOWED_TEMP_FILENAMES = frozenset({
+    "label.jpg",
+    "label_preview.jpg",
+    "label_download.jpg",
+    "label_download_cropped.jpg",
+    "label_manual_backup.jpg",
+})
+
+
 @router.get("/api/v1/labels/view", dependencies=[Depends(require("labels.view"))])
 async def view_label_image(
     path: Optional[str] = None,
@@ -763,97 +775,78 @@ async def view_label_image(
     """
     Serve a label image for viewing.
 
-    Args:
-        path: Path to label image (legacy, will be deprecated). Can be:
-              - Media-relative path (e.g., "bottles/42/label.jpg")
-              - Full absolute path (e.g., "/path/to/data/media/bottles/42/label.jpg")
-              - Temp directory path (e.g., "/tmp/reserve-automation/...")
-        id: Bottle ID - preferred over path. Resolves to media path internally.
-        file: Optional filename within labels directory (default: "label.jpg").
-              Used for temp files like "label_download.jpg" or "label_download_cropped.jpg".
+    Preferred form: pass `id=` (+ optional `file=`). The route resolves to a
+    label under MEDIA_DIR or the per-bottle temp dir.
 
-    Returns:
-        FileResponse: The image file
+    `path=` is still supported for the management UI's crop-preview workflow,
+    but is restricted to absolute paths inside /tmp/reserve-automation pointing
+    at an allowlisted temp filename. It cannot reach MEDIA_DIR (use id= for that).
     """
     try:
-        temp_path = Path("/tmp/reserve-automation")
+        temp_root = Path("/tmp/reserve-automation").resolve()
 
-        # Default filename
         label_filename = file if file else "label.jpg"
 
         logger.debug(f"View label request: id={id}, path={path}")
 
-        # If id is provided, resolve it to a media path
         if id:
             bottle = bottle_repo.get_by_id(int(id))
             if not bottle:
                 raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {id}")
 
-            # For temp files (label_download, label_download_cropped), check temp dir first
+            if label_filename not in _ALLOWED_TEMP_FILENAMES:
+                # Defensive: only allow the documented label filenames so a
+                # caller can't aim `file=` at something else inside the temp dir.
+                raise HTTPException(status_code=400, detail="Unsupported label filename")
+
             if label_filename in ("label_download.jpg", "label_download_cropped.jpg"):
                 temp_dir = get_temp_label_dir(id)
                 temp_file_path = temp_dir / label_filename
                 if temp_file_path.exists():
-                    path = str(temp_file_path)
-                    logger.debug(f"Resolved bottle ID {id} to temp path {path}")
+                    image_path = temp_file_path
                 else:
-                    # Fall back to media path
-                    path = f"bottles/{id}/{label_filename}"
-                    logger.debug(f"Temp file not found, using media path {path}")
+                    image_path = MEDIA_DIR / "bottles" / str(id) / label_filename
             elif label_filename == "label_preview.jpg":
-                # Preview files are always in temp
-                temp_dir = get_temp_label_dir(id)
-                temp_file_path = temp_dir / label_filename
-                path = str(temp_file_path)
+                image_path = get_temp_label_dir(id) / label_filename
             else:
-                # Use label_image_url from DB if available, otherwise construct default
                 if bottle.label_image_url:
-                    path = str(MEDIA_DIR / bottle.label_image_url)
+                    image_path = MEDIA_DIR / bottle.label_image_url
                 else:
-                    path = str(MEDIA_DIR / "bottles" / str(id) / label_filename)
-                logger.debug(f"Resolved bottle ID {id} to path {path}")
-        elif not path:
+                    image_path = MEDIA_DIR / "bottles" / str(id) / label_filename
+        elif path:
+            # `path=` mode: only honor absolute paths inside the temp root with
+            # an allowlisted filename. Anything else fails closed.
+            if not path.startswith("/") or ".." in Path(path).parts:
+                raise HTTPException(status_code=400, detail="Invalid path")
+            candidate = Path(path)
+            if candidate.name not in _ALLOWED_TEMP_FILENAMES:
+                raise HTTPException(status_code=400, detail="Unsupported label filename")
+            try:
+                candidate.resolve().relative_to(temp_root)
+            except ValueError:
+                raise HTTPException(status_code=403, detail="Access denied")
+            image_path = candidate
+        else:
             raise HTTPException(status_code=400, detail="Either 'path' or 'id' parameter is required")
-
-        # Try to resolve the path
-        image_path = Path(path)
-
-        # If path doesn't exist as-is, try prepending MEDIA_DIR
-        if not image_path.exists():
-            relative_path = path.lstrip('/')
-            media_image_path = MEDIA_DIR / relative_path
-            if media_image_path.exists():
-                image_path = media_image_path
 
         if not image_path.exists():
             raise HTTPException(status_code=404, detail="Image not found")
 
-        # Security check - ensure path is within MEDIA_DIR or temp directory
-        # (prevents directory traversal attacks)
+        # Belt-and-braces containment check on the resolved path.
         resolved_path = image_path.resolve()
-        is_in_media = False
-        is_in_temp = False
-
         try:
             resolved_path.relative_to(MEDIA_DIR.resolve())
-            is_in_media = True
         except ValueError:
-            pass
-
-        try:
-            resolved_path.relative_to(temp_path.resolve())
-            is_in_temp = True
-        except ValueError:
-            pass
-
-        if not (is_in_media or is_in_temp):
-            raise HTTPException(status_code=403, detail="Access denied")
+            try:
+                resolved_path.relative_to(temp_root)
+            except ValueError:
+                raise HTTPException(status_code=403, detail="Access denied")
 
         return FileResponse(
             image_path,
             media_type="image/jpeg" if image_path.suffix.lower() == ".jpg" else "image/png",
             headers={
-                "Cache-Control": "public, max-age=3600",  # 1 hour for full images
+                "Cache-Control": "public, max-age=3600",
             }
         )
 

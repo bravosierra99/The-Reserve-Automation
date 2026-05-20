@@ -2,8 +2,12 @@ services:
   web:
     build: .
     container_name: reserve-app
+    # Bind to loopback only by default so the only ingress is the Cloudflare
+    # Tunnel sidecar (cloudflared connects to the app over the host loopback or
+    # the docker network). Override WEB_BIND_HOST=0.0.0.0 only on hosts that
+    # don't need Cloudflare gating (e.g. a fully isolated LAN dev box).
     ports:
-      - "0.0.0.0:${WEB_PORT:-8000}:8000"
+      - "${WEB_BIND_HOST:-127.0.0.1}:${WEB_PORT:-8000}:8000"
     volumes:
       - ./data:/app/data
       - ./config:/app/config:ro

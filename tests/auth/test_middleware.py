@@ -37,7 +37,7 @@ class TestDevMode:
 
     def test_dev_mode_sets_user(self):
         config = AuthConfig(
-            dev=DevConfig(enabled=True, mock_user_email="dev@test.com", mock_user_role="admin"),
+            dev=DevConfig(enabled=True, mock_user_email="dev@test.com", mock_user_role="admin", require_local_subnet=False),
         )
         app = _create_test_app(config)
         client = TestClient(app)
@@ -49,7 +49,7 @@ class TestDevMode:
 
     def test_dev_mode_role_override_cookie(self):
         config = AuthConfig(
-            dev=DevConfig(enabled=True, mock_user_email="dev@test.com", mock_user_role="admin"),
+            dev=DevConfig(enabled=True, mock_user_email="dev@test.com", mock_user_role="admin", require_local_subnet=False),
             roles={
                 "admin": RoleConfig(emails=["admin@test.com"]),
                 "family": RoleConfig(emails=["family@test.com"]),
@@ -70,7 +70,7 @@ class TestDevMode:
 
     def test_dev_mode_invalid_role_override_uses_default(self):
         config = AuthConfig(
-            dev=DevConfig(enabled=True, mock_user_email="dev@test.com", mock_user_role="admin"),
+            dev=DevConfig(enabled=True, mock_user_email="dev@test.com", mock_user_role="admin", require_local_subnet=False),
         )
         app = _create_test_app(config)
         client = TestClient(app)
@@ -111,6 +111,47 @@ class TestProdMode:
         client = TestClient(app)
 
         resp = client.get("/page")
+        assert resp.status_code == 401
+
+
+class TestDevModeSubnetGate:
+    """Regression: dev mode must not grant auth to non-local clients.
+
+    This guards the bypass chain where dev.enabled was true *and* the app
+    port was reachable outside Cloudflare — without an IP gate, any direct
+    hit landed on admin via the mock user.
+    """
+
+    def test_dev_mode_with_subnet_check_rejects_non_local(self):
+        # TestClient's peer host is "testclient" — not in any real subnet.
+        config = AuthConfig(
+            dev=DevConfig(
+                enabled=True,
+                mock_user_email="dev@test.com",
+                mock_user_role="admin",
+                require_local_subnet=True,
+            ),
+        )
+        app = _create_test_app(config)
+        client = TestClient(app)
+
+        resp = client.get("/api/v1/protected")
+        assert resp.status_code == 401
+
+    def test_dev_mode_role_override_rejected_when_off_subnet(self):
+        config = AuthConfig(
+            dev=DevConfig(
+                enabled=True,
+                mock_user_email="dev@test.com",
+                mock_user_role="admin",
+                require_local_subnet=True,
+            ),
+        )
+        app = _create_test_app(config)
+        client = TestClient(app)
+
+        # Even with the override cookie, off-subnet clients must not be authed.
+        resp = client.get("/api/v1/protected", cookies={"dev_role_override": "admin"})
         assert resp.status_code == 401
 
 

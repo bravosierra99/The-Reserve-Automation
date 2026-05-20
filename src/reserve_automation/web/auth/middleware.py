@@ -57,8 +57,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if has_cf_jwt:
             user = await self._get_cloudflare_user(request, auth_config)
         elif auth_config.dev.enabled:
-            user = self._get_dev_user(request, auth_config)
-            used_dev_mode = True
+            # Defense in depth: even when dev mode is enabled in config, only honor
+            # it for requests whose source IP falls inside one of the configured
+            # toolbar_subnets. This prevents a Cloudflare bypass (direct hit on the
+            # app's port from outside the tunnel) from turning into a full admin
+            # takeover via the mock user. Tests set require_local_subnet=False
+            # because Starlette's TestClient uses "testclient" as the peer host.
+            if not auth_config.dev.require_local_subnet or self._is_local_subnet(request, auth_config):
+                user = self._get_dev_user(request, auth_config)
+                used_dev_mode = True
+            else:
+                client_ip = request.client.host if request.client else None
+                logger.warning(
+                    f"Auth: dev mode enabled but client {client_ip!r} is not in a "
+                    f"configured toolbar_subnet — refusing dev auth"
+                )
 
         if user is None:
             # No valid auth - return 401 for API, redirect for pages
@@ -132,15 +145,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         return AuthenticatedUser(email=email, role=role)
 
-    def _is_local_subnet(self, request: Request) -> bool:
-        """Check if request comes from a local subnet (for dev toolbar visibility)."""
+    def _is_local_subnet(self, request: Request, auth_config: AuthConfig) -> bool:
+        """Check if the request's source IP falls inside one of the configured
+        dev-mode toolbar_subnets. Uses request.client.host which reflects the
+        TCP peer — so if the app sits behind a proxy that doesn't preserve the
+        real client IP, this will see the proxy's IP and fail closed."""
         client_ip = request.client.host if request.client else None
         if not client_ip:
             return False
 
         try:
             addr = ipaddress.ip_address(client_ip)
-            for subnet_str in self.auth_config.dev.toolbar_subnets:
+            for subnet_str in auth_config.dev.toolbar_subnets:
                 if addr in ipaddress.ip_network(subnet_str):
                     return True
         except ValueError:

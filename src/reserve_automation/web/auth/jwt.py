@@ -17,8 +17,14 @@ class CloudflareJWTValidator:
         self.config = config
         self._jwks: Optional[dict] = None
         self._jwks_fetched_at: float = 0
-        self._cache_ttl: int = 3600       # 1 hour: refresh interval
-        self._cache_max_age: int = 86400  # 24 hours: hard cap on stale cache use
+        self._cache_ttl: int = 3600      # 1 hour: refresh interval
+        self._cache_max_age: int = 14400  # 4 hours: hard cap on stale cache use.
+                                         # Was 24h — that gave a forged-token
+                                         # window of up to a day if CF rotated a
+                                         # compromised signing key during a JWKS
+                                         # fetch outage. 4h keeps the availability
+                                         # benefit (JWKS hiccup tolerance) while
+                                         # bounding the worst case.
 
     @property
     def certs_url(self) -> str:
