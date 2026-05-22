@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import json
+import os
 import time
 from typing import Optional
 
@@ -26,6 +27,14 @@ class LMStudioProvider(BaseLLMProvider):
     def __init__(self, config: dict):
         super().__init__(config)
         self.base_url = config.get("base_url", "http://localhost:1234/v1")
+        # Resolve API key from explicit config, env var name, or LM_STUDIO_API_KEY default.
+        # LM Studio 0.4.x added optional API-key auth; sending a stale key when the server
+        # has it disabled is harmless, but missing it when required gives 401.
+        self.api_key = (
+            config.get("api_key")
+            or (os.environ.get(config["api_key_env"]) if config.get("api_key_env") else None)
+            or os.environ.get("LM_STUDIO_API_KEY")
+        )
         # model_load_timeout is used only when the model isn't loaded yet;
         # once it's confirmed loaded we use the normal self.timeout.
         self.model_load_timeout = config.get("model_load_timeout", self.timeout * 2)
@@ -51,9 +60,11 @@ class LMStudioProvider(BaseLLMProvider):
             or self._client_loop != current_loop
             or self._active_timeout != effective_timeout
         ):
+            headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else None
             self.client = httpx.AsyncClient(
                 base_url=self.base_url,
                 timeout=effective_timeout,
+                headers=headers,
             )
             self._client_loop = current_loop
             self._active_timeout = effective_timeout
