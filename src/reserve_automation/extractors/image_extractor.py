@@ -130,10 +130,15 @@ IMPORTANT: For beverage_type, look for these words on the label:
 Return only the JSON, nothing else."""
 
         try:
-            # Convert image to bytes for vision LLM
+            # Convert image to bytes for vision LLM.
+            # Always emit a plain JPEG stream — iPhone HDR captures arrive as MPO
+            # (multi-frame JPEG container) and some LM Studio vision decoders
+            # choke on it, causing the sampler to collapse into runaway "/"
+            # output. Re-saving as single-frame JPEG normalizes the container.
             import io
             img_buffer = io.BytesIO()
-            img.save(img_buffer, format=img.format or "JPEG")
+            save_img = img if img.mode == "RGB" else img.convert("RGB")
+            save_img.save(img_buffer, format="JPEG", quality=95)
             image_bytes = img_buffer.getvalue()
 
             logger.debug("=" * 80)

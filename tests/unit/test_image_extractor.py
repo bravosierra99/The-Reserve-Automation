@@ -1,8 +1,12 @@
 """Unit tests for ImageMetadataExtractor._normalize_wine_beverage_type and proof sanity check."""
 
+import io
+
 import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
+
+from PIL import Image
 
 from reserve_automation.extractors.image_extractor import ImageMetadataExtractor
 
@@ -114,3 +118,54 @@ class TestProofSanityCheck:
             bottle = await extractor._create_bottle_from_extraction(data, image_path)
         assert bottle.proof == 40.0
         assert bottle.abv == 20.0
+
+
+class TestImageReencodedAsJpeg:
+    """Vision LLM must receive a plain JPEG — see extract_from_image comment about MPO."""
+
+    @pytest.fixture
+    def extractor_with_captured_images(self):
+        captured = {}
+
+        async def fake_complete(*args, **kwargs):
+            captured["images"] = kwargs.get("images")
+            response = Mock()
+            response.content = '{"producer": "x", "name": "y", "beverage_type": "whiskey", "confidence": "high"}'
+            return response
+
+        mock_llm = Mock()
+        mock_llm.complete = AsyncMock(side_effect=fake_complete)
+        mock_llm.web_search = AsyncMock(return_value="whiskey")
+        return ImageMetadataExtractor(mock_llm), captured
+
+    @pytest.mark.asyncio
+    async def test_png_input_sent_as_jpeg(self, extractor_with_captured_images, tmp_path):
+        """A PNG on disk must be re-encoded to JPEG before being handed to the LLM."""
+        extractor, captured = extractor_with_captured_images
+        png_path = tmp_path / "label.png"
+        Image.new("RGB", (32, 32), (200, 100, 50)).save(png_path, format="PNG")
+
+        with patch.object(extractor, "_infer_beverage_type", AsyncMock(return_value="whiskey")):
+            await extractor.extract_from_image(png_path)
+
+        assert captured["images"], "LLM gateway received no images"
+        sent_bytes = captured["images"][0]
+        assert sent_bytes[:2] == b"\xff\xd8", "Bytes sent to LLM do not start with JPEG SOI marker"
+        roundtrip = Image.open(io.BytesIO(sent_bytes))
+        assert roundtrip.format == "JPEG"
+
+    @pytest.mark.asyncio
+    async def test_rgba_input_flattened_and_sent_as_jpeg(self, extractor_with_captured_images, tmp_path):
+        """RGBA inputs would raise on JPEG save without RGB conversion — must be handled."""
+        extractor, captured = extractor_with_captured_images
+        png_path = tmp_path / "label_rgba.png"
+        Image.new("RGBA", (32, 32), (200, 100, 50, 128)).save(png_path, format="PNG")
+
+        with patch.object(extractor, "_infer_beverage_type", AsyncMock(return_value="whiskey")):
+            await extractor.extract_from_image(png_path)
+
+        sent_bytes = captured["images"][0]
+        assert sent_bytes[:2] == b"\xff\xd8"
+        roundtrip = Image.open(io.BytesIO(sent_bytes))
+        assert roundtrip.format == "JPEG"
+        assert roundtrip.mode == "RGB"
