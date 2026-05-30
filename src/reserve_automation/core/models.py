@@ -50,7 +50,7 @@ class BottleMetadata(BaseModel):
     region: Optional[str] = Field(None, max_length=200)
 
     # Wine-specific
-    variety: Optional[str] = Field(None, description="Grape variety or blend")
+    variety: Optional[list[str]] = Field(None, description="Grape variety or blend; list allows blends")
     vineyard: Optional[str] = None
     style: Optional[str] = Field(None, description="Wine style", max_length=100)
 
@@ -98,6 +98,21 @@ class BottleMetadata(BaseModel):
     notes: Optional[str] = Field(None, description="Extraction notes or warnings")
 
     model_config = {"use_enum_values": True}
+
+    @field_validator("variety", mode="before")
+    @classmethod
+    def coerce_variety_to_list(cls, v):
+        """Accept a plain string (legacy) or list; always returns list[str] | None."""
+        if v is None or v == "":
+            return None
+        if isinstance(v, list):
+            items = [s.strip() for s in v if isinstance(s, str) and s.strip()]
+            return items or None
+        if isinstance(v, str):
+            import re as _re
+            items = [s.strip() for s in _re.split(r"\s*[,/]\s*", v) if s.strip()]
+            return items or None
+        return v
 
     @field_validator("producer", "name")
     @classmethod

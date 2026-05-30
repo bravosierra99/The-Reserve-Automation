@@ -166,7 +166,7 @@ class TestWineParsing:
         bottles = vault_reader.read_all_bottles(beverage_type="wine")
         caymus = [b for b in bottles if b.producer == "Caymus"][0]
         
-        assert caymus.variety == "Cabernet Sauvignon"
+        assert caymus.variety == ["Cabernet Sauvignon"]
 
     def test_parse_wine_abv(self, vault_reader):
         """Wine should parse ABV field."""

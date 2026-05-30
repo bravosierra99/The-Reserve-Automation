@@ -1565,7 +1565,7 @@ def add_from_image(ctx, image_path, beverage, year, price, dry_run):
             f"[cyan]Year:[/cyan] {bottle.year or '[yellow]MISSING[/yellow]'}\n"
             f"[cyan]Type:[/cyan] {bottle.beverage_type or bottle.type}\n"
             f"[cyan]Region:[/cyan] {bottle.region or '(will enrich)'}\n"
-            f"[cyan]Variety:[/cyan] {bottle.variety or '(will enrich)'}\n"
+            f"[cyan]Variety:[/cyan] {', '.join(bottle.variety) if bottle.variety else '(will enrich)'}\n"
             f"[cyan]Confidence:[/cyan] {extraction_meta.get('confidence', 'unknown')}",
             title="Extracted from Label",
             border_style="green"
@@ -1616,7 +1616,7 @@ def add_from_image(ctx, image_path, beverage, year, price, dry_run):
             f"[cyan]Type:[/cyan] {enriched_bottle.beverage_type or enriched_bottle.type}\n"
             f"[cyan]Country:[/cyan] {enriched_bottle.country or '[dim]?[/dim]'}\n"
             f"[cyan]Region:[/cyan] {enriched_bottle.region or '[dim]?[/dim]'}\n"
-            f"[cyan]Variety:[/cyan] {enriched_bottle.variety or '[dim]?[/dim]'}\n"
+            f"[cyan]Variety:[/cyan] {', '.join(enriched_bottle.variety) if enriched_bottle.variety else '[dim]?[/dim]'}\n"
             f"[cyan]Price:[/cyan] ${enriched_bottle.price:.2f}",
             title="Final Metadata",
             border_style="blue"

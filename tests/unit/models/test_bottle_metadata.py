@@ -72,7 +72,7 @@ class TestBottleMetadataCreation:
         assert wine.year == 2019
         assert wine.country == "USA"
         assert wine.region == "Napa Valley"
-        assert wine.variety == "Cabernet Sauvignon"
+        assert wine.variety == ["Cabernet Sauvignon"]
         assert wine.price == 85.00
         assert wine.inventory == 2
 

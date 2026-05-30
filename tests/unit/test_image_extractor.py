@@ -64,6 +64,107 @@ class TestNormalizeWineBeverageType:
             assert ImageMetadataExtractor._normalize_wine_beverage_type(raw) == expected, raw
 
 
+class TestNormalizeSpiritBeverageType:
+    """Tests for _normalize_spirit_beverage_type static method."""
+
+    def test_empty_string_returns_none(self):
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("") is None
+
+    def test_none_input_returns_none(self):
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type(None) is None
+
+    def test_bourbon_variants(self):
+        cases = ["Bourbon", "Bourbon Whiskey", "Kentucky Straight Bourbon Whiskey", "straight bourbon"]
+        for v in cases:
+            assert ImageMetadataExtractor._normalize_spirit_beverage_type(v) == "Bourbon", v
+
+    def test_scotch_variants(self):
+        cases = ["Scotch", "Scotch Whisky", "Single Malt Scotch Whisky", "Blended Scotch"]
+        for v in cases:
+            assert ImageMetadataExtractor._normalize_spirit_beverage_type(v) == "Scotch Whisky", v
+
+    def test_irish_whiskey(self):
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Irish Whiskey") == "Irish Whiskey"
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Irish") == "Irish Whiskey"
+
+    def test_tennessee_whiskey(self):
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Tennessee Whiskey") == "Tennessee Whiskey"
+
+    def test_rye_whiskey(self):
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Rye Whiskey") == "Rye Whiskey"
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("American Rye") == "Rye Whiskey"
+
+    def test_japanese_whisky(self):
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Japanese Whisky") == "Japanese Whisky"
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Japanese") == "Japanese Whisky"
+
+    def test_canadian_whisky(self):
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Canadian Whisky") == "Canadian Whisky"
+
+    def test_bourbon_takes_precedence_over_tennessee(self):
+        # "bourbon" keyword should win before "tennessee" is checked
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Bourbon") == "Bourbon"
+
+    def test_tennessee_takes_precedence_over_scotch(self):
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Tennessee") == "Tennessee Whiskey"
+
+    def test_unknown_spirit_returns_none(self):
+        # Unrecognized values fall back to sanitize_string in caller
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Grappa") is None
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Aquavit") is None
+
+    def test_case_insensitive(self):
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("BOURBON") == "Bourbon"
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("scotch whisky") == "Scotch Whisky"
+
+    def test_rum_types(self):
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Dark Rum") == "Dark Rum"
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Spiced Rum") == "Spiced Rum"
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Light Rum") == "Light Rum"
+
+    def test_tequila_types(self):
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Reposado") == "Reposado Tequila"
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Extra Añejo Tequila") == "Extra Añejo Tequila"
+        assert ImageMetadataExtractor._normalize_spirit_beverage_type("Mezcal") == "Mezcal"
+
+
+class TestNormalizeCountry:
+    """Tests for _normalize_country static method."""
+
+    def test_empty_string_returns_none(self):
+        assert ImageMetadataExtractor._normalize_country("") is None
+
+    def test_none_returns_none(self):
+        assert ImageMetadataExtractor._normalize_country(None) is None
+
+    def test_usa_variants(self):
+        cases = ["USA", "US", "U.S.", "U.S.A.", "United States of America", "America"]
+        for v in cases:
+            assert ImageMetadataExtractor._normalize_country(v) == "United States", v
+
+    def test_uk_variants(self):
+        cases = ["UK", "U.K.", "Great Britain", "GB", "England"]
+        for v in cases:
+            assert ImageMetadataExtractor._normalize_country(v) == "United Kingdom", v
+
+    def test_case_insensitive_lookup(self):
+        assert ImageMetadataExtractor._normalize_country("usa") == "United States"
+        assert ImageMetadataExtractor._normalize_country("Usa") == "United States"
+        assert ImageMetadataExtractor._normalize_country("uk") == "United Kingdom"
+
+    def test_already_canonical_passes_through(self):
+        assert ImageMetadataExtractor._normalize_country("United States") == "United States"
+        assert ImageMetadataExtractor._normalize_country("United Kingdom") == "United Kingdom"
+
+    def test_other_countries_pass_through(self):
+        for country in ["France", "Italy", "Spain", "Scotland", "Japan", "Australia"]:
+            assert ImageMetadataExtractor._normalize_country(country) == country, country
+
+    def test_scotland_not_remapped(self):
+        # Scotland is a valid country for spirits purposes — should not become "United Kingdom"
+        assert ImageMetadataExtractor._normalize_country("Scotland") == "Scotland"
+
+
 class TestProofSanityCheck:
     """Tests for wine proof > 50 discard in _create_bottle_from_extraction."""
 

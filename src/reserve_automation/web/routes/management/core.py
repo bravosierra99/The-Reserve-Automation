@@ -59,6 +59,15 @@ def clean_bottle_data(bottle_data: dict) -> dict:
         if field in cleaned and (cleaned[field] == '' or cleaned[field] is None):
             del cleaned[field]
 
+    # Variety is now list[str]; coerce a plain string coming from legacy paths
+    if 'variety' in cleaned:
+        v = cleaned['variety']
+        if v == '' or v is None:
+            cleaned['variety'] = None
+        elif isinstance(v, str):
+            import re as _re
+            cleaned['variety'] = [s.strip() for s in _re.split(r'\s*[,/]\s*', v) if s.strip()] or None
+
     return cleaned
 
 
@@ -344,7 +353,7 @@ async def get_all_tastings(
                 "notes": {},
                 # Bottle metadata from the bottle record
                 "producer": bottle.producer,
-                "variety": bottle.variety,
+                "variety": ", ".join(bottle.variety) if bottle.variety else None,
                 "country_region": f"{bottle.country} - {bottle.region}" if bottle.country and bottle.region else (bottle.country or bottle.region or None),
                 "style": bottle.style,
                 "wine_type": bottle.beverage_type if tasting_type == "wine" else None,
@@ -1248,9 +1257,9 @@ async def update_bottle_fields(
 # #CLAUDE_REQ: These field sets must stay in sync with autocomplete.py BOTTLE_AUTOCOMPLETE_FIELDS
 # #CLAUDE_REQ: and TASTING_AUTOCOMPLETE_FIELDS
 _BOTTLE_CLEANUP_FIELDS = frozenset([
-    "producer", "region", "country", "variety", "beverage_type",
+    "producer", "region", "country", "beverage_type",
     "style", "vineyard", "purchase_source", "barrel_type",
-])
+])  # variety excluded: stored as JSON list, not suitable for SQL equality cleanup
 _TASTING_CLEANUP_FIELDS = frozenset(["taster_name", "place", "theme"])
 
 

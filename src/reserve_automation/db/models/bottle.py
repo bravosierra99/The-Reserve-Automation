@@ -44,7 +44,7 @@ class BottleModel(Base):
     region: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     # Wine-specific
-    variety: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    variety: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON-encoded list
     vineyard: Mapped[str | None] = mapped_column(String(200), nullable=True)
     style: Mapped[str | None] = mapped_column(String(100), nullable=True)
 

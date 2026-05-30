@@ -12,9 +12,9 @@ from ...db.engine import get_db
 from ...db.models.bottle import BottleModel, TastingNoteModel
 
 BOTTLE_AUTOCOMPLETE_FIELDS = frozenset([
-    "producer", "region", "country", "variety", "beverage_type",
+    "producer", "region", "country", "beverage_type",
     "style", "vineyard", "purchase_source", "barrel_type",
-])
+])  # variety excluded: stored as JSON list, requires dedicated endpoint
 TASTING_AUTOCOMPLETE_FIELDS = frozenset(["taster_name", "place", "theme"])
 
 router = APIRouter(prefix="/api/v1/autocomplete")

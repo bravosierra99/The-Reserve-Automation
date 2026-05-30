@@ -7,6 +7,7 @@ from typing import Optional
 from loguru import logger
 
 from ..core.models import BottleMetadata
+from ..extractors.bottle import _parse_variety_from_llm
 from ..llm import LLMGateway
 from ..llm.response_parser import LLMResponseParser
 from ..llm.tool_executor import ToolExecutor
@@ -214,7 +215,7 @@ class MetadataEnricher:
         if "abv" in missing_fields:
             json_fields.append('"abv": 14.5')
         if "variety" in missing_fields:
-            json_fields.append('"variety": "..."')
+            json_fields.append('"variety": ["Grape1", "Grape2"]  // list; single grape is still a list')
         if "vineyard" in missing_fields:
             json_fields.append('"vineyard": "..."')
         if "age_statement" in missing_fields:
@@ -371,6 +372,8 @@ Only include fields that were requested. Use web search to find real data - don'
                         max_value=max_val,
                         field_name=field
                     )
+                elif field == "variety":
+                    value = _parse_variety_from_llm(value)
                 elif isinstance(value, str):
                     # Generic string sanitization (no specific limit)
                     value = LLMResponseParser.sanitize_string(value, field_name=field)
@@ -420,7 +423,6 @@ Only include fields that were requested. Use web search to find real data - don'
             "country": 100,
             "region": 200,
             "style": 100,
-            "variety": 200,
             "vineyard": 200,
             "mash_bill": 200,
             "barrel_type": 100,
@@ -475,6 +477,8 @@ Only include fields that were requested. Use web search to find real data - don'
                 # Only include if we got a valid value (not None)
                 if sanitized_value is not None:
                     sanitized[field] = sanitized_value
+            elif field == "variety":
+                sanitized[field] = _parse_variety_from_llm(value)
             elif isinstance(value, str):
                 # Generic string sanitization (no specific limit)
                 sanitized[field] = LLMResponseParser.sanitize_string(
@@ -559,7 +563,7 @@ Only include fields that were requested. Use web search to find real data - don'
         beverage_type = "wine" if bottle.type == "wine" else "whiskey"
 
         type_specific_fields = (
-            '"abv": 14.5, "variety": "...", "vineyard": "...",'
+            '"abv": 14.5, "variety": ["Grape1", "Grape2"], "vineyard": "...",'
             if bottle.type == "wine"
             else '"age_statement": 12, "proof": 90, "mash_bill": "...", "barrel_type": "...",'
         )
