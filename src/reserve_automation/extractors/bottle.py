@@ -17,6 +17,22 @@ from ..llm.prompts.extraction import (
 )
 
 
+def _parse_variety_from_llm(val) -> list[str] | None:
+    """Normalize LLM variety output to a list. Handles str, list, or None."""
+    if val is None:
+        return None
+    if isinstance(val, list):
+        items = [s.strip() for s in val if isinstance(s, str) and s.strip()]
+        return items or None
+    if isinstance(val, str):
+        if not val.strip():
+            return None
+        import re
+        items = [s.strip() for s in re.split(r'\s*[,/]\s*', val) if s.strip()]
+        return items or None
+    return None
+
+
 class BottleExtractor:
     """
     Extract structured bottle metadata using LLMs.
@@ -275,10 +291,7 @@ Respond with ONLY one word: wine, whiskey, or mixed"""
                     max_length=200,
                     field_name=f"bottle[{i}].region"
                 ),
-                "variety": LLMResponseParser.sanitize_string(
-                    bottle_dict.get("variety"),
-                    field_name=f"bottle[{i}].variety"
-                ),
+                "variety": _parse_variety_from_llm(bottle_dict.get("variety")),
                 "vineyard": LLMResponseParser.sanitize_string(
                     bottle_dict.get("vineyard"),
                     max_length=200,

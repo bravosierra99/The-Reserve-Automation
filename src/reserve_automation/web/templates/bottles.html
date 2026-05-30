@@ -10,10 +10,9 @@
 <script>
     window.RESERVE_CONFIG = {};
 </script>
-<!-- Bottle editor modal + label review modules -->
+<!-- Bottle editor modal -->
 <script src="{{ url_for('static', path='/js/components/cropper-manager.js') }}"></script>
 <script src="{{ url_for('static', path='/js/components/bottle-editor-modal.js') }}"></script>
-<script src="{{ url_for('static', path='/js/management/label-review.js') }}"></script>
 {% endblock %}
 
 {% block content %}
@@ -288,7 +287,7 @@ function bottlesApp() {
                     (b.year || '').toString().includes(query) ||
                     (b.region || '').toLowerCase().includes(query) ||
                     (b.country || '').toLowerCase().includes(query) ||
-                    (b.variety || '').toLowerCase().includes(query) ||
+                    (b.variety || []).join(', ').toLowerCase().includes(query) ||
                     (b.beverage_type || '').toLowerCase().includes(query) ||
                     (b.style || '').toLowerCase().includes(query)
                 );
@@ -307,7 +306,7 @@ function bottlesApp() {
 
             if (this.gridFilterVariety) {
                 const v = this.gridFilterVariety.toLowerCase();
-                bottles = bottles.filter(b => (b.variety || '').toLowerCase().includes(v));
+                bottles = bottles.filter(b => (b.variety || []).some(va => va.toLowerCase().includes(v)));
             }
 
             if (this.gridFilterStyle) {
@@ -376,7 +375,7 @@ function bottlesApp() {
         gridAvailableVarieties() {
             let bottles = this.labelBottles.filter(b => b.type === 'wine');
             const seen = new Set();
-            bottles.forEach(b => { if (b.variety) seen.add(b.variety); });
+            bottles.forEach(b => { (b.variety || []).forEach(va => { if (va) seen.add(va); }); });
             return [...seen].sort();
         },
 

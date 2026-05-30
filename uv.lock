@@ -2320,7 +2320,7 @@ wheels = [
 
 [[package]]
 name = "reserve-automation"
-version = "1.5.1"
+version = "1.6.3"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },

@@ -4,6 +4,7 @@ These functions translate between the persistence layer (SQLAlchemy) and
 the domain/API layer (Pydantic). This keeps the two layers decoupled.
 """
 
+import json
 from datetime import date, datetime
 
 from ..core.models import BottleMetadata
@@ -21,6 +22,29 @@ from .models.cocktail_tasting import CocktailTastingModel, CocktailTastingIngred
 from .models.ingredient import IngredientModel
 
 
+def _parse_variety(val: str | None) -> list[str] | None:
+    """Read variety from DB: handles JSON-encoded lists and legacy plain strings."""
+    if not val:
+        return None
+    try:
+        parsed = json.loads(val)
+        if isinstance(parsed, list):
+            items = [s for s in parsed if isinstance(s, str) and s.strip()]
+            return items or None
+        if isinstance(parsed, str) and parsed.strip():
+            return [parsed.strip()]
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return [val.strip()] if val.strip() else None
+
+
+def _serialize_variety(val: list[str] | None) -> str | None:
+    """Write variety to DB as a JSON array string."""
+    if not val:
+        return None
+    return json.dumps(val)
+
+
 # --- Bottle converters ---
 
 
@@ -34,7 +58,7 @@ def bottle_to_pydantic(db: BottleModel) -> BottleMetadata:
         beverage_type=db.beverage_type,
         country=db.country,
         region=db.region,
-        variety=db.variety,
+        variety=_parse_variety(db.variety),
         vineyard=db.vineyard,
         style=db.style,
         age_statement=db.age_statement,
@@ -77,7 +101,7 @@ def pydantic_to_bottle(p: BottleMetadata, existing: BottleModel | None = None) -
     model.beverage_type = p.beverage_type
     model.country = p.country
     model.region = p.region
-    model.variety = p.variety
+    model.variety = _serialize_variety(p.variety)
     model.vineyard = p.vineyard
     model.style = p.style
     model.age_statement = p.age_statement

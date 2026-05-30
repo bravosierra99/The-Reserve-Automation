@@ -1,8 +1,9 @@
 """Label operations for upload workflow (temp files)."""
 
+import io
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 from ...auth.dependencies import require
 from pydantic import BaseModel
 from PIL import Image, ImageOps
@@ -145,6 +146,66 @@ async def manual_crop_temp_label(request: ManualCropTempRequest):
         raise
     except Exception as e:
         logger.error(f"Manual crop temp failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/bottles/upload-custom-label")
+async def upload_custom_label_temp(
+    file: UploadFile,
+    upload_id: str = Form(),
+    bottle: str = Form(None),
+):
+    """
+    Upload a custom label during the new-bottle upload workflow (upload mode).
+
+    The bottle has no DB id yet, so the label lives in the temp upload dir where
+    upload-mode readers (serve_temp_image, manual-crop-temp) look for it:
+    /tmp/reserve_uploads/{upload_id}/labels/label.jpg
+
+    Single-step: the uploaded file becomes the label immediately, normalized and
+    re-encoded to JPEG. The bottle's label is committed to MEDIA_DIR later when
+    the bottle is saved.
+    """
+    try:
+        # Validate upload_id (basic security check)
+        if not upload_id or "/" in upload_id or ".." in upload_id:
+            raise HTTPException(status_code=400, detail="Invalid upload_id")
+
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+        # Open + normalize orientation, then re-encode to a valid JPEG
+        try:
+            img = Image.open(io.BytesIO(content))
+            img = ImageOps.exif_transpose(img)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Uploaded file is not a valid image")
+
+        if img.mode == "RGBA":
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            background.paste(img, mask=img.split()[3])
+            img = background
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+
+        temp_labels_dir = Path("/tmp/reserve_uploads") / upload_id / "labels"
+        temp_labels_dir.mkdir(parents=True, exist_ok=True)
+
+        label_path = temp_labels_dir / "label.jpg"
+        img.save(label_path, "JPEG", quality=95)
+
+        logger.info(f"Custom label uploaded (upload mode): {label_path}")
+
+        return {
+            "status": "success",
+            "message": "Custom label uploaded successfully",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Custom label upload (temp) failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

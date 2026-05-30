@@ -261,7 +261,7 @@ class ObsidianGenerator:
             "purchase_source": bottle.purchase_source,
             "inventory": bottle.inventory,
             # Wine-specific
-            "variety": bottle.variety,
+            "variety": ", ".join(bottle.variety) if bottle.variety else None,
             "vineyard": bottle.vineyard,
             # Whiskey-specific
             "age_statement": bottle.age_statement,

@@ -19,6 +19,7 @@ from sqlalchemy.orm import sessionmaker
 from reserve_automation.core.bottle_registry import BottleRegistry
 from reserve_automation.core.models import BottleMetadata
 from reserve_automation.core.tasting_note import TastingNote
+from reserve_automation.db.converters import _serialize_variety
 from reserve_automation.db.engine import init_db
 from reserve_automation.db.models.bottle import BottleModel, TastingNoteModel
 from reserve_automation.db.models.cocktail import (
@@ -136,7 +137,7 @@ def _import_bottles(db, reader: VaultReader, vault: Path, media: Path, stats: di
                 beverage_type=bottle.beverage_type,
                 country=bottle.country,
                 region=bottle.region,
-                variety=bottle.variety,
+                variety=_serialize_variety(bottle.variety),
                 vineyard=bottle.vineyard,
                 style=bottle.style,
                 age_statement=bottle.age_statement,

@@ -13,7 +13,6 @@
 <!-- Management modules (loaded before Alpine) -->
 <script src="{{ url_for('static', path='/js/components/cropper-manager.js') }}"></script>
 <script src="{{ url_for('static', path='/js/components/bottle-editor-modal.js') }}"></script>
-<script src="{{ url_for('static', path='/js/management/label-review.js') }}"></script>
 <script src="{{ url_for('static', path='/js/management/tasting-review.js') }}"></script>
 {% endblock %}
 
@@ -1296,7 +1295,6 @@
                         <button @click="dcSelectField('bottles','beverage_type')" :class="dcTab==='bottles'&&dcField==='beverage_type'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Beverage Type</button>
                         <button @click="dcSelectField('bottles','country')" :class="dcTab==='bottles'&&dcField==='country'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Country</button>
                         <button @click="dcSelectField('bottles','region')" :class="dcTab==='bottles'&&dcField==='region'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Region</button>
-                        <button @click="dcSelectField('bottles','variety')" :class="dcTab==='bottles'&&dcField==='variety'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Variety</button>
                         <button @click="dcSelectField('bottles','purchase_source')" :class="dcTab==='bottles'&&dcField==='purchase_source'?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200 text-gray-700'" class="px-3 py-1.5 rounded-full text-sm font-semibold transition-colors">Where Purchased</button>
                     </div>
                 </div>
@@ -1386,10 +1384,6 @@
     {% include 'components/bottle_editor_modal.html' %}
 <script>
 function managementApp() {
-    // Import label review module (if available)
-    const labelReview = window.labelReviewModule ? window.labelReviewModule() : {};
-    const labelReviewState = labelReview.initState ? labelReview.initState() : {};
-
     // Import tasting review module (if available)
     const tastingReview = window.tastingReviewModule ? window.tastingReviewModule() : {};
     const tastingReviewState = tastingReview.initState ? tastingReview.initState() : {};
@@ -1463,33 +1457,8 @@ function managementApp() {
         // Bottle editor modal
         bottleEditor: bottleEditor,
 
-        // Label review mode state (from external module)
-        ...labelReviewState,
-
         // Tasting review mode state (from external module)
         ...tastingReviewState,
-
-        // Computed property for filtered bottles
-        get filteredBottles() {
-            let bottles = this.labelBottles;
-
-            // Filter by type
-            if (this.gridFilterType !== 'all') {
-                bottles = bottles.filter(b => b.type === this.gridFilterType);
-            }
-
-            // Filter by search (producer, name, year)
-            if (this.gridSearchQuery) {
-                const query = this.gridSearchQuery.toLowerCase();
-                bottles = bottles.filter(b =>
-                    (b.producer || '').toLowerCase().includes(query) ||
-                    (b.name || '').toLowerCase().includes(query) ||
-                    (b.year || '').toString().includes(query)
-                );
-            }
-
-            return bottles;
-        },
 
         // Computed property for filtered/sorted tastings
         get filteredTastings() {
@@ -1764,15 +1733,11 @@ function managementApp() {
             }, duration);
         },
 
-        // Label review functions (from external module - see /static/js/management/label-review.js)
-        ...labelReview,
-
         // Tasting review functions (from external module - see /static/js/management/tasting-review.js)
         ...tastingReview,
 
         // ============================================================================
         // Single Bottle Search, Batch Verification, and Event Management Functions
-        // (Label review functions are loaded from label-review.js module above)
         // ============================================================================
 
         initBatchResult(result) {
@@ -2408,9 +2373,6 @@ function managementApp() {
 
             return html;
         },
-
-        // NOTE: Label Review Functions have been moved to /static/js/management/label-review.js
-        // and are loaded via spread operator at the top of this return block
 
     }
 }

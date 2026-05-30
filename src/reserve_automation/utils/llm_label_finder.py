@@ -73,8 +73,9 @@ class LLMLabelFinder:
             query += f" {bottle.year}"
 
         # Add variety/mash_bill for specificity
-        if bottle.variety and bottle.variety != "MISSING":
-            query += f" {bottle.variety}"
+        variety_str = ", ".join(bottle.variety) if bottle.variety else None
+        if variety_str and variety_str != "MISSING":
+            query += f" {variety_str}"
         elif bottle.mash_bill and bottle.mash_bill != "MISSING":
             query += f" {bottle.mash_bill}"
 
@@ -88,8 +89,8 @@ class LLMLabelFinder:
         bottle_desc = f"{bottle.producer} {bottle.name}"
         if bottle.year:
             bottle_desc += f" {bottle.year}"
-        if bottle.variety and bottle.variety != "MISSING":
-            bottle_desc += f" ({bottle.variety})"
+        if variety_str and variety_str != "MISSING":
+            bottle_desc += f" ({variety_str})"
         elif bottle.mash_bill and bottle.mash_bill != "MISSING":
             bottle_desc += f" ({bottle.mash_bill})"
         if bottle.region and bottle.region != "MISSING":

@@ -527,6 +527,83 @@ async def upload_manual_label(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/api/v1/management/labels/upload-custom", dependencies=[Depends(require("labels.edit"))])
+async def upload_custom_label(
+    file: UploadFile,
+    bottle: str = Form(),
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
+    """
+    Upload a custom label image and commit it directly as the bottle's label.
+
+    Single-step action for the "Upload Custom" button in the bottle editor modal
+    (management mode). Unlike the download/search workflow there is no preview or
+    accept step — the uploaded file becomes the label immediately:
+
+    1. Normalize EXIF orientation (fixes rotated iPhone photos)
+    2. Re-encode to JPEG and save as MEDIA_DIR/bottles/{id}/label.jpg
+    3. Update the DB label path so the grid/modal pick it up
+    """
+    from PIL import ImageOps
+    import json
+
+    try:
+        # Parse bottle data from form to extract bottle_id
+        bottle_data = json.loads(bottle)
+        bottle_id = bottle_data.get("id")
+
+        if not bottle_id:
+            raise HTTPException(status_code=400, detail="Bottle data has no id")
+
+        db_bottle = bottle_repo.get_by_id(int(bottle_id))
+        if not db_bottle:
+            raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
+
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+        # Open + normalize orientation, then re-encode to a valid JPEG
+        try:
+            img = Image.open(io.BytesIO(content))
+            img = ImageOps.exif_transpose(img)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Uploaded file is not a valid image")
+
+        if img.mode == "RGBA":
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            background.paste(img, mask=img.split()[3])
+            img = background
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+
+        label_dir = _get_label_dir(bottle_id)
+
+        # Back up existing label before overwriting
+        current_label = label_dir / "label.jpg"
+        if current_label.exists():
+            copyfile(current_label, label_dir / "label_backup.jpg")
+
+        final_label = label_dir / "label.jpg"
+        img.save(final_label, "JPEG", quality=95)
+
+        # Update DB with label path so the grid and modal resolve the new image
+        bottle_repo.update_label_path(int(bottle_id), f"bottles/{bottle_id}/label.jpg")
+
+        logger.info(f"Custom label uploaded and committed: {final_label}")
+
+        return {
+            "status": "success",
+            "message": "Custom label uploaded successfully",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Custom label upload failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/api/v1/management/labels/manual-crop-downloaded", dependencies=[Depends(require("labels.edit"))])
 async def manual_crop_downloaded_label(
     data: dict,

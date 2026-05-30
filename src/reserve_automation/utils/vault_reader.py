@@ -278,7 +278,8 @@ class VaultReader:
 
         # Wine-specific fields
         if bottle_type == "wine":
-            bottle_data["variety"] = metadata.get("Variety")
+            raw_variety = metadata.get("Variety")
+            bottle_data["variety"] = [raw_variety] if isinstance(raw_variety, str) and raw_variety.strip() else None
             bottle_data["vineyard"] = metadata.get("Vineyard")
             bottle_data["style"] = metadata.get("Style")
             bottle_data["abv"] = parse_float(metadata.get("ABV"))

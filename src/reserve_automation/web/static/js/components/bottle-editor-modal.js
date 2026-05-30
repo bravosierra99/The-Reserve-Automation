@@ -1036,6 +1036,15 @@ window.bottleEditorModal = function() {
                     body: JSON.stringify(this.bottle)
                 });
 
+                if (!response.ok) {
+                    let detail = `Label search failed (${response.status})`;
+                    try {
+                        const error = await response.json();
+                        detail = error.detail || detail;
+                    } catch (e) { /* non-JSON error body */ }
+                    throw new Error(detail);
+                }
+
                 const data = await response.json();
                 this.labelSearchResults = data.images || [];
                 console.log(`Found ${this.labelSearchResults.length} label candidates`);
@@ -1141,6 +1150,15 @@ window.bottleEditorModal = function() {
                     method: 'POST',
                     body: formData
                 });
+
+                if (!response.ok) {
+                    let detail = `Upload failed (${response.status})`;
+                    try {
+                        const error = await response.json();
+                        detail = error.detail || detail;
+                    } catch (e) { /* non-JSON error body */ }
+                    throw new Error(detail);
+                }
 
                 await response.json();
                 this.currentLabelTimestamp = Date.now();

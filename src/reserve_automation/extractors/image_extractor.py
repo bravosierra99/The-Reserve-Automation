@@ -12,6 +12,22 @@ from ..llm import LLMGateway
 from ..llm.response_parser import LLMResponseParser
 
 
+def _parse_variety_from_llm(val) -> list[str] | None:
+    """Normalize LLM variety output to a list. Handles str, list, or None."""
+    if val is None:
+        return None
+    if isinstance(val, list):
+        items = [s.strip() for s in val if isinstance(s, str) and s.strip()]
+        return items or None
+    if isinstance(val, str):
+        if not val.strip():
+            return None
+        import re
+        items = [s.strip() for s in re.split(r'\s*[,/]\s*', val) if s.strip()]
+        return items or None
+    return None
+
+
 class ImageMetadataExtractor:
     """
     Extract bottle metadata from label images.
@@ -31,6 +47,44 @@ class ImageMetadataExtractor:
         (["red", "rouge", "tinto", "rosso", "rot"],               "Red wine"),
     ]
 
+    # Canonical spirit sub-categories, most specific first to prevent early-exit on partial matches
+    _SPIRIT_TYPE_MAP = [
+        (["bourbon"],                                                       "Bourbon"),
+        (["tennessee"],                                                     "Tennessee Whiskey"),
+        (["scotch whisky", "scotch whiskey", "scotch",
+          "blended scotch", "blended malt"],                               "Scotch Whisky"),
+        (["irish whiskey", "irish whisky", "irish"],                       "Irish Whiskey"),
+        (["japanese whisky", "japanese whiskey", "japanese"],              "Japanese Whisky"),
+        (["canadian whisky", "canadian whiskey", "canadian"],              "Canadian Whisky"),
+        (["rye whiskey", "rye whisky", "american rye", "rye"],            "Rye Whiskey"),
+        (["indian whisky", "indian whiskey"],                              "Indian Whisky"),
+        (["american whiskey", "american whisky"],                          "American Whiskey"),
+        (["extra añejo", "extra anejo", "extra-añejo"],                    "Extra Añejo Tequila"),
+        (["añejo tequila", "anejo tequila"],                               "Añejo Tequila"),
+        (["reposado"],                                                      "Reposado Tequila"),
+        (["blanco tequila", "plata tequila", "silver tequila"],            "Blanco Tequila"),
+        (["mezcal"],                                                        "Mezcal"),
+        (["dark rum"],                                                      "Dark Rum"),
+        (["spiced rum"],                                                    "Spiced Rum"),
+        (["aged rum", "añejo rum", "anejo rum"],                           "Aged Rum"),
+        (["light rum", "white rum", "silver rum"],                         "Light Rum"),
+    ]
+
+    # Canonical country names; keys are lowercase normalized variants
+    _COUNTRY_MAP = {
+        "usa": "United States",
+        "us": "United States",
+        "u.s.": "United States",
+        "u.s.a.": "United States",
+        "united states of america": "United States",
+        "america": "United States",
+        "uk": "United Kingdom",
+        "u.k.": "United Kingdom",
+        "great britain": "United Kingdom",
+        "gb": "United Kingdom",
+        "england": "United Kingdom",
+    }
+
     @staticmethod
     def _normalize_wine_beverage_type(raw: str) -> str | None:
         """
@@ -47,6 +101,35 @@ class ImageMetadataExtractor:
                 return label
         # "wine" alone or unrecognizable (wine name / variety) — let enrichment fill it in
         return None
+
+    @staticmethod
+    def _normalize_spirit_beverage_type(raw: str) -> str | None:
+        """
+        Map a raw LLM spirit-type string to a canonical sub-category label.
+
+        Returns a standardized label (e.g. "Bourbon", "Scotch Whisky") or None
+        if the value is unrecognizable or empty.
+        """
+        if not raw:
+            return None
+        lower = raw.lower().strip()
+        for keywords, label in ImageMetadataExtractor._SPIRIT_TYPE_MAP:
+            if any(kw in lower for kw in keywords):
+                return label
+        return None
+
+    @staticmethod
+    def _normalize_country(raw: str) -> str | None:
+        """
+        Map common country abbreviations/variants to canonical full names.
+
+        Returns the canonical country name, or the original sanitized value
+        if no known variant matches.
+        """
+        if not raw:
+            return None
+        key = raw.lower().strip()
+        return ImageMetadataExtractor._COUNTRY_MAP.get(key, raw)
 
     def __init__(self, llm_gateway: LLMGateway):
         """
@@ -106,7 +189,7 @@ Return a JSON object with this exact structure:
   "beverage_type": "wine OR whiskey OR vodka OR gin OR rum OR tequila OR brandy OR other",
   "alcohol": "alcohol content if shown",
   "region": "location if shown",
-  "variety": "grape or grain type if shown",
+  "variety": "grape or grain varieties — JSON array for blends, e.g. [\"Cabernet Sauvignon\", \"Merlot\"] or [\"Chardonnay\"]; null if not shown",
   "country": "country if shown",
   "age_statement": "age statement for whiskey if shown (e.g., '12 years', '15'), otherwise null",
   "proof": "proof number for whiskey if shown (numeric, e.g., 100), otherwise null",
@@ -240,7 +323,7 @@ Return only the JSON, nothing else."""
             str(extracted_data.get("producer", "")),
             str(extracted_data.get("name", "")),
             str(extracted_data.get("type", "")),
-            str(extracted_data.get("variety", "")),
+            " ".join(extracted_data.get("variety", []) or []) if isinstance(extracted_data.get("variety"), list) else str(extracted_data.get("variety", "")),
             str(extracted_data.get("region", "")),
             str(extracted_data.get("additional_details", "")),
         ]).lower()
@@ -516,24 +599,26 @@ Return only the JSON, nothing else."""
             "beverage_type": (
                 self._normalize_wine_beverage_type(extracted_data.get("type", ""))
                 if beverage_type == "wine"
-                else LLMResponseParser.sanitize_string(
-                    extracted_data.get("type"), max_length=100, field_name="beverage_type"
+                else (
+                    self._normalize_spirit_beverage_type(extracted_data.get("type", ""))
+                    or LLMResponseParser.sanitize_string(
+                        extracted_data.get("type"), max_length=100, field_name="beverage_type"
+                    )
                 )
             ),
-            "country": LLMResponseParser.sanitize_string(
-                extracted_data.get("country"),
-                max_length=100,
-                field_name="country"
+            "country": self._normalize_country(
+                LLMResponseParser.sanitize_string(
+                    extracted_data.get("country"),
+                    max_length=100,
+                    field_name="country"
+                )
             ),
             "region": LLMResponseParser.sanitize_string(
                 extracted_data.get("region"),
                 max_length=200,
                 field_name="region"
             ),
-            "variety": LLMResponseParser.sanitize_string(
-                extracted_data.get("variety"),
-                field_name="variety"
-            ),
+            "variety": _parse_variety_from_llm(extracted_data.get("variety")),
             "vineyard": LLMResponseParser.sanitize_string(
                 extracted_data.get("vineyard"),
                 max_length=200,
