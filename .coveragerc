@@ -1,0 +1,26 @@
+# Coverage config shared by in-process tests and the E2E server subprocess.
+#
+# The E2E suite drives a separate `uvicorn` process (see tests/e2e/conftest.py),
+# so capturing route/template coverage requires running that process under
+# coverage too. The fixture launches it with `coverage run --parallel-mode`
+# (gated on E2E_COVERAGE=1) and SIGTERM-kills it, so:
+#   - parallel = true  -> each process writes a distinct .coverage.<host>.<pid>
+#   - sigterm = true   -> the server flushes its data on SIGTERM (not a clean exit)
+# Combine everything with `coverage combine && coverage report`.
+[run]
+parallel = true
+sigterm = true
+source = reserve_automation
+branch = false
+omit =
+    */tests/*
+    */__main__.py
+
+[report]
+show_missing = true
+skip_covered = true
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    \.\.\.

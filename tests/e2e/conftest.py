@@ -138,9 +138,18 @@ def web_server(test_db):
     server_env.setdefault("WEB_SECRET_KEY", "e2e-test-secret-key-not-secure-32chars")
 
     # Start server WITHOUT --reload to avoid subprocess complexity in tests
-    # Use port 9000 to avoid conflicts with the main server on 8000
+    # Use port 9000 to avoid conflicts with the main server on 8000.
+    #
+    # When E2E_COVERAGE=1, run uvicorn under `coverage run --parallel-mode` so
+    # the server process's route/template coverage is captured (it's a separate
+    # process, so plain pytest-cov in the test process never sees it). The
+    # fixture SIGTERM-kills the server; .coveragerc has `sigterm = true` so the
+    # data flushes. Combine afterwards with `coverage combine && coverage report`.
+    launcher = ["uv", "run", "--env-file", ".env"]
+    if os.environ.get("E2E_COVERAGE"):
+        launcher += ["coverage", "run", "--parallel-mode", "--rcfile=.coveragerc", "-m"]
     server_process = subprocess.Popen(
-        ["uv", "run", "--env-file", ".env", "uvicorn",
+        [*launcher, "uvicorn",
          "reserve_automation.web.app:app", "--host", "0.0.0.0", "--port", "9000"],
         cwd=str(automation_dir),
         stdout=stdout_file,
