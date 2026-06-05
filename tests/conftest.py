@@ -20,7 +20,12 @@ def _lm_studio_available() -> bool:
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     try:
         resp = httpx.get(f"{base_url}/models", headers=headers, timeout=3.0)
-        return resp.status_code == 200
+        if resp.status_code != 200:
+            return False
+        # A reachable server with no model loaded returns 200 + {"data": []}.
+        # Require at least one model so real-LLM tests skip (not noisily fail)
+        # in that case — matching the skip reason's "load a model" guidance.
+        return bool(resp.json().get("data"))
     except Exception:
         return False
 
@@ -32,8 +37,9 @@ _LM_STUDIO_AVAILABLE: bool | None = None
 def pytest_collection_modifyitems(config, items):
     """Auto-skip tests marked `requires_lm_studio` when no LM Studio is reachable.
 
-    Consolidates the previously ad-hoc in-test `pytest.skip("likely no LLM")`
-    pattern into one discoverable marker + a single reachability probe per session.
+    A discoverable marker + single per-session reachability probe, offered as a
+    cleaner alternative to the ad-hoc in-test `pytest.skip("likely no LLM")`
+    pattern still used in a few suites (test_bottle_stateless_upload.py et al.).
     """
     global _LM_STUDIO_AVAILABLE
     skip_marker = None
@@ -67,9 +73,14 @@ def setup_test_environment():
     # validation passes deterministically. Previously this dir was only created
     # by tests/tastings/run_all_tests.sh, leaving vault-dependent tests reliant
     # on test ordering / leaked env vars when pytest was run directly.
+    #
+    # Safety: only ever auto-create an isolated /tmp vault. If RESERVE_VAULT_PATH
+    # was exported to a real vault, never mkdir inside it — dev must not touch
+    # personal data (see CLAUDE.md dev/prod separation).
     vault_path = Path(os.environ["RESERVE_VAULT_PATH"])
-    for subdir in ("1_Wines", "1_Whiskeys"):
-        (vault_path / subdir).mkdir(parents=True, exist_ok=True)
+    if str(vault_path).startswith("/tmp/"):
+        for subdir in ("1_Wines", "1_Whiskeys"):
+            (vault_path / subdir).mkdir(parents=True, exist_ok=True)
 
     # Use in-memory SQLite for tests. This ensures the app lifespan
     # re-uses the same in-memory DB instead of creating a file-based one.
