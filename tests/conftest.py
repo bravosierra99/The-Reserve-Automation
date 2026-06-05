@@ -1,7 +1,54 @@
 """Pytest configuration and fixtures for all tests."""
 
 import os
+from pathlib import Path
+
 import pytest
+
+
+def _lm_studio_available() -> bool:
+    """Probe the configured LM Studio endpoint.
+
+    Mirrors the config the app/CLI use (RESERVE_LM_STUDIO_URL + LM_STUDIO_API_KEY).
+    Returns True only on HTTP 200 from /models, so a 401 (keyless) or a refused
+    connection both correctly gate real-LLM tests off.
+    """
+    import httpx
+
+    base_url = os.environ.get("RESERVE_LM_STUDIO_URL", "http://localhost:1234/v1").rstrip("/")
+    api_key = os.environ.get("LM_STUDIO_API_KEY", "")
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    try:
+        resp = httpx.get(f"{base_url}/models", headers=headers, timeout=3.0)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+# Cache the probe result for the whole session (None = not yet probed).
+_LM_STUDIO_AVAILABLE: bool | None = None
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-skip tests marked `requires_lm_studio` when no LM Studio is reachable.
+
+    Consolidates the previously ad-hoc in-test `pytest.skip("likely no LLM")`
+    pattern into one discoverable marker + a single reachability probe per session.
+    """
+    global _LM_STUDIO_AVAILABLE
+    skip_marker = None
+    for item in items:
+        if item.get_closest_marker("requires_lm_studio") is None:
+            continue
+        if _LM_STUDIO_AVAILABLE is None:
+            _LM_STUDIO_AVAILABLE = _lm_studio_available()
+        if not _LM_STUDIO_AVAILABLE:
+            if skip_marker is None:
+                skip_marker = pytest.mark.skip(
+                    reason="LM Studio not reachable — set RESERVE_LM_STUDIO_URL + "
+                    "LM_STUDIO_API_KEY and load a model to run real-LLM tests"
+                )
+            item.add_marker(skip_marker)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -15,6 +62,14 @@ def setup_test_environment():
 
     # Set vault path for tests (still needed by some services that use Config)
     os.environ.setdefault("RESERVE_VAULT_PATH", "/tmp/test-vault")
+
+    # Create the isolated test vault directory so Config.load()'s path
+    # validation passes deterministically. Previously this dir was only created
+    # by tests/tastings/run_all_tests.sh, leaving vault-dependent tests reliant
+    # on test ordering / leaked env vars when pytest was run directly.
+    vault_path = Path(os.environ["RESERVE_VAULT_PATH"])
+    for subdir in ("1_Wines", "1_Whiskeys"):
+        (vault_path / subdir).mkdir(parents=True, exist_ok=True)
 
     # Use in-memory SQLite for tests. This ensures the app lifespan
     # re-uses the same in-memory DB instead of creating a file-based one.

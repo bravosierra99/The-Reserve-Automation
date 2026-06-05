@@ -17,6 +17,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Every test here shells out to the real `extract-tasting` CLI, which performs
+# live LM Studio vision OCR. Skip the whole module when no LM Studio is reachable.
+pytestmark = pytest.mark.requires_lm_studio
+
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 FIXTURES_DIR = PROJECT_ROOT / "tests" / "fixtures" / "tasting_cards"
 

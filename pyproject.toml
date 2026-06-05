@@ -103,6 +103,7 @@ log_cli_level = "INFO"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "e2e: marks tests as end-to-end browser tests",
+    "requires_lm_studio: needs a reachable LM Studio endpoint; auto-skipped when unavailable (see tests/conftest.py)",
 ]
 
 [dependency-groups]
