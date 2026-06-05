@@ -105,9 +105,9 @@ def enable_dev_mode_for_tests():
     2. _startup_auth_config (used as middleware fallback)
     3. load_auth_config (so lifespan re-loads also get dev mode)
     """
+    import reserve_automation.web.app as app_module
     import reserve_automation.web.auth.config as config_module
     import reserve_automation.web.config as web_config_module
-    import reserve_automation.web.app as app_module
 
     # 1. Enable dev mode on the already-loaded module-level config
     # require_local_subnet is also disabled because TestClient uses "testclient"

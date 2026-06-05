@@ -2,13 +2,13 @@
 
 import io
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
 
 from reserve_automation.core.exceptions import ParserError, UnsupportedFileTypeError
-from reserve_automation.parsers import ImageParser, PDFParser, ParserDetector
+from reserve_automation.parsers import ImageParser, ParserDetector, PDFParser
 
 
 @pytest.fixture

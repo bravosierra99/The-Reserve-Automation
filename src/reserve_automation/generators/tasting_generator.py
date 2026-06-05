@@ -2,7 +2,6 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 

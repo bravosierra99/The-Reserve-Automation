@@ -6,8 +6,6 @@ CRITICAL: These tests use an isolated test vault at /tmp/test-vault-events-*.
 import json
 from urllib.parse import quote
 
-import pytest
-
 
 class TestCreateCocktailEvent:
     """Test POST /api/v1/events/cocktail."""

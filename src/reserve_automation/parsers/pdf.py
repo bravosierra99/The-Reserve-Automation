@@ -5,7 +5,6 @@ from typing import List
 
 import pdfplumber
 from loguru import logger
-from PIL import Image
 
 from ..core.exceptions import ParserError
 from ..core.models import ParserResult

@@ -8,11 +8,11 @@ Tests the duplicate bottle detection logic including:
 - Edge cases (missing fields, special characters, etc.)
 """
 
-import pytest
-from pathlib import Path
-from reserve_automation.web.services.duplicate_service import DuplicateDetectionService
-from reserve_automation.core.models import BottleMetadata
 
+import pytest
+
+from reserve_automation.core.models import BottleMetadata
+from reserve_automation.web.services.duplicate_service import DuplicateDetectionService
 
 # ============================================================================
 # Fixtures

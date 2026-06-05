@@ -11,8 +11,8 @@ Tests verify both API responses AND data integrity.
 """
 
 import json
-from pathlib import Path
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,8 +25,8 @@ from reserve_automation.web.config import load_web_config
 @pytest.fixture(scope="module")
 def test_client():
     """Create test client with proper configuration and isolated test vault."""
-    import shutil
     import os
+    import shutil
 
     # Create isolated test vault BEFORE loading config
     test_vault_path = Path("/tmp/test-vault-tasting-e2e")

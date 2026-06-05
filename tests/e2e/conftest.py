@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import sync_playwright
 
-
 # ============================================================================
 # PYTEST HOOKS FOR PROGRESS VISIBILITY
 # ============================================================================
@@ -58,17 +57,14 @@ def test_db(tmp_path):
     Yields the file path string (pass as DATABASE_URL=sqlite:///path to the
     subprocess env).
     """
-    import os
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
 
     db_path = tmp_path / "e2e_test.db"
     db_url = f"sqlite:///{db_path}"
 
     # Initialise schema using the app's own init_db
+    from reserve_automation.core.models import BeverageType, BottleMetadata
     from reserve_automation.db.engine import init_db as app_init_db
     from reserve_automation.db.repositories.bottle_repo import SQLiteBottleRepository
-    from reserve_automation.core.models import BottleMetadata, BeverageType
 
     engine = app_init_db(db_url)
     from reserve_automation.db.engine import _SessionLocal
@@ -120,9 +116,9 @@ def web_server(test_db):
     which the app no longer reads for data — that caused tests to silently run
     against prod data or an empty DB.
     """
-    import tempfile
     import os
     import signal
+    import tempfile
 
     # Kill any existing test servers on port 9000
     subprocess.run(["pkill", "-9", "-f", "uvicorn.*reserve_automation"], stderr=subprocess.DEVNULL)
@@ -165,7 +161,7 @@ def web_server(test_db):
                 print(f"\n✓ Test server started on port 9000 after {i+1} seconds")
                 server_ready = True
                 break
-        except Exception as e:
+        except Exception:
             if i == 0:
                 print("Waiting for test server to start on port 9000...")
         time.sleep(1)

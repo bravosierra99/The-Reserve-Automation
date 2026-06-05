@@ -1,7 +1,6 @@
 """Auth test fixtures."""
 
 import os
-import tempfile
 import uuid
 from pathlib import Path
 
@@ -87,8 +86,8 @@ def auth_test_client(test_auth_yaml, test_vault):
     os.environ["RESERVE_VAULT_PATH"] = str(test_vault)
     os.environ["WEB_SECRET_KEY"] = "test_secret_key_for_testing_only_not_secure_32_chars_min"
 
-    from reserve_automation.web.auth.config import load_auth_config
     from reserve_automation.web.app import app
+    from reserve_automation.web.auth.config import load_auth_config
 
     auth_config = load_auth_config(test_auth_yaml)
     app.state.auth_config = auth_config

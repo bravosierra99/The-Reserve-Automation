@@ -1,6 +1,7 @@
 """Management routes - unified router combining core and label modules."""
 
 from fastapi import APIRouter
+
 from . import core, labels
 
 # Create main router

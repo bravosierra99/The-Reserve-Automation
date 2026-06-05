@@ -1,7 +1,6 @@
 """Base LLM provider interface."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from ...core.models import LLMRequest, LLMResponse
 

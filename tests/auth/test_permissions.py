@@ -6,7 +6,6 @@ Uses dev mode with cookie-based role switching.
 
 import os
 import uuid
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -47,8 +46,8 @@ def perm_client(perm_vault):
     os.environ["WEB_SECRET_KEY"] = "test_secret_key_for_testing_only_not_secure_32_chars_min"
 
     from reserve_automation.web.app import app
-    from reserve_automation.web.config import load_web_config
     from reserve_automation.web.auth.config import load_auth_config
+    from reserve_automation.web.config import load_web_config
 
     core_config, web_config = load_web_config()
 

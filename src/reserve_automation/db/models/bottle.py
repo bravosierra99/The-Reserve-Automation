@@ -1,18 +1,18 @@
 """SQLAlchemy models for bottles and tasting notes."""
 
-from datetime import datetime, date
+from datetime import date, datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Date,
     DateTime,
     Float,
+    ForeignKey,
     Integer,
-    JSON,
     String,
     Text,
     UniqueConstraint,
-    ForeignKey,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship

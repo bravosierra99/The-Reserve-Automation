@@ -9,24 +9,24 @@ These tests verify the management API workflow against an in-memory SQLite datab
 """
 
 from datetime import date
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import Mock
 
+from reserve_automation.core.models import BottleMetadata
+from reserve_automation.core.tasting_note import TastingNote
 from reserve_automation.db.engine import get_db
 from reserve_automation.db.repositories.bottle_repo import SQLiteBottleRepository
 from reserve_automation.db.repositories.tasting_repo import SQLiteTastingRepository
-from reserve_automation.core.models import BottleMetadata
-from reserve_automation.core.tasting_note import TastingNote
 
 
 @pytest.fixture
 def client(tmp_path):
     """Create test client and seed test bottles into the in-memory SQLite database."""
+    from reserve_automation.core.config import Config
     from reserve_automation.web import app as app_module
     from reserve_automation.web.app import app
-    from reserve_automation.core.config import Config
 
     # Config validator requires the vault path to exist, even though management
     # routes no longer use vault files. Create an empty directory to satisfy it.
@@ -251,9 +251,10 @@ class TestManagementTastingsSummary:
             # TastingNote objects don't have id; fetch from DB model
             pass
         # Use DB session directly to clean up
-        from reserve_automation.db.models.bottle import TastingNoteModel
-        from reserve_automation.db.engine import get_engine
         from sqlalchemy.orm import Session
+
+        from reserve_automation.db.engine import get_engine
+        from reserve_automation.db.models.bottle import TastingNoteModel
         engine = get_engine()
         with Session(engine) as session:
             session.query(TastingNoteModel).filter(

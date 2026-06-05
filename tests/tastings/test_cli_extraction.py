@@ -12,10 +12,11 @@ Tests LLM extraction reliability:
 """
 
 import json
-import pytest
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 # Every test here shells out to the real `extract-tasting` CLI, which performs
 # live LM Studio vision OCR. Skip the whole module when no LM Studio is reachable.
@@ -163,7 +164,7 @@ def test_auto_detect_template():
         print("   ⚠️  Test image not found - skipping")
         return True
 
-    print(f"\n1️⃣ Extracting WITHOUT specifying template...")
+    print("\n1️⃣ Extracting WITHOUT specifying template...")
 
     # Run extraction without template parameter (auto-detect)
     result = run_extraction(image_path, template=None, dry_run=True)

@@ -9,7 +9,6 @@ import re
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from ..auth.dependencies import require
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
@@ -23,6 +22,7 @@ from ...core.ingredient import (
 )
 from ...db.repositories import get_ingredient_repo
 from ...db.repositories.ingredient_repo import SQLiteIngredientRepository
+from ..auth.dependencies import require
 
 router = APIRouter()
 
@@ -304,9 +304,9 @@ async def bulk_search_ingredients(request_data: BulkSearchRequest):
     a list of ingredient suggestions for review before saving.
     """
     try:
+        from ...core.config import Config
         from ...llm.gateway import LLMGateway
         from ...llm.tool_executor import ToolExecutor
-        from ...core.config import Config
 
         config = Config.load()
         tool_executor = ToolExecutor()

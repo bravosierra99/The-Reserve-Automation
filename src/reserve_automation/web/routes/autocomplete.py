@@ -4,12 +4,12 @@
 # #CLAUDE_REQ: TASTING_AUTOCOMPLETE_FIELDS must stay in sync with _TASTING_CLEANUP_FIELDS in management/core.py
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..auth.dependencies import require
 from ...db.engine import get_db
 from ...db.models.bottle import BottleModel, TastingNoteModel
+from ..auth.dependencies import require
 
 BOTTLE_AUTOCOMPLETE_FIELDS = frozenset([
     "producer", "region", "country", "beverage_type",

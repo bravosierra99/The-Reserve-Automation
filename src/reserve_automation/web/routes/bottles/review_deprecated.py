@@ -2,15 +2,13 @@
 
 import uuid
 from pathlib import Path
-from typing import Optional
 
-from fastapi import APIRouter, UploadFile, File, Form, Response, Cookie, HTTPException, Request
+from fastapi import APIRouter, Form, HTTPException, Request, Response, UploadFile
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from ...sessions import SessionManager
-from ...services.upload_service import UploadService
 from ...services.extraction_service import ExtractionService
+from ...sessions import SessionManager
 
 router = APIRouter()
 
@@ -154,7 +152,6 @@ async def approve_bottle(
 
         # Generate Obsidian file
         from reserve_automation.generators.obsidian import ObsidianGenerator
-        from reserve_automation.utils.label_processor import LabelImageProcessor
 
         extraction_service = ExtractionService(core_config)
         bottle = extraction_service.bottle_from_dict(bottle_data["bottle"])
@@ -221,7 +218,7 @@ async def approve_bottle(
                     logger.info(f"✓ Copied selected label to {label_path}")
                 else:
                     logger.error(f"✗ Selected label file NOT FOUND: {source_path}")
-                    logger.error(f"  - File exists check failed")
+                    logger.error("  - File exists check failed")
                     logger.error(f"  - Directory exists: {source_path.parent.exists()}")
                     if source_path.parent.exists():
                         logger.error(f"  - Files in directory: {list(source_path.parent.iterdir())}")
@@ -537,8 +534,8 @@ async def upload_manual_label(
     Returns:
         Upload result with file paths
     """
+
     from ...app import core_config, upload_service, web_config
-    from fastapi import UploadFile, Form
 
     if not core_config or not upload_service or not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
@@ -581,6 +578,7 @@ async def upload_manual_label(
         if try_crop:
             # Copy to cropped path and try to crop it
             import shutil
+
             from ...services.label_service import LabelService
             shutil.copy2(original_path, cropped_path)
 

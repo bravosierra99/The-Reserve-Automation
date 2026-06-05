@@ -7,25 +7,21 @@ These tests would have caught bugs like:
 - Event bottle filtering edge cases
 """
 
-import pytest
 from datetime import date, datetime
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from typing import Optional
+from unittest.mock import MagicMock, patch
 
-from reserve_automation.web.services.tasting_service import TastingService
-from reserve_automation.web.schemas.tasting import (
-    TastingData,
-    TastingSession,
-    TastingSessionItem,
-    TastingStatus,
-    MatchCandidate
-)
-from reserve_automation.core.tasting_note import TastingNote, TastingExtractionResult
+import pytest
+
 from reserve_automation.core.config import Config
-from reserve_automation.utils.bottle_matcher import BottleMatch
 from reserve_automation.core.models import BottleMetadata
-
+from reserve_automation.core.tasting_note import TastingExtractionResult, TastingNote
+from reserve_automation.web.schemas.tasting import (
+    MatchCandidate,
+    TastingData,
+    TastingStatus,
+)
+from reserve_automation.web.services.tasting_service import TastingService
 
 # ============================================================================
 # Fixtures

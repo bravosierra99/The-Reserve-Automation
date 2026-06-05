@@ -1,11 +1,10 @@
 """SQLite repository implementation for tasting notes."""
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 
 from ...core.tasting_note import TastingNote
+from ..converters import pydantic_to_tasting, tasting_to_pydantic
 from ..models.bottle import TastingNoteModel
-from ..converters import tasting_to_pydantic, pydantic_to_tasting
 
 
 class SQLiteTastingRepository:

@@ -8,15 +8,13 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Request, Cookie
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from ...auth.dependencies import require
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from ...services.upload_service import UploadService
+from ...auth.dependencies import require
 from ...services.extraction_service import ExtractionService
-from ...sessions import SessionManager
 
 
 def _sse(data: dict) -> str:
@@ -93,7 +91,7 @@ async def upload_bottle(
             "is_manifest": bool
         }
     """
-    from ...app import upload_service, core_config
+    from ...app import core_config, upload_service
 
     if not upload_service or not core_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
@@ -109,8 +107,8 @@ async def upload_bottle(
         logger.info(f"Saved upload to: {file_path}")
 
         # Copy uploaded image to labels/label.jpg for display in modal
-        from pathlib import Path
         import shutil
+        from pathlib import Path
         upload_dir = Path(file_path).parent
         labels_dir = upload_dir / "labels"
         labels_dir.mkdir(exist_ok=True)
@@ -198,7 +196,7 @@ async def upload_bottle_stream(
     On "error":
       { "status": "error", "message": "..." }
     """
-    from ...app import upload_service, core_config
+    from ...app import core_config, upload_service
 
     if not upload_service or not core_config:
         raise HTTPException(status_code=500, detail="Service not initialized")

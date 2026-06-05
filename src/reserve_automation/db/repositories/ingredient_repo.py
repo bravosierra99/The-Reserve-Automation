@@ -3,8 +3,8 @@
 from sqlalchemy.orm import Session, joinedload
 
 from ...core.ingredient import Ingredient, build_ingredient_tree, flatten_tree
-from ..models.ingredient import IngredientModel
 from ..converters import ingredient_to_pydantic, pydantic_to_ingredient
+from ..models.ingredient import IngredientModel
 
 
 class SQLiteIngredientRepository:

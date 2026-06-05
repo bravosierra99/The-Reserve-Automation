@@ -4,12 +4,12 @@ import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from ...auth.dependencies import require
 from fastapi.responses import FileResponse
 from loguru import logger
 
 from ....db.repositories import get_bottle_repo
 from ....db.repositories.bottle_repo import SQLiteBottleRepository
+from ...auth.dependencies import require
 
 router = APIRouter(dependencies=[Depends(require("bottles.view"))])
 

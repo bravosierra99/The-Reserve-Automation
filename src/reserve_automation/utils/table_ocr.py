@@ -8,7 +8,6 @@ This module provides hybrid table extraction:
 
 import logging
 from pathlib import Path
-from typing import Optional, Tuple
 
 import cv2
 import numpy as np

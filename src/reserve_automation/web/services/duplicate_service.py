@@ -1,8 +1,8 @@
 """Duplicate bottle detection service."""
 
-from pathlib import Path
-from typing import List, Dict, Optional
 from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Dict, List
 
 from loguru import logger
 

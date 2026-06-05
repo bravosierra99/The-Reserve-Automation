@@ -1,20 +1,21 @@
 """Label management routes - crop, download, upload, quality review."""
 
 import hashlib
+import io
 import os
 from pathlib import Path
 from shutil import copyfile
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form, BackgroundTasks
-from fastapi.responses import FileResponse, Response
-from ...auth.dependencies import require
-from ....db.repositories import get_bottle_repo
-from ....db.repositories.bottle_repo import SQLiteBottleRepository
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from loguru import logger
 from PIL import Image
-import io
 
 from ....core.models import BottleMetadata
+from ....db.repositories import get_bottle_repo
+from ....db.repositories.bottle_repo import SQLiteBottleRepository
+from ...auth.dependencies import require
 
 # Thumbnail cache directory
 THUMBNAIL_CACHE_DIR = Path("/tmp/reserve-automation/thumbnails")
@@ -90,10 +91,11 @@ async def crop_current_label(
 
     Creates a preview file that can be accepted or discarded.
     """
-    from ... import app as app_module
+    from shutil import copyfile
+
     from ....llm.gateway import LLMGateway
     from ....utils.label_processor import LabelImageProcessor
-    from shutil import copyfile
+    from ... import app as app_module
 
     core_config = app_module.core_config
 
@@ -279,10 +281,11 @@ async def crop_downloaded_image(
     """
     Crop the downloaded image and save as label_download_cropped.jpg.
     """
-    from ... import app as app_module
+    from shutil import copyfile
+
     from ....llm.gateway import LLMGateway
     from ....utils.label_processor import LabelImageProcessor
-    from shutil import copyfile
+    from ... import app as app_module
 
     core_config = app_module.core_config
 
@@ -396,8 +399,9 @@ async def manual_crop_label(
     """
     Crop label using exact pixel coordinates from manual selection.
     """
-    from PIL import Image
     from shutil import copyfile
+
+    from PIL import Image
 
     try:
         bottle_id = data.get("bottle_id")
@@ -544,8 +548,9 @@ async def upload_custom_label(
     2. Re-encode to JPEG and save as MEDIA_DIR/bottles/{id}/label.jpg
     3. Update the DB label path so the grid/modal pick it up
     """
-    from PIL import ImageOps
     import json
+
+    from PIL import ImageOps
 
     try:
         # Parse bottle data from form to extract bottle_id
@@ -697,9 +702,9 @@ async def scan_label_quality(
     Returns:
         dict: Prioritized list of label review candidates
     """
+    from ....llm.gateway import LLMGateway
     from ...app import core_config
     from ...services.label_review_service import LabelReviewService
-    from ....llm.gateway import LLMGateway
 
     try:
         # Create LLM gateway from config
@@ -754,9 +759,9 @@ async def accept_improved_label(data: dict):
     Returns:
         dict: Success status
     """
+    from ....llm.gateway import LLMGateway
     from ...app import core_config
     from ...services.label_review_service import LabelReviewService
-    from ....llm.gateway import LLMGateway
 
     try:
         # Parse bottle from request
@@ -799,9 +804,9 @@ async def keep_original_label(data: dict):
     Returns:
         dict: Success status
     """
+    from ....llm.gateway import LLMGateway
     from ...app import core_config
     from ...services.label_review_service import LabelReviewService
-    from ....llm.gateway import LLMGateway
 
     try:
         # Parse bottle from request

@@ -62,7 +62,7 @@ async def main():
         print("RESULT:")
         print("=" * 80)
         if bottle:
-            print(f"✓ SUCCESS")
+            print("✓ SUCCESS")
             print(f"  Producer: {bottle.producer}")
             print(f"  Name: {bottle.name}")
             print(f"  Year: {bottle.year or 'N/A'}")

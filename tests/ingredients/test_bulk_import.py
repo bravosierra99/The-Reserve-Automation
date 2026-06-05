@@ -6,8 +6,6 @@ Tests use mocked LLM/search to avoid external dependencies.
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 
 class TestBulkSave:
     """Test POST /api/v1/ingredients/bulk-save (no LLM needed)."""

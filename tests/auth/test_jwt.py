@@ -2,11 +2,10 @@
 
 import json
 import time
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import jwt as pyjwt
 import pytest
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from reserve_automation.web.auth.config import CloudflareConfig
@@ -63,7 +62,7 @@ class TestCloudflareJWTValidator:
         claims = {
             "email": "user@test.com",
             "aud": "test-audience",
-            "iss": f"https://test.cloudflareaccess.com",
+            "iss": "https://test.cloudflareaccess.com",
             "iat": int(time.time()),
             "exp": int(time.time()) + 3600,
         }

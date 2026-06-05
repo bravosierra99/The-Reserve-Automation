@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from ...auth.dependencies import require
-from pydantic import BaseModel
 from loguru import logger
+from pydantic import BaseModel
 
 from ....core.models import BottleMetadata
 from ....db.repositories import get_bottle_repo
 from ....db.repositories.bottle_repo import SQLiteBottleRepository
+from ...auth.dependencies import require
 
 MEDIA_DIR = Path(os.getenv("MEDIA_DIR", "data/media"))
 

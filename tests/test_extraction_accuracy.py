@@ -24,16 +24,16 @@ Usage:
 import asyncio
 import json
 import sys
-from pathlib import Path
-from typing import Dict, List, Any
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from reserve_automation.core.config import Config
 from reserve_automation.extractors.tasting_extractor import TastingExtractor
 from reserve_automation.llm.gateway import LLMGateway
-from reserve_automation.core.config import Config
 
 
 @dataclass
@@ -268,7 +268,7 @@ class ExtractionTester:
             print("-"*80)
 
             # Group by category
-            basic_fields = [f for f in tasting.fields if not 'notes' in f.field_name]
+            basic_fields = [f for f in tasting.fields if 'notes' not in f.field_name]
             note_fields = [f for f in tasting.fields if 'notes' in f.field_name]
 
             print("\nBasic Fields:")

@@ -8,8 +8,6 @@ SAFE: No vault writes - all data stored in SQLite database.
 CRITICAL: These tests use an in-memory SQLite database via conftest.py fixtures.
 """
 
-import json
-import pytest
 
 # test_client and weller_bottle fixtures come from conftest.py
 # which sets up an isolated test vault
@@ -78,7 +76,7 @@ def test_manual_event_tasting(test_client, weller_bottle):
 
     response = test_client.post("/api/v1/manual-tasting/save", json=save_request, cookies=cookies)
     assert response.status_code == 200, f"Save failed: {response.status_code} - {response.text}"
-    print(f"   ✓ Tasting saved to event store")
+    print("   ✓ Tasting saved to event store")
 
     # Step 5: Verify tasting exists in event
     print("\n5️⃣ Verifying tasting in event...")
@@ -92,7 +90,7 @@ def test_manual_event_tasting(test_client, weller_bottle):
     tasting = participant["tastings"][0]
     assert "whiskey_nose" in tasting["tasting_data"], "Tasting data missing nose score"
     assert tasting["tasting_data"]["whiskey_nose"] == 2.5, "Nose score mismatch"
-    print(f"   ✓ Tasting verified in event store")
+    print("   ✓ Tasting verified in event store")
     print(f"   ✓ Score: {tasting['tasting_data']['whiskey_nose'] + tasting['tasting_data']['whiskey_palate'] + tasting['tasting_data']['whiskey_finish'] + tasting['tasting_data']['whiskey_overall']:.1f}/10")
 
     # Cleanup
@@ -197,8 +195,8 @@ def test_edit_event_tasting(test_client, weller_bottle):
 
     assert score == 9.0, f"Expected score 9.0, got {score}"
     assert "much better" in tasting["tasting_data"]["overall_notes"], "Notes not updated"
-    print(f"   ✓ Only 1 tasting exists")
-    print(f"   ✓ Score updated: 9.0/10")
+    print("   ✓ Only 1 tasting exists")
+    print("   ✓ Score updated: 9.0/10")
     print(f"   ✓ Notes updated: '{tasting['tasting_data']['overall_notes']}'")
 
     # Cleanup

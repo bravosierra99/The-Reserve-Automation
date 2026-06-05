@@ -1,8 +1,9 @@
 """Unit tests for extraction_pipeline routing logic."""
 
-import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from reserve_automation.core.models import BottleMetadata, ParserResult
 

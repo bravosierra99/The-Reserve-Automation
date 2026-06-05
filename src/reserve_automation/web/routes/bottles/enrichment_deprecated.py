@@ -2,15 +2,13 @@
 
 import uuid
 from pathlib import Path
-from typing import Optional
 
-from fastapi import APIRouter, UploadFile, File, Form, Response, Cookie, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
-from ...sessions import SessionManager
-from ...services.upload_service import UploadService
 from ...services.extraction_service import ExtractionService
+from ...sessions import SessionManager
 
 router = APIRouter()
 
@@ -70,10 +68,10 @@ async def enrich_bottle(
 
         # Use current bottle data from frontend if provided, otherwise use session data
         if current_bottle_data:
-            logger.info(f"Using current (edited) bottle data for enrichment")
+            logger.info("Using current (edited) bottle data for enrichment")
             bottle_dict = current_bottle_data
         else:
-            logger.info(f"Using session bottle data for enrichment")
+            logger.info("Using session bottle data for enrichment")
             bottle_dict = bottle_data["bottle"]
 
         # Always re-run enrichment (even if already enriched)
@@ -239,9 +237,10 @@ async def search_labels_for_bottle(request: Request):
     Returns:
         List of label image candidates
     """
+    from reserve_automation.core.models import BottleMetadata
+
     from ...app import core_config
     from ...services.label_service import LabelService
-    from reserve_automation.core.models import BottleMetadata
 
     if not core_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
@@ -250,7 +249,7 @@ async def search_labels_for_bottle(request: Request):
         # Get bottle data from request body
         bottle_data = await request.json()
 
-        logger.info(f"=== LABEL SEARCH REQUEST ===")
+        logger.info("=== LABEL SEARCH REQUEST ===")
         logger.info(f"Producer: {bottle_data.get('producer')}")
         logger.info(f"Name: {bottle_data.get('name')}")
         logger.info(f"Year: {bottle_data.get('year')}")
@@ -305,7 +304,6 @@ async def select_label(
     """
     from ...app import core_config, upload_service, web_config
     from ...services.label_service import LabelService
-    import uuid
 
     if not core_config or not upload_service or not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")

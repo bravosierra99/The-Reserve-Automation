@@ -7,18 +7,17 @@ the domain/API layer (Pydantic). This keeps the two layers decoupled.
 import json
 from datetime import date, datetime
 
-from ..core.models import BottleMetadata
-from ..core.tasting_note import TastingNote
 from ..core.cocktail import CocktailRecipe, RecipeIngredient
 from ..core.cocktail_tasting import (
-    CocktailTastingNote,
     CocktailTastingIngredient,
+    CocktailTastingNote,
 )
 from ..core.ingredient import Ingredient
-
+from ..core.models import BottleMetadata
+from ..core.tasting_note import TastingNote
 from .models.bottle import BottleModel, TastingNoteModel
-from .models.cocktail import CocktailModel, RecipeIngredientModel
-from .models.cocktail_tasting import CocktailTastingModel, CocktailTastingIngredientModel
+from .models.cocktail import CocktailModel
+from .models.cocktail_tasting import CocktailTastingModel
 from .models.ingredient import IngredientModel
 
 

@@ -15,15 +15,14 @@ CRITICAL TEMPLATE REQUIREMENTS (see CLAUDE.md for full details):
 #CLAUDE_REQ: - Vault reader (utils/vault_reader.py) - field must be parsed for round-trip
 
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
-from ..core.exceptions import GenerationError
 from ..core.cocktail import CocktailRecipe
 from ..core.cocktail_tasting import CocktailTastingNote
+from ..core.exceptions import GenerationError
 from ..core.ingredient import Ingredient
 from ..core.models import BottleMetadata
 from ..utils.logging import logger
@@ -405,7 +404,7 @@ class ObsidianGenerator:
             if ing.notes:
                 ingredients_yaml += f"    notes: {ing.notes}\n"
             if ing.optional:
-                ingredients_yaml += f"    optional: true\n"
+                ingredients_yaml += "    optional: true\n"
 
         # Build YAML for instructions array
         instructions_yaml = ""
@@ -589,6 +588,6 @@ class ObsidianGenerator:
         )
 
         if errors:
-            logger.warning(f"Errors during generation:\n" + "\n".join(f"  - {e}" for e in errors))
+            logger.warning("Errors during generation:\n" + "\n".join(f"  - {e}" for e in errors))
 
         return generated

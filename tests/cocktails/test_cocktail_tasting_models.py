@@ -1,11 +1,10 @@
 """Tests for cocktail tasting data models."""
 
-import yaml
 import pytest
 
 from reserve_automation.core.cocktail_tasting import (
-    CocktailTastingNote,
     CocktailTastingIngredient,
+    CocktailTastingNote,
     CreateCocktailTastingRequest,
 )
 

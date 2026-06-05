@@ -6,7 +6,7 @@ from typing import Dict, List, Literal, Optional, Tuple
 from loguru import logger
 
 from reserve_automation.core.config import Config
-from reserve_automation.core.models import BottleMetadata, ParserResult
+from reserve_automation.core.models import BottleMetadata
 from reserve_automation.core.tasting_note import TastingExtractionResult
 from reserve_automation.enrichment.metadata_enricher import MetadataEnricher
 from reserve_automation.extractors.bottle import BottleExtractor

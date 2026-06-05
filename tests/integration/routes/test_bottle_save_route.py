@@ -14,14 +14,14 @@ Coverage:
 - Bad requests rejected with 422
 """
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 from fastapi.testclient import TestClient
 
 from reserve_automation.core.config import Config
 from reserve_automation.db.engine import get_db
 from reserve_automation.db.repositories.bottle_repo import SQLiteBottleRepository
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

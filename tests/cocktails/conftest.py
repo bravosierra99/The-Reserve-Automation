@@ -6,9 +6,9 @@ Uses in-memory SQLite database for test isolation.
 
 import pytest
 
-from reserve_automation.core.ingredient import Ingredient
 from reserve_automation.core.cocktail import CocktailRecipe, RecipeIngredient
 from reserve_automation.core.cocktail_tasting import CocktailTastingNote
+from reserve_automation.core.ingredient import Ingredient
 
 
 @pytest.fixture(scope="module")
@@ -19,9 +19,16 @@ def test_db():
     db = next(get_db())
 
     # Clean existing data
+    from reserve_automation.db.models.cocktail import (
+        CocktailInstructionModel,
+        CocktailModel,
+        RecipeIngredientModel,
+    )
+    from reserve_automation.db.models.cocktail_tasting import (
+        CocktailTastingIngredientModel,
+        CocktailTastingModel,
+    )
     from reserve_automation.db.models.ingredient import IngredientModel
-    from reserve_automation.db.models.cocktail import CocktailModel, RecipeIngredientModel, CocktailInstructionModel
-    from reserve_automation.db.models.cocktail_tasting import CocktailTastingModel, CocktailTastingIngredientModel
     db.query(CocktailTastingIngredientModel).delete()
     db.query(CocktailTastingModel).delete()
     db.query(CocktailInstructionModel).delete()
@@ -102,9 +109,10 @@ def test_db():
 def test_client(test_db):
     """Create test client with in-memory database."""
     from fastapi.testclient import TestClient
+
+    from reserve_automation.web import app as web_app
     from reserve_automation.web.app import app
     from reserve_automation.web.config import load_web_config
-    from reserve_automation.web import app as web_app
     from reserve_automation.web.services.upload_service import UploadService
 
     core_config, web_config = load_web_config()

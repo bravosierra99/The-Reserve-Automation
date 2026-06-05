@@ -1,7 +1,6 @@
 """Tests for cocktail recipe data models."""
 
 import yaml
-import pytest
 
 from reserve_automation.core.cocktail import (
     CocktailRecipe,

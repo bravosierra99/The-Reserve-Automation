@@ -13,17 +13,15 @@ These tests would have caught:
 - Frontend/backend data format mismatches
 """
 
-import json
-from pathlib import Path
 from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from reserve_automation.core.models import BottleMetadata
 from reserve_automation.web.app import app
 from reserve_automation.web.config import load_web_config
-from reserve_automation.core.models import BottleMetadata
 
 
 @pytest.fixture(scope="module")
@@ -49,8 +47,6 @@ def test_client():
 @pytest.fixture
 def test_bottle_in_vault(tmp_path):
     """Create a test bottle in a temporary vault."""
-    from reserve_automation.core.config import Config
-    from reserve_automation.generators.obsidian import ObsidianGenerator
 
     # Create vault structure
     vault_path = tmp_path / "vault"
@@ -439,7 +435,6 @@ class TestDataContractValidation:
         CRITICAL: Test that BottleMetadata model handles empty strings.
         Frontend forms send empty strings, backend expects null or int/float.
         """
-        from reserve_automation.core.models import BottleMetadata
 
         # This is what frontend sends - empty strings
         data = {
@@ -471,7 +466,6 @@ class TestDataContractValidation:
         Document that frontend MUST clean empty strings before sending.
         This is the fix we just implemented.
         """
-        from reserve_automation.core.models import BottleMetadata
 
         # Bad data (what forms send)
         bad_data = {

@@ -1,13 +1,13 @@
 """Unit tests for Obsidian file generators."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch
-from datetime import datetime
+from unittest.mock import Mock
 
-from reserve_automation.generators.obsidian import ObsidianGenerator, ObsidianFile
-from reserve_automation.core.models import BottleMetadata
+import pytest
+
 from reserve_automation.core.exceptions import GenerationError
+from reserve_automation.core.models import BottleMetadata
+from reserve_automation.generators.obsidian import ObsidianFile, ObsidianGenerator
 
 
 class TestObsidianGenerator:

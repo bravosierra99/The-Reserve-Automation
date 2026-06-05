@@ -2,8 +2,6 @@
 
 import json
 import logging
-from pathlib import Path
-from typing import Optional
 
 from ..core.models import BottleMetadata
 from ..llm.gateway import LLMGateway

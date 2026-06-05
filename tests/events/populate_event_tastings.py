@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Populate an event with tastings from multiple participants."""
-import requests
 import json
 from pathlib import Path
+
+import requests
 
 BASE_URL = "http://localhost:8000"
 
@@ -227,7 +228,7 @@ for participant_data in participants_data:
             print(f"  ❌ Failed to save tasting for bottle {bottle_idx + 1}")
 
 # Now reveal the event
-print(f"\n🎭 Revealing bottles...")
+print("\n🎭 Revealing bottles...")
 response = requests.put(f"{BASE_URL}/api/v1/events/{EVENT_ID}/reveal")
 
 if response.ok:
@@ -238,9 +239,9 @@ else:
 print("\n" + "="*60)
 print("✅ EVENT POPULATED SUCCESSFULLY!")
 print("="*60)
-print(f"\n📊 View Results:")
+print("\n📊 View Results:")
 print(f"   {BASE_URL}/events/{EVENT_ID}/results")
-print(f"\n🎯 Expected Rankings (based on scores):")
+print("\n🎯 Expected Rankings (based on scores):")
 
 # Calculate expected rankings
 bottle_totals = {}

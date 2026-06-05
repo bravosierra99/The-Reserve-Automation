@@ -1,14 +1,11 @@
 """Tests for auth configuration."""
 
-import tempfile
 from pathlib import Path
 
-import pytest
 import yaml
 
 from reserve_automation.web.auth.config import (
     AuthConfig,
-    CloudflareConfig,
     DevConfig,
     RoleConfig,
     load_auth_config,

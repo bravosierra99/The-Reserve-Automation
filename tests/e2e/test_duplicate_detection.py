@@ -7,11 +7,7 @@ These tests verify that:
 3. Each resolution option (Skip, Save as New, Replace) works correctly
 """
 
-import shutil
-from pathlib import Path
 
-import pytest
-from playwright.sync_api import expect
 
 
 class TestDuplicateDetection:
@@ -120,7 +116,7 @@ class TestDuplicateDetection:
                 const editor = uploadForm._x_dataStack[0].bottleEditor;
                 return editor && editor.showDuplicateDialog === true;
             }""", timeout=15000)
-        except Exception as e:
+        except Exception:
             # Print console and network logs for debugging
             print("\n=== Console logs ===")
             for log in console_logs[-30:]:

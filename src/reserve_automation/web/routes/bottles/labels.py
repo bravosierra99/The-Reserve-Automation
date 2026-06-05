@@ -4,11 +4,11 @@ import io
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
-from ...auth.dependencies import require
-from pydantic import BaseModel
-from PIL import Image, ImageOps
 from loguru import logger
+from PIL import Image, ImageOps
+from pydantic import BaseModel
 
+from ...auth.dependencies import require
 
 router = APIRouter(dependencies=[Depends(require("bottles.create"))])
 
@@ -268,10 +268,10 @@ async def search_labels_for_bottle(request: Request):
     Returns:
         List of label image candidates
     """
-    from ...app import core_config
-    from ...services.label_service import LabelService
-    from ...services.extraction_service import ExtractionService
     from ....core.models import BottleMetadata
+    from ...app import core_config
+    from ...services.extraction_service import ExtractionService
+    from ...services.label_service import LabelService
 
     if not core_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
@@ -280,7 +280,7 @@ async def search_labels_for_bottle(request: Request):
         # Get bottle data from request body
         bottle_data = await request.json()
 
-        logger.info(f"=== LABEL SEARCH REQUEST ===")
+        logger.info("=== LABEL SEARCH REQUEST ===")
         logger.info(f"Producer: {bottle_data.get('producer')}")
         logger.info(f"Name: {bottle_data.get('name')}")
         logger.info(f"Year: {bottle_data.get('year')}")

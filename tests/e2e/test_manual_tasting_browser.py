@@ -15,7 +15,7 @@ This tests the frontend/backend integration that API-only tests miss.
 """
 
 import pytest
-from playwright.sync_api import sync_playwright, expect
+from playwright.sync_api import expect, sync_playwright
 
 
 class TestManualTastingWizard:
@@ -277,7 +277,7 @@ class TestManualTastingWizard:
             # First create an event via API
             import requests
             event_response = requests.post(
-                f"http://localhost:9000/api/v1/events",
+                "http://localhost:9000/api/v1/events",
                 json={
                     "name": "E2E Test Event",
                     "host_name": "E2E Host",

@@ -16,6 +16,7 @@ Usage:
 """
 
 import pytest
+
 pytest.skip("This is an interactive prompt tuning script, not a test suite", allow_module_level=True)
 
 import argparse
@@ -27,9 +28,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from reserve_automation.core.config import Config
+from reserve_automation.core.tasting_note import TastingNote
 from reserve_automation.llm.gateway import LLMGateway
 from reserve_automation.utils.llm_whisperer import extract_layout_text
-from reserve_automation.core.tasting_note import TastingNote
 
 
 def extract_table(fixture_name: str, output_file: Path = None):
@@ -121,7 +122,7 @@ async def test_prompt(table_text: str, prompt_template: str, ground_truth: dict 
                 if json_match:
                     json_str = json_match.group(0)
                 else:
-                    print(f"\n❌ ERROR: Could not find valid JSON in response")
+                    print("\n❌ ERROR: Could not find valid JSON in response")
                     print(f"JSON parse error: {e}")
                     print("\nResponse does not contain JSON. The LLM returned prose instead of JSON.")
                     print("Try adjusting your prompt to explicitly request JSON output only.")
@@ -131,12 +132,12 @@ async def test_prompt(table_text: str, prompt_template: str, ground_truth: dict 
                 try:
                     result_dict = json_lib.loads(json_str)
                 except json_lib.JSONDecodeError as e2:
-                    print(f"\n❌ ERROR: Extracted text is not valid JSON")
+                    print("\n❌ ERROR: Extracted text is not valid JSON")
                     print(f"Extracted text:\n{json_str}")
                     print(f"\nJSON parse error: {e2}")
                     return None
             else:
-                print(f"\n❌ ERROR: Could not extract JSON from response")
+                print("\n❌ ERROR: Could not extract JSON from response")
                 return None
 
         # Check if this is a multi-wine response or single wine
@@ -187,13 +188,13 @@ async def test_prompt(table_text: str, prompt_template: str, ground_truth: dict 
             print(f"Taster: {result.taster_name}")
             print(f"Date: {result.tasting_date}")
             print(f"Place: {result.place}")
-            print(f"\nScores:")
+            print("\nScores:")
             print(f"  Appearance: {result.wine_appearance}")
             print(f"  Aroma: {result.wine_aroma}")
             print(f"  Taste: {result.wine_taste}")
             print(f"  Aftertaste: {result.wine_aftertaste}")
             print(f"  Overall: {result.wine_overall}")
-            print(f"\nTasting Notes:")
+            print("\nTasting Notes:")
             print(f"  Nose: {result.nose_notes}")
             print(f"  Palate: {result.palate_notes}")
             print(f"  Finish: {result.finish_notes}")

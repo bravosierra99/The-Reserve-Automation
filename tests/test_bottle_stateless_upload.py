@@ -15,8 +15,8 @@ This replaces the old session-based workflow that used:
 """
 
 import json
-from pathlib import Path
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient

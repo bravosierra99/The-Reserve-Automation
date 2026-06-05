@@ -3,7 +3,6 @@
 Data is stored in SQLite (not vault files).
 """
 
-import pytest
 
 
 class TestCreateCocktailTasting:

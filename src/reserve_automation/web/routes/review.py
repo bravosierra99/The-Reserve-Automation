@@ -3,22 +3,20 @@
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, Request
-from ..auth.dependencies import require
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import BaseModel
 
-from ..sessions import SessionManager
+from ..auth.dependencies import require
 from ..services.extraction_service import ExtractionService
 from ..services.review_service import ReviewService
-from ..services.upload_service import UploadService
+from ..sessions import SessionManager
 
 router = APIRouter(dependencies=[Depends(require("upload.access"))])
 
 
 def _get_review_service():
-    from ..services.review_service import ReviewService
     from ...db.engine import get_db
     from ...db.repositories.bottle_repo import SQLiteBottleRepository
     from ...db.repositories.tasting_repo import SQLiteTastingRepository
@@ -184,7 +182,7 @@ async def approve_extraction(
     Returns:
         Approval results
     """
-    from ..app import upload_service, core_config, web_config
+    from ..app import core_config, upload_service, web_config
 
     if not upload_service or not core_config or not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
