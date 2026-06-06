@@ -13,6 +13,7 @@ from ....core.models import BottleMetadata
 from ....db.repositories import get_bottle_repo
 from ....db.repositories.bottle_repo import SQLiteBottleRepository
 from ...auth.dependencies import require
+from ...services.duplicate_service import build_duplicate_matches
 
 MEDIA_DIR = Path(os.getenv("MEDIA_DIR", "data/media"))
 
@@ -96,9 +97,10 @@ async def save_bottle(
 
         # Check for duplicates (unless force_save or replacing)
         if not request.force_save and not request.replace_bottle_id:
-            duplicates = bottle_repo.find_duplicates(bottle.producer, bottle.name, bottle.year)
+            candidates = bottle_repo.find_duplicates(bottle.producer, bottle.name, bottle.year)
 
-            if duplicates:
+            if candidates:
+                duplicates = build_duplicate_matches(bottle, candidates)
                 logger.info(f"Found {len(duplicates)} potential duplicates")
                 return {
                     "status": "duplicate_found",
@@ -208,8 +210,9 @@ async def check_duplicates_manual(
         logger.info(f"Manual duplicate check: {bottle.producer} - {bottle.name} ({bottle.year})")
         logger.info(f"  Bottle type: {bottle.type}")
 
-        # Check for duplicates with low threshold to show all potential matches
-        duplicates = bottle_repo.find_duplicates(bottle.producer, bottle.name, bottle.year)
+        # Find candidate matches (producer + name); year differences are allowed
+        candidates = bottle_repo.find_duplicates(bottle.producer, bottle.name, bottle.year)
+        duplicates = build_duplicate_matches(bottle, candidates)
 
         logger.info(f"Found {len(duplicates)} potential duplicates")
 

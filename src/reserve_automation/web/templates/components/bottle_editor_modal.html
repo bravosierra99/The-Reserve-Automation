@@ -848,7 +848,7 @@
                             <div class="flex-1">
                                 <h4 class="font-bold text-gray-800" x-text="`${dup.producer} - ${dup.name}`"></h4>
                                 <p class="text-sm text-gray-600"><span class="font-semibold">Year:</span> <span x-text="dup.year"></span></p>
-                                <p class="text-sm text-gray-600"><span class="font-semibold">Match:</span> <span x-text="dup.confidence"></span>%</p>
+                                <p class="text-sm text-gray-600"><span class="font-semibold">Match:</span> <span x-text="Math.round(dup.confidence * 100)"></span>%</p>
                                 <p class="text-sm text-gray-600" x-text="dup.reason"></p>
                                 <button type="button"
                                         @click.prevent="bottleEditor.handleDuplicateResolution('replace', dup.id)"

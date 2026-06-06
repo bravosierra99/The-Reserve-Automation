@@ -9,6 +9,74 @@ from loguru import logger
 from reserve_automation.core.models import BottleMetadata
 
 
+def _fuzzy_ratio(a: str, b: str) -> float:
+    """Case-insensitive fuzzy similarity between two strings (0.0-1.0)."""
+    a = (a or "").lower().strip()
+    b = (b or "").lower().strip()
+    if not a or not b:
+        return 0.0
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def score_duplicate(candidate: BottleMetadata, target: BottleMetadata) -> tuple[float, str]:
+    """Score how likely ``candidate`` (an existing bottle) duplicates ``target``.
+
+    Producer and name dominate (0.45 each); a matching year adds a small bonus
+    (0.10). Year is intentionally a weak signal so a different vintage of the
+    same bottle still scores as a strong match and gets surfaced to the user.
+
+    Returns ``(confidence, reason)`` where confidence is 0.0-1.0 (the UI
+    multiplies by 100) and reason is a short human explanation.
+    """
+    producer_sim = _fuzzy_ratio(target.producer or "", candidate.producer or "")
+    name_sim = _fuzzy_ratio(target.name or "", candidate.name or "")
+    same_year = bool(target.year and candidate.year and target.year == candidate.year)
+
+    confidence = producer_sim * 0.45 + name_sim * 0.45 + (0.10 if same_year else 0.0)
+
+    reasons: list[str] = []
+    if producer_sim > 0.85:
+        reasons.append(f"Same producer: {candidate.producer}")
+    elif producer_sim > 0.5:
+        reasons.append(f"Similar producer: {candidate.producer}")
+    if name_sim > 0.85:
+        reasons.append(f"Same name: {candidate.name}")
+    elif name_sim > 0.5:
+        reasons.append(f"Similar name: {candidate.name}")
+    if candidate.year and target.year and candidate.year != target.year:
+        reasons.append(f"Different vintage ({candidate.year} vs {target.year})")
+    elif same_year:
+        reasons.append(f"Same year: {candidate.year}")
+
+    return round(confidence, 2), "; ".join(reasons) if reasons else "Similar bottle"
+
+
+def build_duplicate_matches(
+    target: BottleMetadata, candidates: list[BottleMetadata]
+) -> list[dict]:
+    """Turn raw DB candidates into UI-ready duplicate dicts, sorted by confidence.
+
+    Each dict carries the fields the bottle-editor modal renders: ``id``,
+    ``producer``, ``name``, ``year``, ``type``, ``confidence`` and ``reason``.
+    """
+    matches: list[dict] = []
+    for c in candidates:
+        confidence, reason = score_duplicate(c, target)
+        matches.append(
+            {
+                "id": c.id,
+                "producer": c.producer,
+                "name": c.name,
+                "year": c.year,
+                "type": c.type,
+                "confidence": confidence,
+                "reason": reason,
+            }
+        )
+    matches.sort(key=lambda m: m["confidence"], reverse=True)
+    return matches
+
+
 class DuplicateDetectionService:
     """Service for detecting potential duplicate bottles in the vault."""
 
