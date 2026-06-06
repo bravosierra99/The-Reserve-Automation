@@ -250,10 +250,19 @@ class TestManualCropWorkflow:
 
     def test_manual_crop_endpoint_with_valid_bottle_id(self, test_client):
         """Test manual crop with bottle_id (new API contract)."""
-        # Register a test bottle in the registry
-        from reserve_automation.web import app as web_app
-        test_vault_path = "1_Whiskeys/Test Distillery - Test Bourbon - 2020"
-        test_bottle_id = web_app.bottle_registry.register(test_vault_path)
+        # Create a real bottle in the (in-memory) DB to get an integer id.
+        # The vault-era bottle_registry was removed in the SQLite migration.
+        from reserve_automation.db.engine import _SessionLocal
+        from reserve_automation.db.repositories.bottle_repo import SQLiteBottleRepository
+        session = _SessionLocal()
+        try:
+            bottle = SQLiteBottleRepository(session).create(BottleMetadata(
+                producer="Test Distillery", name="Test Bourbon",
+                type="whiskey", source="test",
+            ))
+            test_bottle_id = str(bottle.id)
+        finally:
+            session.close()
 
         response = test_client.post(
             "/api/v1/management/labels/manual-crop",

@@ -82,6 +82,28 @@ def setup_test_environment():
         for subdir in ("1_Wines", "1_Whiskeys"):
             (vault_path / subdir).mkdir(parents=True, exist_ok=True)
 
+    # Isolate label/image media to a tmp dir so the label-crop endpoint tests
+    # never read or overwrite real bottle images under data/media. The label
+    # routes resolve MEDIA_DIR/bottles/{id}/label.jpg by integer id, which
+    # collides with real bottle ids; without this a crop test would clobber a
+    # production label (CLAUDE.md: tests use isolated /tmp, never real data).
+    os.environ.setdefault("MEDIA_DIR", "/tmp/test-media")
+    media_path = Path(os.environ["MEDIA_DIR"])
+    if str(media_path).startswith("/tmp/"):
+        media_path.mkdir(parents=True, exist_ok=True)
+        # These modules captured MEDIA_DIR at import; repoint in case any were
+        # imported before this session-autouse fixture ran.
+        for _mod in (
+            "reserve_automation.web.routes.management.labels",
+            "reserve_automation.web.routes.bottles.save",
+            "reserve_automation.web.routes.bottles.serving",
+        ):
+            try:
+                import importlib
+                importlib.import_module(_mod).MEDIA_DIR = media_path
+            except Exception:
+                pass
+
     # Use in-memory SQLite for tests. This ensures the app lifespan
     # re-uses the same in-memory DB instead of creating a file-based one.
     os.environ["DATABASE_URL"] = "sqlite:///:memory:"

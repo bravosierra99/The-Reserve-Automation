@@ -81,6 +81,19 @@ def _get_label_dir(bottle_id: str) -> Path:
     return label_dir
 
 
+def _resolve_bottle_id(bottle_id) -> int:
+    """Parse a bottle id to its integer PK, raising 404 for malformed ids.
+
+    Bottle ids are integer primary keys; a non-numeric value can never match a
+    bottle, so it's a 404 (not found) rather than an unhandled 500. Centralizes
+    the int() conversion that every label endpoint needs before get_by_id().
+    """
+    try:
+        return int(bottle_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
+
+
 @router.post("/api/v1/management/labels/crop-current", dependencies=[Depends(require("labels.edit"))])
 async def crop_current_label(
     data: dict,
@@ -104,7 +117,7 @@ async def crop_current_label(
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -159,7 +172,7 @@ async def accept_label_crop(
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -224,7 +237,7 @@ async def download_label_image(
         if not image_url:
             raise HTTPException(status_code=400, detail="Missing image URL")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -294,7 +307,7 @@ async def crop_downloaded_image(
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -343,7 +356,7 @@ async def use_downloaded_label(
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -413,7 +426,7 @@ async def manual_crop_label(
         if not bottle_id or x is None or y is None or width is None or height is None:
             raise HTTPException(status_code=400, detail="Missing bottle_id or coordinates")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -501,7 +514,7 @@ async def upload_manual_label(
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Bottle data has no id")
 
-        db_bottle = bottle_repo.get_by_id(int(bottle_id))
+        db_bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not db_bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -560,7 +573,7 @@ async def upload_custom_label(
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Bottle data has no id")
 
-        db_bottle = bottle_repo.get_by_id(int(bottle_id))
+        db_bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not db_bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -630,7 +643,7 @@ async def manual_crop_downloaded_label(
         if not bottle_id or x is None or y is None or width is None or height is None:
             raise HTTPException(status_code=400, detail="Missing bottle_id or coordinates")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -872,7 +885,7 @@ async def view_label_image(
         logger.debug(f"View label request: id={id}, path={path}")
 
         if id:
-            bottle = bottle_repo.get_by_id(int(id))
+            bottle = bottle_repo.get_by_id(_resolve_bottle_id(id))
             if not bottle:
                 raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {id}")
 
@@ -979,7 +992,7 @@ async def get_label_thumbnail(
 
         # If id is provided, resolve it to a media path
         if id:
-            bottle = bottle_repo.get_by_id(int(id))
+            bottle = bottle_repo.get_by_id(_resolve_bottle_id(id))
             if not bottle:
                 raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {id}")
 
