@@ -332,3 +332,52 @@ class TestDeprecatedEndpointsRemoved:
 
         # Should return 404 or 405 (route doesn't exist)
         assert response.status_code in [404, 405]
+
+
+class TestAutoCropTemp:
+    """Auto-crop for upload-mode labels: POST /api/v1/bottles/auto-crop-temp.
+
+    The upload modal's Auto-Crop button crops the just-uploaded image before
+    the bottle is saved (no DB id yet), mirroring manual-crop-temp.
+    """
+
+    @pytest.mark.parametrize("bad_id", ["../etc/passwd", "a/b", ""])
+    def test_invalid_upload_id_rejected(self, test_client, bad_id):
+        """Path-traversal / empty upload_id is a 400, never a 500."""
+        response = test_client.post(
+            "/api/v1/bottles/auto-crop-temp", json={"upload_id": bad_id}
+        )
+        assert response.status_code == 400
+
+    def test_missing_temp_dir_returns_404(self, test_client):
+        """A well-formed but unknown upload_id has no temp dir → 404."""
+        response = test_client.post(
+            "/api/v1/bottles/auto-crop-temp",
+            json={"upload_id": "nonexistent-upload-xyz"},
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.requires_lm_studio
+    def test_auto_crop_happy_path(self, test_client, sample_bottle_image):
+        """Staging a temp label and auto-cropping it returns success.
+
+        Gated on LM Studio because crop_to_label's primary (text-based) label
+        detection uses LLM vision.
+        """
+        import shutil
+        import uuid
+
+        upload_id = f"test-{uuid.uuid4().hex[:8]}"
+        labels_dir = Path("/tmp/reserve_uploads") / upload_id / "labels"
+        labels_dir.mkdir(parents=True, exist_ok=True)
+        (labels_dir / "label.jpg").write_bytes(sample_bottle_image.getvalue())
+        try:
+            response = test_client.post(
+                "/api/v1/bottles/auto-crop-temp", json={"upload_id": upload_id}
+            )
+            assert response.status_code == 200, response.text
+            assert response.json()["status"] == "success"
+            # The temp label is overwritten in place (no separate preview file).
+            assert (labels_dir / "label.jpg").exists()
+        finally:
+            shutil.rmtree(Path("/tmp/reserve_uploads") / upload_id, ignore_errors=True)

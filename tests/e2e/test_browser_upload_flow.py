@@ -461,8 +461,13 @@ class TestBrowserUploadFlow:
 
             browser.close()
 
+    @pytest.mark.requires_lm_studio
     def test_auto_crop_workflow(self, web_server, sample_image):
-        """Test auto-crop workflow in upload modal."""
+        """Test auto-crop workflow in upload modal.
+
+        Uploads + extracts (LLM) and the auto-crop itself runs LLM/CV label
+        detection, so this needs a reachable LM Studio endpoint.
+        """
         console_logs = []
         alert_messages = []
 
