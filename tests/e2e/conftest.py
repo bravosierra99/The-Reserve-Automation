@@ -1,11 +1,20 @@
 """Shared fixtures for E2E browser tests."""
 
+import os
 import subprocess
 import time
 from pathlib import Path
 
 import pytest
 from playwright.sync_api import sync_playwright
+
+# Playwright's bundled Firefox build ships a host-validation manifest that
+# stats a phantom `firefox/lock` file which does not exist in this build, so
+# `validateDependenciesLinux` throws ENOENT before the browser ever launches
+# (upstream packaging bug). The engine itself (libxul.so etc.) is present and
+# works fine, so we skip the broken pre-launch validation. setdefault leaves an
+# explicit override in place. Without this, every E2E browser test errors.
+os.environ.setdefault("PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS", "1")
 
 # ============================================================================
 # PYTEST HOOKS FOR PROGRESS VISIBILITY
@@ -76,18 +85,21 @@ def test_db(tmp_path):
         name="Original Wheated Bourbon",
         type=BeverageType.WHISKEY,
         inventory=2,
+        source="test",
     ))
     repo.create(BottleMetadata(
         producer="Buffalo Trace",
         name="Kentucky Straight Bourbon",
         type=BeverageType.WHISKEY,
         inventory=1,
+        source="test",
     ))
     repo.create(BottleMetadata(
         producer="Caymus",
         name="Cabernet Sauvignon 2021",
         type=BeverageType.WINE,
         inventory=3,
+        source="test",
     ))
     session.close()
     engine.dispose()
@@ -134,8 +146,14 @@ def web_server(test_db):
     # Build subprocess env: inherit parent + override DATABASE_URL and dev auth
     server_env = os.environ.copy()
     server_env["DATABASE_URL"] = f"sqlite:///{test_db}"
-    # Ensure dev mode auth is active so tests can reach guarded endpoints
     server_env.setdefault("WEB_SECRET_KEY", "e2e-test-secret-key-not-secure-32chars")
+    # Enable dev-mode auth in the SUBPROCESS server. The root conftest patches
+    # app.state.auth_config in-process, but this fixture launches a separate
+    # uvicorn that never sees that patch — it loads config/auth.yaml, where
+    # dev.enabled is false (prod default), so every guarded route 401s and the
+    # browser sees an empty error page. AUTH_DEV_ENABLED is the documented
+    # override (web/auth/config.py); without it all browser-driven e2e fails.
+    server_env["AUTH_DEV_ENABLED"] = "1"
 
     # Start server WITHOUT --reload to avoid subprocess complexity in tests
     # Use port 9000 to avoid conflicts with the main server on 8000.
