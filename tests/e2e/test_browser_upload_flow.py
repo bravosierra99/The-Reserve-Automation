@@ -659,12 +659,13 @@ class TestBrowserManagementFlow:
             # Enter grid mode
             self._enter_grid_mode(page, web_server)
 
-            # Wait for bottles to appear in grid
-            # Bottles have cursor-pointer and rounded-lg classes with the bottle name text
-            page.wait_for_selector(".cursor-pointer.rounded-lg", timeout=10000)
+            # Wait for bottles to appear in grid. The clickable bottle card is
+            # the inner <div @click="bottleEditor.openManagement(...)"> with
+            # classes "cursor-pointer flex-1" (see templates/bottles.html).
+            page.wait_for_selector(".cursor-pointer.flex-1", timeout=10000)
 
             # Click first bottle
-            first_bottle = page.locator(".cursor-pointer.rounded-lg").first
+            first_bottle = page.locator(".cursor-pointer.flex-1").first
             first_bottle.click()
 
             # Verify modal opens
@@ -685,10 +686,10 @@ class TestBrowserManagementFlow:
             self._enter_grid_mode(page, web_server)
 
             # Wait for bottles to load
-            page.wait_for_selector(".cursor-pointer.rounded-lg", timeout=10000)
+            page.wait_for_selector(".cursor-pointer.flex-1", timeout=10000)
 
             # Click bottle and open modal
-            page.locator(".cursor-pointer.rounded-lg").first.click()
+            page.locator(".cursor-pointer.flex-1").first.click()
             page.wait_for_selector("[x-show='bottleEditor.isOpen']", timeout=5000)
 
             # Click save
@@ -698,7 +699,7 @@ class TestBrowserManagementFlow:
             expect(page.locator("text=Bottle saved successfully")).to_be_visible(timeout=5000)
 
             # Verify page reloads (modal should close and grid should be visible again)
-            page.wait_for_selector(".cursor-pointer.rounded-lg", timeout=5000)
+            page.wait_for_selector(".cursor-pointer.flex-1", timeout=5000)
 
             print("✓ Save in management mode works: Page reloaded")
 
@@ -753,7 +754,7 @@ class TestBrowserManagementFlow:
 
             # Find a bottle that has a label (look for one that shows an image, not placeholder)
             # The fixture bottles (Weller, Caymus) should have labels
-            bottle_cards = page.locator(".cursor-pointer.rounded-lg")
+            bottle_cards = page.locator(".cursor-pointer.flex-1")
             bottle_count = bottle_cards.count()
             print(f"Found {bottle_count} bottles")
 
