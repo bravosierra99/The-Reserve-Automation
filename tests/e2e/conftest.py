@@ -80,29 +80,45 @@ def test_db(tmp_path):
     session = _SessionLocal()
 
     repo = SQLiteBottleRepository(session)
-    repo.create(BottleMetadata(
-        producer="Weller",
-        name="Original Wheated Bourbon",
-        type=BeverageType.WHISKEY,
-        inventory=2,
-        source="test",
-    ))
-    repo.create(BottleMetadata(
-        producer="Buffalo Trace",
-        name="Kentucky Straight Bourbon",
-        type=BeverageType.WHISKEY,
-        inventory=1,
-        source="test",
-    ))
-    repo.create(BottleMetadata(
-        producer="Caymus",
-        name="Cabernet Sauvignon 2021",
-        type=BeverageType.WINE,
-        inventory=3,
-        source="test",
-    ))
+    created = [
+        repo.create(BottleMetadata(
+            producer="Weller",
+            name="Original Wheated Bourbon",
+            type=BeverageType.WHISKEY,
+            inventory=2,
+            source="test",
+        )),
+        repo.create(BottleMetadata(
+            producer="Buffalo Trace",
+            name="Kentucky Straight Bourbon",
+            type=BeverageType.WHISKEY,
+            inventory=1,
+            source="test",
+        )),
+        repo.create(BottleMetadata(
+            producer="Caymus",
+            name="Cabernet Sauvignon 2021",
+            type=BeverageType.WINE,
+            inventory=3,
+            source="test",
+        )),
+    ]
     session.close()
     engine.dispose()
+
+    # Seed a real label image for each bottle under the (isolated) MEDIA_DIR so
+    # browser tests that open a bottle's label (e.g. the management manual-crop
+    # / Cropper.js flow) have an image to initialize on. The vault-era test
+    # fixtures copied labeled bottles; the SQLite test_db otherwise has none.
+    import os
+    import shutil
+    media_dir = Path(os.environ.get("MEDIA_DIR", "data/media"))
+    fixture_label = Path(__file__).parent.parent / "fixtures" / "bottles" / "bourbon_001.jpg"
+    if str(media_dir).startswith("/tmp/") and fixture_label.exists():
+        for bottle in created:
+            label_dir = media_dir / "bottles" / str(bottle.id)
+            label_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(fixture_label, label_dir / "label.jpg")
 
     yield str(db_path)
 
