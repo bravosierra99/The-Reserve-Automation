@@ -312,6 +312,36 @@ class TestCheckDuplicatesEndpoint:
         assert data["status"] == "checked"
         assert data["count"] >= 1
 
+    def test_check_duplicates_finds_prefix_name_match(self, client, bottle_repo):
+        """The literal manifest path: /check-duplicates must flag a stored bottle
+        whose name is a prefix of the incoming one (Castello di Ama repro). Mirrors
+        the /save regression so the two routes can't silently diverge.
+        """
+        from reserve_automation.core.models import BottleMetadata
+
+        chianti = bottle_repo.create(BottleMetadata(
+            producer="Castello di Ama", name="Chianti Classico", type="wine",
+            year=2021, beverage_type="Red wine", country="Italy", source="manual",
+        ))
+        try:
+            response = client.post(
+                "/api/v1/bottles/check-duplicates",
+                json={
+                    "producer": "Castello di Ama",
+                    "name": "Chianti Classico Riserva",
+                    "type": "wine",
+                    "year": 2006,
+                    "beverage_type": "Red wine",
+                    "source": "manual",
+                },
+            )
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["status"] == "checked"
+            assert any(m["id"] == str(chianti.id) for m in data["duplicates"]), data
+        finally:
+            bottle_repo.delete(chianti.id)
+
     def test_check_duplicates_no_match(self, client):
         response = client.post(
             "/api/v1/bottles/check-duplicates",
