@@ -88,8 +88,11 @@ class TestBrowserUploadFlow:
                 modal = page.locator("[x-show='bottleEditor.isOpen']")
                 expect(modal).to_be_visible()
 
-                # Verify modal header shows bottle data (producer - name format)
-                header = page.locator("h2.text-3xl")
+                # Verify modal header shows bottle data (producer - name format).
+                # Scope to the open modal and match the heading element directly;
+                # the heading uses responsive Tailwind classes (text-xl lg:text-3xl),
+                # so a bare ".text-3xl" selector does not match.
+                header = page.locator("[x-show='bottleEditor.isOpen'] h2").first
                 expect(header).to_be_visible()
 
                 # Verify at least one input field is present (proves form loaded)
