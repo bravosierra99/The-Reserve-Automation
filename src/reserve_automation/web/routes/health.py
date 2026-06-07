@@ -131,6 +131,24 @@ async def health_check():
     return {"status": "healthy"}
 
 
+@router.get("/version")
+async def version():
+    """Public, unauthenticated version endpoint for local service monitoring.
+
+    Returns ONLY non-sensitive build identifiers (version + short commit). This
+    is deliberately public (see PUBLIC_PATHS in auth/middleware.py) so monitors
+    can read it by hitting the app port directly, without going through
+    Cloudflare Access. Do NOT widen this to the full _get_git_info() dict —
+    branch, full commit, commit message and clean-state are admin-only and live
+    on /health/details.
+    """
+    git_info = _get_git_info()
+    return {
+        "version": git_info["version"],
+        "commit_short": git_info["commit_short"],
+    }
+
+
 @router.get("/health/details", dependencies=[Depends(require("management.access"))])
 async def health_check_details():
     """
