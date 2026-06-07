@@ -65,7 +65,7 @@
                     class="p-6 border-2 border-gray-300 rounded-lg transition-all">
                 <div class="text-4xl mb-2">📦</div>
                 <h3 class="font-bold text-lg mb-2">Bottle Manifest</h3>
-                <p class="text-sm text-gray-600">Upload a photo of multiple bottles at once</p>
+                <p class="text-sm text-gray-600">Upload a PDF or photo of multiple bottles at once</p>
             </button>
         </div>
     </div>
@@ -125,7 +125,7 @@
             type="file"
             x-ref="fileInput"
             @change="handleFileSelect"
-            accept="image/*"
+            :accept="uploadType === 'manifest' ? 'image/*,application/pdf,.pdf' : 'image/*'"
             capture="environment"
             class="hidden"
         >
@@ -133,7 +133,7 @@
         <!-- Upload buttons -->
         <div x-show="!selectedFile" class="space-y-4">
             <button
-                @click="$refs.fileInput.click()"
+                @click="$refs.fileInput.setAttribute('capture', 'environment'); $refs.fileInput.click()"
                 class="w-full py-4 px-6 bg-blue-600 hover:bg-blue-700 text-white text-lg font-semibold rounded-lg shadow-md transition-colors"
             >
                 📸 Take Photo
@@ -142,9 +142,8 @@
             <button
                 @click="$refs.fileInput.removeAttribute('capture'); $refs.fileInput.click()"
                 class="w-full py-4 px-6 bg-green-600 hover:bg-green-700 text-white text-lg font-semibold rounded-lg shadow-md transition-colors"
-            >
-                🖼️ Choose from Gallery
-            </button>
+                x-text="uploadType === 'manifest' ? '📄 Choose PDF or Image' : '🖼️ Choose from Gallery'"
+            ></button>
         </div>
 
         <!-- Preview and upload -->
