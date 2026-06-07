@@ -56,6 +56,12 @@ window.bottleEditorModal = function() {
         selectedDuplicate: null,  // Which duplicate is selected (bottle ID)
         showDuplicateDialog: false,
         selectedDuplicateAction: null, // 'new', 'replace', 'skip'
+        // Manual duplicate override: when fuzzy matching surfaces nothing (or the
+        // wrong thing), the user can search the whole collection and pick the real
+        // bottle to replace. Feeds the SAME selectedDuplicate/replace path.
+        manualMatchQuery: '',
+        manualMatchResults: [],
+        manualMatchSearching: false,
 
         // Tasting summary (management mode)
         tastingSummary: null,
@@ -223,6 +229,9 @@ window.bottleEditorModal = function() {
             this.duplicateAction = null;  // Reset to null so first save attempt checks for duplicates
             this.selectedDuplicate = null;
             this.showDuplicateDialog = false;
+            this.manualMatchQuery = '';
+            this.manualMatchResults = [];
+            this.manualMatchSearching = false;
             // Reset tasting list state
             this.tastingsList = [];
             this.showTastingsList = false;
@@ -582,6 +591,39 @@ window.bottleEditorModal = function() {
                 this.duplicates = [];
             } finally {
                 this.saving = false;
+            }
+        },
+
+        /**
+         * Manual duplicate override: search the whole collection so the user can
+         * pick the real match when fuzzy scoring missed it (or chose wrong), then
+         * Replace it. Reuses the admin-only management search endpoint and feeds
+         * the same selectedDuplicate/replace path the fuzzy cards use.
+         */
+        async manualMatchSearch() {
+            const q = (this.manualMatchQuery || '').trim();
+            if (!q) {
+                this.manualMatchResults = [];
+                return;
+            }
+            this.manualMatchSearching = true;
+            try {
+                const resp = await fetch(
+                    `/api/v1/management/bottles/search?q=${encodeURIComponent(q)}`
+                );
+                if (!resp.ok) throw new Error('Search failed');
+                const data = await resp.json();
+                const results = data.bottles || [];
+                // Surface same-type bottles first (the usual replace target), but
+                // keep all — this is an explicit override, the user decides.
+                const myType = this.bottle?.type;
+                results.sort((a, b) => (b.type === myType) - (a.type === myType));
+                this.manualMatchResults = results;
+            } catch (error) {
+                console.error('Manual match search failed:', error);
+                this.manualMatchResults = [];
+            } finally {
+                this.manualMatchSearching = false;
             }
         },
 
