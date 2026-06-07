@@ -92,6 +92,33 @@ class TestPublicPaths:
         resp = client.get("/api/v1/health")
         assert resp.status_code == 200
 
+    def test_version_is_public_and_returns_only_safe_fields(self):
+        """The real /api/v1/version route must be reachable with NO auth (the
+        production scenario: a monitor hitting the app port directly, no
+        Cloudflare JWT) and must expose ONLY version + commit_short.
+        """
+        from reserve_automation.web.routes import health
+
+        config = AuthConfig(dev=DevConfig(enabled=False))
+        app = FastAPI()
+        app.state.auth_config = config
+        app.add_middleware(AuthMiddleware, auth_config=config)
+        app.include_router(health.router, prefix="/api/v1")
+        client = TestClient(app)
+
+        # Prod mode, no JWT header at all → still 200 because it's allowlisted.
+        resp = client.get("/api/v1/version")
+        assert resp.status_code == 200, resp.text
+
+        body = resp.json()
+        assert set(body.keys()) == {"version", "commit_short"}
+        # Guard against ever widening to the full _get_git_info() dict.
+        sensitive_keys = (
+            "commit", "commit_message", "branch", "clean", "commit_date", "build_date",
+        )
+        for sensitive in sensitive_keys:
+            assert sensitive not in body
+
 
 class TestProdMode:
     """Test production mode (Cloudflare Access)."""

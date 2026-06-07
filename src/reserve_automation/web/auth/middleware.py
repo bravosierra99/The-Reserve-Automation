@@ -12,9 +12,13 @@ from .config import AuthConfig
 from .jwt import CloudflareJWTValidator
 from .models import AuthenticatedUser
 
-# Paths that don't require authentication
+# Paths that don't require authentication.
+# Exact-match only (see _is_public_path) — entries must match the mounted path
+# precisely, with no trailing slash. /version exposes only version + short commit
+# so local monitoring can poll it without going through Cloudflare Access.
 PUBLIC_PATHS = {
     "/api/v1/health",
+    "/api/v1/version",
 }
 
 # Path prefixes that don't require authentication

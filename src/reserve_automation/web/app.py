@@ -139,7 +139,8 @@ templates.env.cache = None
 # Include routers
 # #CLAUDE_REQ: Every router included here MUST enforce auth via Depends(require(...)).
 # Either at router level (APIRouter(dependencies=[Depends(require(...))])) or on each
-# individual route. health.router is the only intentional exception (public /health).
+# individual route. health.router is the only intentional exception: its public
+# /health and /version routes are allowlisted in auth/middleware.py PUBLIC_PATHS.
 # See config/auth.yaml for the full permission → role mapping.
 # When adding a new router: grep its file for require() before including it here.
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
