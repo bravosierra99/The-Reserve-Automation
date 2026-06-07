@@ -51,17 +51,46 @@ def score_duplicate(candidate: BottleMetadata, target: BottleMetadata) -> tuple[
     return round(confidence, 2), "; ".join(reasons) if reasons else "Similar bottle"
 
 
+# Minimum fuzzy-match confidence (0-1) for a stored bottle to be surfaced as a
+# potential duplicate. Tuned to sit ABOVE the ~0.45 floor that a shared producer
+# alone produces (a winery's other wines must not all flag each other) and BELOW
+# the ~0.8 a same-or-similar name reaches. Deliberately inclusive: duplicate
+# detection is a warning with a "save new / replace / skip" choice, not a hard
+# block, so a false positive costs the user one click while a false negative is a
+# silent miss (the bug that motivated this threshold).
+DUPLICATE_CONFIDENCE_THRESHOLD = 0.6
+
+# Never surface more than this many matches; the modal shows the top 5 and notes
+# the rest. Sorted by confidence, so the most likely duplicates always make the cut.
+MAX_DUPLICATE_MATCHES = 10
+
+
 def build_duplicate_matches(
-    target: BottleMetadata, candidates: list[BottleMetadata]
+    target: BottleMetadata,
+    candidates: list[BottleMetadata],
+    threshold: float = DUPLICATE_CONFIDENCE_THRESHOLD,
 ) -> list[dict]:
-    """Turn raw DB candidates into UI-ready duplicate dicts, sorted by confidence.
+    """Fuzzy-score candidate bottles against ``target`` and return UI-ready dicts.
+
+    ``score_duplicate`` is the single source of truth for "is this a duplicate":
+    callers pass a broad candidate pool (e.g. every bottle of the same type) and
+    this function scores each, keeps those at or above ``threshold``, sorts by
+    confidence and caps the list. This is intentional — candidate generation is
+    dumb and complete so the scorer never gets starved of a real match (the
+    failure mode where a strict SQL prefilter dropped "Chianti Classico" before
+    "Chianti Classico Riserva" could ever be scored).
 
     Each dict carries the fields the bottle-editor modal renders: ``id``,
     ``producer``, ``name``, ``year``, ``type``, ``confidence`` and ``reason``.
     """
     matches: list[dict] = []
     for c in candidates:
+        # A bottle is never its own duplicate (matters when re-checking a saved bottle).
+        if c.id is not None and target.id is not None and c.id == target.id:
+            continue
         confidence, reason = score_duplicate(c, target)
+        if confidence < threshold:
+            continue
         matches.append(
             {
                 "id": c.id,
@@ -74,7 +103,7 @@ def build_duplicate_matches(
             }
         )
     matches.sort(key=lambda m: m["confidence"], reverse=True)
-    return matches
+    return matches[:MAX_DUPLICATE_MATCHES]
 
 
 class DuplicateDetectionService:

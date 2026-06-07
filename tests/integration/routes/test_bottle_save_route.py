@@ -109,7 +109,15 @@ class TestSaveBottleNoDuplicates:
         assert "id" in data
 
     def test_save_creates_retrievable_bottle(self, client, bottle_repo):
-        unique_payload = {**DIFFERENT_BOTTLE_PAYLOAD, "producer": "Unique Winery XYZ"}
+        # Fully unique producer AND name: this test verifies save+retrieve, not
+        # dedup, so it must not collide with bottles other tests leave behind
+        # (duplicate detection now fuzzy-matches the whole same-type pool, so a
+        # shared name + year alone is enough to trip a duplicate_found response).
+        unique_payload = {
+            **DIFFERENT_BOTTLE_PAYLOAD,
+            "producer": "Unique Winery XYZ",
+            "name": "Singular Cuvee XYZ",
+        }
         response = client.post(
             "/api/v1/bottles/save",
             json={"bottle": unique_payload, "upload_id": None},
@@ -168,6 +176,47 @@ class TestSaveBottleDuplicateDetection:
         assert 0.0 < match["confidence"] <= 1.0
         assert match["reason"]
         assert "vintage" in match["reason"].lower()
+
+    def test_different_name_suffix_still_flagged(self, client, bottle_repo):
+        """A stored bottle whose name is a PREFIX of the incoming one must still flag.
+
+        Real production miss (Castello di Ama): the collection held
+        "Chianti Classico" (2021); a manifest import of "Chianti Classico
+        Riserva" (2006) found nothing, because the old SQL prefilter required the
+        stored name to *contain* the (longer) incoming name. Same producer + a
+        similar name must surface regardless of which string is longer — fuzzy
+        scoring, not substring containment, decides.
+        """
+        from reserve_automation.core.models import BottleMetadata
+
+        chianti = bottle_repo.create(BottleMetadata(
+            producer="Castello di Ama", name="Chianti Classico", type="wine",
+            year=2021, beverage_type="Red wine", country="Italy", source="manual",
+        ))
+        try:
+            incoming = {
+                "producer": "Castello di Ama",
+                "name": "Chianti Classico Riserva",
+                "type": "wine",
+                "year": 2006,
+                "beverage_type": "Red wine",
+                "source": "manual",
+            }
+            response = client.post(
+                "/api/v1/bottles/save",
+                json={"bottle": incoming, "upload_id": None, "force_save": False},
+            )
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["status"] == "duplicate_found", data
+            match = next(
+                (m for m in data["duplicates"] if m["id"] == str(chianti.id)), None
+            )
+            assert match is not None, data["duplicates"]
+            assert match["confidence"] > 0.6
+            assert "vintage" in match["reason"].lower()
+        finally:
+            bottle_repo.delete(chianti.id)
 
     def test_force_save_bypasses_duplicate_detection_different_year(self, client):
         """force_save with a similar-but-different vintage creates a new bottle."""

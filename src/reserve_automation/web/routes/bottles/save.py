@@ -95,12 +95,15 @@ async def save_bottle(
         logger.info(f"  force_save: {request.force_save}")
         logger.info(f"  replace_bottle_id: {request.replace_bottle_id}")
 
-        # Check for duplicates (unless force_save or replacing)
+        # Check for duplicates (unless force_save or replacing).
+        # Candidate generation is deliberately broad — every bottle of the same
+        # type — and build_duplicate_matches (fuzzy score + threshold) is the
+        # single source of truth for what counts as a duplicate.
         if not request.force_save and not request.replace_bottle_id:
-            candidates = bottle_repo.find_duplicates(bottle.producer, bottle.name, bottle.year)
+            candidates = bottle_repo.get_all(bottle.type)
+            duplicates = build_duplicate_matches(bottle, candidates)
 
-            if candidates:
-                duplicates = build_duplicate_matches(bottle, candidates)
+            if duplicates:
                 logger.info(f"Found {len(duplicates)} potential duplicates")
                 return {
                     "status": "duplicate_found",
@@ -210,8 +213,9 @@ async def check_duplicates_manual(
         logger.info(f"Manual duplicate check: {bottle.producer} - {bottle.name} ({bottle.year})")
         logger.info(f"  Bottle type: {bottle.type}")
 
-        # Find candidate matches (producer + name); year differences are allowed
-        candidates = bottle_repo.find_duplicates(bottle.producer, bottle.name, bottle.year)
+        # Broad candidate pool (same type); build_duplicate_matches fuzzy-scores
+        # and thresholds — the single source of truth for duplicate detection.
+        candidates = bottle_repo.get_all(bottle.type)
         duplicates = build_duplicate_matches(bottle, candidates)
 
         logger.info(f"Found {len(duplicates)} potential duplicates")

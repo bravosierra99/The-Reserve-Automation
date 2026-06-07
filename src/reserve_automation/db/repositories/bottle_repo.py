@@ -85,25 +85,12 @@ class SQLiteBottleRepository:
         result = query.first()
         return bottle_to_pydantic(result) if result else None
 
-    def find_duplicates(
-        self, producer: str, name: str, year: int | None = None
-    ) -> list[BottleMetadata]:
-        """Find bottles that might be duplicates based on producer + name.
-
-        Matches on producer AND name (case-insensitive substring). Year is
-        deliberately NOT a hard filter: a different vintage of the same wine
-        (identical producer/name, different year) is still a potential
-        duplicate the user should be warned about. Previously an exact
-        ``year == year`` filter silently dropped these, so re-adding a bottle
-        that differed only by vintage produced no duplicate warning at all.
-        The ``year`` argument is kept for backwards-compatible call sites and
-        feeds match scoring downstream, not row selection.
-        """
-        query = self.db.query(BottleModel).filter(
-            BottleModel.producer.ilike(f"%{producer}%"),
-            BottleModel.name.ilike(f"%{name}%"),
-        )
-        return [bottle_to_pydantic(b) for b in query.all()]
+    # NOTE: duplicate detection no longer lives in the repository. A SQL substring
+    # prefilter was too brittle — it dropped a stored "Chianti Classico" when
+    # checking the longer "Chianti Classico Riserva", so the fuzzy scorer never
+    # ran. Candidate generation is now a broad get_all(type) pool scored by
+    # web.services.duplicate_service.build_duplicate_matches. find_exact() below
+    # is unrelated: it enforces the UNIQUE constraint for the force_save upsert.
 
     def get_db_model(self, bottle_id: int) -> BottleModel | None:
         """Get the raw SQLAlchemy model (for internal use, e.g., FK references)."""
