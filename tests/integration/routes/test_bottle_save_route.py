@@ -14,14 +14,14 @@ Coverage:
 - Bad requests rejected with 422
 """
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 from fastapi.testclient import TestClient
 
 from reserve_automation.core.config import Config
 from reserve_automation.db.engine import get_db
 from reserve_automation.db.repositories.bottle_repo import SQLiteBottleRepository
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -145,6 +145,29 @@ class TestSaveBottleDuplicateDetection:
         data = response.json()
         assert data["status"] == "duplicate_found"
         assert len(data["duplicates"]) >= 1
+
+    def test_different_vintage_still_flagged_as_duplicate(self, client):
+        """A different vintage of the same bottle must still trigger the warning.
+
+        Regression: find_duplicates used to hard-filter on exact year, so
+        re-adding a bottle that differed only by vintage returned no duplicates
+        and the duplicate window never rendered.
+        """
+        different_vintage = {**CABERNET_PAYLOAD, "year": 2021}
+        response = client.post(
+            "/api/v1/bottles/save",
+            json={"bottle": different_vintage, "upload_id": None, "force_save": False},
+        )
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["status"] == "duplicate_found"
+        assert len(data["duplicates"]) >= 1
+        match = data["duplicates"][0]
+        # UI-required fields are populated (not the bare extraction confidence)
+        assert match["id"] == self._existing_id
+        assert 0.0 < match["confidence"] <= 1.0
+        assert match["reason"]
+        assert "vintage" in match["reason"].lower()
 
     def test_force_save_bypasses_duplicate_detection_different_year(self, client):
         """force_save with a similar-but-different vintage creates a new bottle."""

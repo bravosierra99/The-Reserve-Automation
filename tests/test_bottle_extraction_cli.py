@@ -82,6 +82,7 @@ class TestPDFParsing:
         assert "Cava Reserva" in result.raw_text  # Page 2
 
 
+@pytest.mark.requires_lm_studio
 class TestBottleExtraction:
     """Test bottle extraction from manifests."""
 
@@ -206,6 +207,7 @@ class TestBottleExtraction:
             "Expected at least 1 bottle with region information (LLM extraction can vary)"
 
 
+@pytest.mark.requires_lm_studio
 class TestBottleDataQuality:
     """Test the quality of extracted bottle data."""
 
@@ -245,6 +247,7 @@ class TestBottleDataQuality:
                     f"Confidence out of range: {bottle.confidence} for {bottle.producer}"
 
 
+@pytest.mark.requires_lm_studio
 class TestEdgeCases:
     """Test edge cases and error handling."""
 

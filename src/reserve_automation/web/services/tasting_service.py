@@ -1,12 +1,10 @@
 """Service for tasting extraction, matching, and management."""
 
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
 from loguru import logger
 
-from reserve_automation.core.config import Config
 from reserve_automation.core.tasting_note import TastingExtractionResult, TastingNote
 
 from ..schemas.tasting import (
@@ -16,7 +14,6 @@ from ..schemas.tasting import (
     TastingSessionItem,
     TastingStatus,
 )
-
 
 _AUTO_SELECT_THRESHOLD = 0.8
 _PERFECT_MATCH_CONFIDENCE = 1.0
@@ -213,7 +210,6 @@ class TastingService:
 
     def _search_event_bottles(self, bottle_name, beverage_type, event_id, limit):
         """Search for bottles within an event."""
-        from ...db.repositories import get_event_repo
         from ...db.engine import get_db
 
         # Try to get event from DB
@@ -388,9 +384,9 @@ class TastingService:
         # Fallback to vault
         if self.vault_path:
             try:
-                from reserve_automation.generators.tasting_generator import TastingGenerator
-                from reserve_automation.utils.bottle_matcher import BottleMatcher, BottleMatch
                 from reserve_automation.core.models import BottleMetadata
+                from reserve_automation.generators.tasting_generator import TastingGenerator
+                from reserve_automation.utils.bottle_matcher import BottleMatch, BottleMatcher
 
                 tasting_note = self._data_to_tasting_note(tasting_item.tasting_data)
                 full_bottle_path = self.vault_path / bottle_path
@@ -433,8 +429,8 @@ class TastingService:
     async def _save_to_event(self, tasting_item, bottle_path, event_id, participant_id):
         """Save tasting to event store."""
         try:
-            from ...db.repositories.event_repo import SQLiteEventRepository
             from ...db.engine import get_db
+            from ...db.repositories.event_repo import SQLiteEventRepository
 
             db = next(get_db())
             event_repo = SQLiteEventRepository(db)
@@ -538,9 +534,9 @@ class TastingService:
 
         # Fallback to vault
         if self.vault_path:
-            from reserve_automation.utils.bottle_matcher import BottleMatcher, BottleMatch
             from reserve_automation.core.models import BottleMetadata
             from reserve_automation.generators.tasting_generator import TastingGenerator
+            from reserve_automation.utils.bottle_matcher import BottleMatch, BottleMatcher
 
             full_bottle_path = self.vault_path / selected_bottle_path
             if not full_bottle_path.exists():

@@ -12,7 +12,6 @@ from .config import AuthConfig
 from .jwt import CloudflareJWTValidator
 from .models import AuthenticatedUser
 
-
 # Paths that don't require authentication
 PUBLIC_PATHS = {
     "/api/v1/health",

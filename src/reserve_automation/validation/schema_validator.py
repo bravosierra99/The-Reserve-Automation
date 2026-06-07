@@ -8,10 +8,11 @@ This ensures the single source of truth (Obsidian FileClass) is reflected across
 """
 
 import re
-import yaml
-from pathlib import Path
-from typing import Any, Optional
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
+import yaml
 
 
 @dataclass
@@ -235,6 +236,7 @@ class SchemaValidator:
 def main():
     """CLI entry point for validation."""
     import sys
+
     from reserve_automation.core.config import Config
 
     config = Config.load()

@@ -4,11 +4,10 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
-from ..auth.dependencies import require
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from ...core.cocktail import (
     CocktailRecipe,
@@ -20,9 +19,10 @@ from ...core.cocktail_tasting import (
     CocktailTastingNote,
     CreateCocktailTastingRequest,
 )
+from ...db.engine import get_db
 from ...db.repositories import get_cocktail_repo
 from ...db.repositories.cocktail_repo import SQLiteCocktailRepository
-from ...db.engine import get_db
+from ..auth.dependencies import require
 
 router = APIRouter()
 
@@ -354,8 +354,9 @@ async def update_cocktail_tasting(
     db: Session = Depends(get_db),
 ):
     """Update a cocktail tasting note."""
-    from ...db.models.cocktail_tasting import CocktailTastingModel, CocktailTastingIngredientModel
     from datetime import date as date_type
+
+    from ...db.models.cocktail_tasting import CocktailTastingIngredientModel, CocktailTastingModel
     try:
         obj = db.query(CocktailTastingModel).filter(CocktailTastingModel.id == tasting_id).first()
         if not obj:
@@ -438,8 +439,8 @@ async def search_cocktail_recipe(request_data: RecipeSearchRequest):
     Accepts a cocktail name and returns a structured recipe.
     """
     try:
-        from ...llm.gateway import LLMGateway
         from ...core.config import Config
+        from ...llm.gateway import LLMGateway
 
         config = Config.load()
 

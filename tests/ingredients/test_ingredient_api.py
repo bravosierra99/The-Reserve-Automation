@@ -3,7 +3,6 @@
 Uses in-memory SQLite database for test isolation.
 """
 
-import pytest
 
 
 class TestIngredientList:

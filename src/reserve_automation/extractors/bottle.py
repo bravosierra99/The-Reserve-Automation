@@ -1,20 +1,18 @@
 """Bottle extractor using LLM integration."""
 
-import json
 from typing import List, Literal
 
 from loguru import logger
-from pydantic import ValidationError
 
 from ..core.exceptions import ExtractionError
 from ..core.models import BottleMetadata, ParserResult
 from ..llm.gateway import LLMGateway
-from ..llm.response_parser import LLMResponseParser
 from ..llm.prompts.extraction import (
     EXTRACTION_SYSTEM_PROMPT,
     TYPE_DETECTION_PROMPT,
     build_extraction_prompt,
 )
+from ..llm.response_parser import LLMResponseParser
 
 
 def _parse_variety_from_llm(val) -> list[str] | None:

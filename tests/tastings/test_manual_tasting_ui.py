@@ -9,17 +9,18 @@ Tests that form fields have correct Alpine.js bindings for:
 Uses FastAPI TestClient to test without requiring a running server.
 """
 
+from unittest.mock import Mock
+
 import pytest
 from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
-from unittest.mock import Mock
 
 
 @pytest.fixture
 def client(tmp_path):
     """Create test client with app."""
-    from reserve_automation.web import app as app_module
     from reserve_automation.core.config import Config
+    from reserve_automation.web import app as app_module
 
     # Create temp vault
     vault_path = tmp_path / "vault"

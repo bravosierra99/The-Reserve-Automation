@@ -1,13 +1,9 @@
 """Upload file handling service."""
 
-import hashlib
-import os
 import shutil
-import uuid
 from pathlib import Path
-from typing import Optional
 
-from fastapi import UploadFile, HTTPException
+from fastapi import HTTPException, UploadFile
 
 
 class UploadService:

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Create a test wine blind tasting event."""
-import requests
-import json
 from pathlib import Path
+
+import requests
 
 BASE_URL = "http://localhost:8000"
 
@@ -51,14 +51,14 @@ if not response.ok:
 event = response.json()
 event_id = event["event_id"]
 
-print(f"\n✅ Event created successfully!")
+print("\n✅ Event created successfully!")
 print(f"   Event ID: {event_id}")
 print(f"   Event URL: {BASE_URL}/events/{event_id}")
-print(f"\n   Bottles are hidden (blind mode)")
-print(f"   Participants will see: Bottle #1, Bottle #2, Bottle #3")
+print("\n   Bottles are hidden (blind mode)")
+print("   Participants will see: Bottle #1, Bottle #2, Bottle #3")
 
 # Save event ID
 Path("/tmp/event_id.txt").write_text(event_id)
-print(f"\n💾 Saving event ID to /tmp/event_id.txt")
+print("\n💾 Saving event ID to /tmp/event_id.txt")
 
 print(f"\n🎉 Ready to test! Go to {BASE_URL}/events")

@@ -3,14 +3,14 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
+    Boolean,
     DateTime,
     Float,
+    ForeignKey,
     Integer,
     String,
     Text,
-    Boolean,
-    JSON,
-    ForeignKey,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship

@@ -15,11 +15,11 @@ from typing import Optional
 
 from loguru import logger
 
-from ..core.models import BottleMetadata
 from ..core.bottle_registry import BottleRegistry
 from ..core.cocktail import CocktailRecipe, RecipeIngredient
-from ..core.cocktail_tasting import CocktailTastingNote, CocktailTastingIngredient
+from ..core.cocktail_tasting import CocktailTastingIngredient, CocktailTastingNote
 from ..core.ingredient import Ingredient, build_ingredient_tree
+from ..core.models import BottleMetadata
 
 
 class VaultReader:
@@ -633,7 +633,6 @@ class VaultReader:
         Returns:
             List of CocktailTastingNote objects.
         """
-        import yaml
 
         cocktail_dir = self.vault_path / "3_Cocktails" / cocktail_name
         if not cocktail_dir.exists():

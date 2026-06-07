@@ -2,18 +2,19 @@
 
 import asyncio
 import json
-import click
 from pathlib import Path
+
+import click
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 
 from .core.config import Config
-from .core.exceptions import ConfigurationError, ReserveAutomationError, GenerationError
+from .core.exceptions import ConfigurationError, GenerationError, ReserveAutomationError
 from .core.models import BottleMetadata
 from .enrichment import MetadataEnricher
-from .extractors.tasting_extractor import TastingExtractor
 from .extractors.image_extractor import ImageMetadataExtractor
+from .extractors.tasting_extractor import TastingExtractor
 from .generators import ObsidianGenerator
 from .generators.tasting_generator import TastingGenerator
 from .llm import LLMGateway
@@ -810,7 +811,7 @@ def extract_tasting(ctx, image_file, template, dry_run, auto_match_threshold):
                 matches.append((tasting, best_match))
                 console.print(f"[green]✓ Matched:[/green] {best_match.folder_path.name} (score: {best_match.score:.2f})")
             else:
-                console.print(f"[red]✗ No match found[/red]")
+                console.print("[red]✗ No match found[/red]")
 
         if len(matches) == 0:
             console.print("\n[red]No bottles matched. Cannot generate tasting files.[/red]")
@@ -995,7 +996,7 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
 
             try:
                 # Use LLM with web search tools to find images
-                console.print(f"  [dim]Searching web for label images...[/dim]")
+                console.print("  [dim]Searching web for label images...[/dim]")
 
                 # Define async function for finding images
                 async def find_images_async():
@@ -1044,7 +1045,7 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
                         console.print(f"    [{idx}] {img['url']}")
                         console.print(f"        [dim]Source: {img['source']} - {img.get('description', '')}[/dim]")
 
-                    console.print(f"    [0] Skip this bottle")
+                    console.print("    [0] Skip this bottle")
                     console.print()
 
                     # Get user selection
@@ -1068,7 +1069,7 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
 
                 success = searcher.download_image(selected_image['url'], label_path)
                 if not success:
-                    console.print(f"  [red]✗ Download failed[/red]")
+                    console.print("  [red]✗ Download failed[/red]")
                     if yes:
                         bottle_name = f"{bottle.producer} - {bottle.name}"
                         if bottle.year:
@@ -1098,14 +1099,14 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
                         bottle_name += f" - {bottle.year}"
 
                     # Detect label bounds using computer vision first, LLM as fallback
-                    console.print(f"  [dim]Detecting label bounds (computer vision)...[/dim]")
+                    console.print("  [dim]Detecting label bounds (computer vision)...[/dim]")
 
                     image_bytes = label_path.read_bytes()
                     bounds = label_processor.detect_label_bounds_cv(image_bytes)
 
                     # If CV detection fails, try LLM as fallback
                     if not bounds:
-                        console.print(f"  [dim]CV detection failed, trying LLM fallback...[/dim]")
+                        console.print("  [dim]CV detection failed, trying LLM fallback...[/dim]")
 
                         async def detect_bounds_async():
                             return await label_processor.detect_label_bounds(image_bytes, bottle)
@@ -1113,13 +1114,13 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
                         bounds = asyncio.run(detect_bounds_async())
 
                     if bounds:
-                        console.print(f"  [dim]Cropping to label...[/dim]")
+                        console.print("  [dim]Cropping to label...[/dim]")
 
                         cropped_path = label_processor.crop_to_label(label_path, bounds)
 
                         if cropped_path:
                             # Validate crop quality
-                            console.print(f"  [dim]Validating crop quality...[/dim]")
+                            console.print("  [dim]Validating crop quality...[/dim]")
 
                             async def validate_crop_async():
                                 cropped_bytes = cropped_path.read_bytes()
@@ -1128,10 +1129,10 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
                             crop_ok = asyncio.run(validate_crop_async())
 
                             if crop_ok:
-                                console.print(f"  [green]✓ Cropped label image (quality validated)[/green]")
+                                console.print("  [green]✓ Cropped label image (quality validated)[/green]")
                                 total_cropped += 1
                             else:
-                                console.print(f"  [yellow]⚠ Crop quality low, restoring original[/yellow]")
+                                console.print("  [yellow]⚠ Crop quality low, restoring original[/yellow]")
                                 # Restore original (which was saved as label_original.jpg)
                                 import shutil
                                 shutil.copy2(original_path, label_path)
@@ -1142,7 +1143,7 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
                                 ))
                                 total_needs_review += 1
                         else:
-                            console.print(f"  [yellow]⚠ Crop failed, saved uncropped[/yellow]")
+                            console.print("  [yellow]⚠ Crop failed, saved uncropped[/yellow]")
                             review_log.append((
                                 bottle_name,
                                 "crop_failed",
@@ -1150,7 +1151,7 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
                             ))
                             total_needs_review += 1
                     else:
-                        console.print(f"  [yellow]⚠ Could not detect label, saved uncropped[/yellow]")
+                        console.print("  [yellow]⚠ Could not detect label, saved uncropped[/yellow]")
                         review_log.append((
                             bottle_name,
                             "detection_failed",
@@ -1159,7 +1160,7 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
                         total_needs_review += 1
 
                     # Update Obsidian frontmatter
-                    console.print(f"  [dim]Updating Obsidian metadata...[/dim]")
+                    console.print("  [dim]Updating Obsidian metadata...[/dim]")
 
                     bottle_file = obsidian_updater.get_bottle_file_path(folder_path)
                     if bottle_file:
@@ -1169,10 +1170,10 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
                         )
 
                         if update_success:
-                            console.print(f"  [green]✓ Updated Label field in Obsidian[/green]")
+                            console.print("  [green]✓ Updated Label field in Obsidian[/green]")
                             total_updated += 1
                         else:
-                            console.print(f"  [yellow]⚠ Failed to update frontmatter[/yellow]")
+                            console.print("  [yellow]⚠ Failed to update frontmatter[/yellow]")
                             review_log.append((
                                 bottle_name,
                                 "frontmatter_failed",
@@ -1180,7 +1181,7 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
                             ))
                             total_needs_review += 1
                     else:
-                        console.print(f"  [yellow]⚠ Could not find bottle markdown file[/yellow]")
+                        console.print("  [yellow]⚠ Could not find bottle markdown file[/yellow]")
                         review_log.append((
                             bottle_name,
                             "file_not_found",
@@ -1645,8 +1646,8 @@ def add_from_image(ctx, image_path, beverage, year, price, dry_run):
             label_dest = labels_dir / "label.jpg"
 
             # Copy and convert image
+
             from PIL import Image
-            import shutil
 
             img = Image.open(image_path)
             # Convert to RGB if needed
@@ -1666,7 +1667,7 @@ def add_from_image(ctx, image_path, beverage, year, price, dry_run):
             if obsidian_updater.update_label_field(generated_path, "labels/label.jpg"):
                 console.print("[green]✓ Updated Label field in note[/green]")
 
-            console.print(f"\n[bold green]✓ Bottle added successfully![/bold green]")
+            console.print("\n[bold green]✓ Bottle added successfully![/bold green]")
         else:
             console.print("[red]✗ Failed to generate Obsidian file[/red]")
             ctx.exit(1)

@@ -11,8 +11,8 @@ Tests verify both API responses AND data integrity.
 """
 
 import json
-from pathlib import Path
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,12 +21,30 @@ from PIL import Image, ImageDraw, ImageFont
 from reserve_automation.web.app import app
 from reserve_automation.web.config import load_web_config
 
+# Every test here uploads a tasting card and runs a real LLM extraction, so the
+# suite needs a reachable LM Studio endpoint (auto-skipped otherwise).
+pytestmark = pytest.mark.requires_lm_studio
+
+
+def _carry_session(client, upload_response):
+    """Persist the upload's session cookie onto the test client.
+
+    The session cookie is set with secure=True (see upload.py), which the httpx
+    TestClient cookie jar will not resend over http://testserver, and the
+    upgraded Starlette/httpx TestClient ignores per-request cookies=. Setting
+    the value directly on the client jar bypasses the Secure constraint so
+    subsequent requests in the same test carry the tasting session.
+    """
+    token = upload_response.cookies.get("session")
+    if token:
+        client.cookies.set("session", token)
+
 
 @pytest.fixture(scope="module")
 def test_client():
     """Create test client with proper configuration and isolated test vault."""
-    import shutil
     import os
+    import shutil
 
     # Create isolated test vault BEFORE loading config
     test_vault_path = Path("/tmp/test-vault-tasting-e2e")
@@ -149,11 +167,11 @@ class TestTastingImageUploadFlow:
             pytest.skip("Tasting upload failed (likely no LLM available)")
 
         extraction_id = upload_response.json()["extraction_id"]
+        _carry_session(test_client, upload_response)
 
         # Get extraction data (simulating JavaScript fetch)
         get_response = test_client.get(
             f"/api/v1/tastings/{extraction_id}",
-            cookies=upload_response.cookies
         )
 
         assert get_response.status_code == 200
@@ -202,11 +220,11 @@ class TestTastingImageUploadFlow:
             pytest.skip("Tasting upload failed (likely no LLM available)")
 
         extraction_id = upload_response.json()["extraction_id"]
+        _carry_session(test_client, upload_response)
 
         # Get data
         get_response = test_client.get(
             f"/api/v1/tastings/{extraction_id}",
-            cookies=upload_response.cookies
         )
 
         if get_response.status_code != 200:
@@ -249,11 +267,11 @@ class TestTastingImageUploadFlow:
             pytest.skip("Tasting upload failed (likely no LLM available)")
 
         extraction_id = upload_response.json()["extraction_id"]
+        _carry_session(test_client, upload_response)
 
         # Get data
         get_response = test_client.get(
             f"/api/v1/tastings/{extraction_id}",
-            cookies=upload_response.cookies
         )
 
         if get_response.status_code != 200 or len(get_response.json()["tastings"]) == 0:
@@ -313,12 +331,11 @@ class TestTastingUpdateFlow:
             pytest.skip("Tasting upload failed (likely no LLM available)")
 
         extraction_id = upload_response.json()["extraction_id"]
-        cookies = upload_response.cookies
+        _carry_session(test_client, upload_response)
 
         # Get current data
         get_response = test_client.get(
             f"/api/v1/tastings/{extraction_id}",
-            cookies=cookies
         )
 
         if len(get_response.json()["tastings"]) == 0:
@@ -341,7 +358,6 @@ class TestTastingUpdateFlow:
         update_response = test_client.put(
             f"/api/v1/tastings/{extraction_id}/update/0",
             json={"tasting": tasting_data},
-            cookies=cookies
         )
 
         assert update_response.status_code == 200
@@ -349,7 +365,6 @@ class TestTastingUpdateFlow:
         # Verify changes persisted
         get_response2 = test_client.get(
             f"/api/v1/tastings/{extraction_id}",
-            cookies=cookies
         )
 
         updated_tasting = get_response2.json()["tastings"][0]["tasting"]
@@ -385,12 +400,11 @@ class TestCompleteTastingWorkflow:
 
         upload_data = upload_response.json()
         extraction_id = upload_data["extraction_id"]
-        cookies = upload_response.cookies
+        _carry_session(test_client, upload_response)
 
         # Step 2: Get extraction data (simulates JavaScript fetch)
         get_response = test_client.get(
             f"/api/v1/tastings/{extraction_id}",
-            cookies=cookies  # CRITICAL: Must send cookies
         )
 
         assert get_response.status_code == 200
@@ -417,7 +431,6 @@ class TestCompleteTastingWorkflow:
         update_response = test_client.put(
             f"/api/v1/tastings/{extraction_id}/update/0",
             json={"tasting": tasting_data},
-            cookies=cookies
         )
 
         assert update_response.status_code == 200
@@ -425,7 +438,6 @@ class TestCompleteTastingWorkflow:
         # Step 4: Verify changes persisted
         final_response = test_client.get(
             f"/api/v1/tastings/{extraction_id}",
-            cookies=cookies
         )
 
         final_tasting = final_response.json()["tastings"][0]["tasting"]
@@ -434,7 +446,6 @@ class TestCompleteTastingWorkflow:
         # Step 5: Approval (may fail without vault, but shouldn't crash)
         approve_response = test_client.post(
             f"/api/v1/tastings/{extraction_id}/approve/0",
-            cookies=cookies
         )
 
         # Either succeeds or fails gracefully
@@ -458,12 +469,11 @@ class TestCompleteTastingWorkflow:
             pytest.skip("Tasting upload failed (likely no LLM available)")
 
         extraction_id = upload_response.json()["extraction_id"]
-        cookies = upload_response.cookies
+        _carry_session(test_client, upload_response)
 
         # Reject
         reject_response = test_client.post(
             f"/api/v1/tastings/{extraction_id}/reject-all",
-            cookies=cookies
         )
 
         assert reject_response.status_code == 200
@@ -472,7 +482,6 @@ class TestCompleteTastingWorkflow:
         # GET will recreate session from extraction data
         get_response = test_client.get(
             f"/api/v1/tastings/{extraction_id}",
-            cookies=cookies
         )
 
         # Should successfully recreate session from extraction

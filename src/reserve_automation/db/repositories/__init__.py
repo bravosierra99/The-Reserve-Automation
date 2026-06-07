@@ -5,10 +5,10 @@ from sqlalchemy.orm import Session
 
 from ..engine import get_db
 from .bottle_repo import SQLiteBottleRepository
-from .tasting_repo import SQLiteTastingRepository
 from .cocktail_repo import SQLiteCocktailRepository
-from .ingredient_repo import SQLiteIngredientRepository
 from .event_repo import SQLiteEventRepository
+from .ingredient_repo import SQLiteIngredientRepository
+from .tasting_repo import SQLiteTastingRepository
 
 
 def get_bottle_repo(db: Session = Depends(get_db)) -> SQLiteBottleRepository:

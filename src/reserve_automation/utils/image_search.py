@@ -1,9 +1,7 @@
 """Web-based image search for bottle labels using Task agent."""
 
-import json
 import logging
 from pathlib import Path
-from typing import Optional
 
 import httpx
 

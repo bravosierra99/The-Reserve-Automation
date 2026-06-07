@@ -67,9 +67,10 @@ def test_db():
 def test_client(test_db):
     """Create test client with in-memory database."""
     from fastapi.testclient import TestClient
+
+    from reserve_automation.web import app as web_app
     from reserve_automation.web.app import app
     from reserve_automation.web.config import load_web_config
-    from reserve_automation.web import app as web_app
     from reserve_automation.web.services.upload_service import UploadService
 
     core_config, web_config = load_web_config()

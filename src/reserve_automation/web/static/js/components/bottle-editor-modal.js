@@ -1062,12 +1062,20 @@ window.bottleEditorModal = function() {
         async cropExistingLabel() {
             this.labelActionInProgress = true;
             try {
-                const response = await fetch('/api/v1/management/labels/crop-current', {
+                // Mode-aware, like acceptManualCrop: management crops a committed
+                // label (by bottle_id); upload crops the temp uploaded image (by
+                // upload_id), which has no saved bottle yet.
+                const endpoint = this.mode === 'management'
+                    ? '/api/v1/management/labels/crop-current'
+                    : '/api/v1/bottles/auto-crop-temp';
+                const body = this.mode === 'management'
+                    ? { bottle_id: this.bottleId }
+                    : { upload_id: this.uploadId };
+
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        bottle_id: this.bottleId
-                    })
+                    body: JSON.stringify(body)
                 });
 
                 if (!response.ok) {
@@ -1075,10 +1083,18 @@ window.bottleEditorModal = function() {
                     throw new Error(error.detail || 'Crop failed');
                 }
 
-                const data = await response.json();
-                // Use bottle ID to view the preview from temp dir
-                this.labelCropPreview = `/api/v1/labels/view?id=${encodeURIComponent(this.bottleId)}&file=label_preview.jpg&t=${Date.now()}`;
-                this.showToast('Label cropped! Review the preview below.');
+                await response.json();
+
+                if (this.mode === 'management') {
+                    // Management commits a preview that the user accepts/discards.
+                    this.labelCropPreview = `/api/v1/labels/view?id=${encodeURIComponent(this.bottleId)}&file=label_preview.jpg&t=${Date.now()}`;
+                    this.showToast('Label cropped! Review the preview below.');
+                } else {
+                    // Upload mode overwrites the temp label in place (like manual
+                    // crop); just refresh the cache-busted preview.
+                    this.currentLabelTimestamp = Date.now();
+                    this.showToast('Label auto-cropped successfully!');
+                }
             } catch (error) {
                 console.error('Crop failed:', error);
                 alert('Crop failed: ' + error.message);

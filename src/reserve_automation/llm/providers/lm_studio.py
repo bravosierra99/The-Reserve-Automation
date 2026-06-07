@@ -354,7 +354,7 @@ class LMStudioProvider(BaseLLMProvider):
             # Max iterations reached
             raise LLMError(f"Tool calling exceeded max iterations ({max_iterations})")
 
-        except httpx.TimeoutException as e:
+        except httpx.TimeoutException:
             logger.error(f"LM Studio request timed out after {request_timeout}s")
             if not model_is_loaded:
                 raise LLMError(
@@ -390,7 +390,7 @@ class LMStudioProvider(BaseLLMProvider):
 
             raise LLMError(f"LM Studio request failed with HTTP {status}")
 
-        except httpx.ConnectError as e:
+        except httpx.ConnectError:
             logger.error(f"LM Studio connection refused at {self.base_url}")
             raise LLMError(
                 f"Cannot connect to LM Studio at {self.base_url}. "

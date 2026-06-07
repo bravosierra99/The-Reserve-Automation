@@ -14,8 +14,6 @@ CRITICAL: All tests use an isolated test vault in /tmp, never the real vault.
 import json
 from urllib.parse import unquote
 
-import pytest
-
 
 class TestEventCRUD:
     """Test basic event CRUD operations."""

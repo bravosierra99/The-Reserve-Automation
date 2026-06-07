@@ -5,7 +5,6 @@ import ipaddress
 import socket
 from urllib.parse import urlparse
 
-
 # Private/internal IP networks that should never be accessed via SSRF
 _BLOCKED_NETWORKS = [
     ipaddress.ip_network("127.0.0.0/8"),       # Loopback

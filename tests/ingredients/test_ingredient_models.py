@@ -1,6 +1,5 @@
 """Tests for ingredient data models, tree building, and utility functions."""
 
-import pytest
 
 from reserve_automation.core.ingredient import (
     Ingredient,

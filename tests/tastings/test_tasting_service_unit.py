@@ -1,10 +1,10 @@
 """Unit tests for TastingService covering edge paths and mode-switching."""
 
-import pytest
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -40,7 +40,11 @@ def _make_extraction_result(bottle_name="Weller Special Reserve", taster="Tester
 
 
 def _make_session_item():
-    from reserve_automation.web.schemas.tasting import TastingData, TastingSessionItem, TastingStatus
+    from reserve_automation.web.schemas.tasting import (
+        TastingData,
+        TastingSessionItem,
+        TastingStatus,
+    )
 
     tasting_data = TastingData(
         bottle_name="Weller Special Reserve",
@@ -197,8 +201,8 @@ class TestSaveToEventMode:
 class TestExtractFromImageTemplateDetection:
     @pytest.mark.asyncio
     async def test_aws_wine_template_routes_correctly(self, tmp_path):
-        from reserve_automation.extractors.tasting_extractor import TastingExtractor
         from reserve_automation.core.tasting_note import TastingExtractionResult
+        from reserve_automation.extractors.tasting_extractor import TastingExtractor
 
         image = tmp_path / "card.jpg"
         image.write_bytes(b"fake")
@@ -216,8 +220,8 @@ class TestExtractFromImageTemplateDetection:
 
     @pytest.mark.asyncio
     async def test_bourbon_template_routes_correctly(self, tmp_path):
-        from reserve_automation.extractors.tasting_extractor import TastingExtractor
         from reserve_automation.core.tasting_note import TastingExtractionResult
+        from reserve_automation.extractors.tasting_extractor import TastingExtractor
 
         image = tmp_path / "card.jpg"
         image.write_bytes(b"fake")
@@ -241,8 +245,8 @@ class TestExtractFromImageTemplateDetection:
 class TestExtractAwsWineOcrFailure:
     @pytest.mark.asyncio
     async def test_ocr_failure_falls_back_to_llm(self, tmp_path):
-        from reserve_automation.extractors.tasting_extractor import TastingExtractor
         from reserve_automation.core.tasting_note import TastingExtractionResult
+        from reserve_automation.extractors.tasting_extractor import TastingExtractor
 
         image = tmp_path / "card.jpg"
         image.write_bytes(b"fake")

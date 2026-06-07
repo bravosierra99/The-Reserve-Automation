@@ -1,20 +1,21 @@
 """Label management routes - crop, download, upload, quality review."""
 
 import hashlib
+import io
 import os
 from pathlib import Path
 from shutil import copyfile
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form, BackgroundTasks
-from fastapi.responses import FileResponse, Response
-from ...auth.dependencies import require
-from ....db.repositories import get_bottle_repo
-from ....db.repositories.bottle_repo import SQLiteBottleRepository
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from loguru import logger
 from PIL import Image
-import io
 
 from ....core.models import BottleMetadata
+from ....db.repositories import get_bottle_repo
+from ....db.repositories.bottle_repo import SQLiteBottleRepository
+from ...auth.dependencies import require
 
 # Thumbnail cache directory
 THUMBNAIL_CACHE_DIR = Path("/tmp/reserve-automation/thumbnails")
@@ -80,6 +81,19 @@ def _get_label_dir(bottle_id: str) -> Path:
     return label_dir
 
 
+def _resolve_bottle_id(bottle_id) -> int:
+    """Parse a bottle id to its integer PK, raising 404 for malformed ids.
+
+    Bottle ids are integer primary keys; a non-numeric value can never match a
+    bottle, so it's a 404 (not found) rather than an unhandled 500. Centralizes
+    the int() conversion that every label endpoint needs before get_by_id().
+    """
+    try:
+        return int(bottle_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
+
+
 @router.post("/api/v1/management/labels/crop-current", dependencies=[Depends(require("labels.edit"))])
 async def crop_current_label(
     data: dict,
@@ -90,10 +104,11 @@ async def crop_current_label(
 
     Creates a preview file that can be accepted or discarded.
     """
-    from ... import app as app_module
+    from shutil import copyfile
+
     from ....llm.gateway import LLMGateway
     from ....utils.label_processor import LabelImageProcessor
-    from shutil import copyfile
+    from ... import app as app_module
 
     core_config = app_module.core_config
 
@@ -102,7 +117,7 @@ async def crop_current_label(
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -157,7 +172,7 @@ async def accept_label_crop(
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -222,7 +237,7 @@ async def download_label_image(
         if not image_url:
             raise HTTPException(status_code=400, detail="Missing image URL")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -279,10 +294,11 @@ async def crop_downloaded_image(
     """
     Crop the downloaded image and save as label_download_cropped.jpg.
     """
-    from ... import app as app_module
+    from shutil import copyfile
+
     from ....llm.gateway import LLMGateway
     from ....utils.label_processor import LabelImageProcessor
-    from shutil import copyfile
+    from ... import app as app_module
 
     core_config = app_module.core_config
 
@@ -291,7 +307,7 @@ async def crop_downloaded_image(
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -340,7 +356,7 @@ async def use_downloaded_label(
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Missing bottle_id")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -396,8 +412,9 @@ async def manual_crop_label(
     """
     Crop label using exact pixel coordinates from manual selection.
     """
-    from PIL import Image
     from shutil import copyfile
+
+    from PIL import Image
 
     try:
         bottle_id = data.get("bottle_id")
@@ -409,7 +426,7 @@ async def manual_crop_label(
         if not bottle_id or x is None or y is None or width is None or height is None:
             raise HTTPException(status_code=400, detail="Missing bottle_id or coordinates")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -497,7 +514,7 @@ async def upload_manual_label(
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Bottle data has no id")
 
-        db_bottle = bottle_repo.get_by_id(int(bottle_id))
+        db_bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not db_bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -544,8 +561,9 @@ async def upload_custom_label(
     2. Re-encode to JPEG and save as MEDIA_DIR/bottles/{id}/label.jpg
     3. Update the DB label path so the grid/modal pick it up
     """
-    from PIL import ImageOps
     import json
+
+    from PIL import ImageOps
 
     try:
         # Parse bottle data from form to extract bottle_id
@@ -555,7 +573,7 @@ async def upload_custom_label(
         if not bottle_id:
             raise HTTPException(status_code=400, detail="Bottle data has no id")
 
-        db_bottle = bottle_repo.get_by_id(int(bottle_id))
+        db_bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not db_bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -625,7 +643,7 @@ async def manual_crop_downloaded_label(
         if not bottle_id or x is None or y is None or width is None or height is None:
             raise HTTPException(status_code=400, detail="Missing bottle_id or coordinates")
 
-        bottle = bottle_repo.get_by_id(int(bottle_id))
+        bottle = bottle_repo.get_by_id(_resolve_bottle_id(bottle_id))
         if not bottle:
             raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {bottle_id}")
 
@@ -697,9 +715,9 @@ async def scan_label_quality(
     Returns:
         dict: Prioritized list of label review candidates
     """
+    from ....llm.gateway import LLMGateway
     from ...app import core_config
     from ...services.label_review_service import LabelReviewService
-    from ....llm.gateway import LLMGateway
 
     try:
         # Create LLM gateway from config
@@ -754,9 +772,9 @@ async def accept_improved_label(data: dict):
     Returns:
         dict: Success status
     """
+    from ....llm.gateway import LLMGateway
     from ...app import core_config
     from ...services.label_review_service import LabelReviewService
-    from ....llm.gateway import LLMGateway
 
     try:
         # Parse bottle from request
@@ -799,9 +817,9 @@ async def keep_original_label(data: dict):
     Returns:
         dict: Success status
     """
+    from ....llm.gateway import LLMGateway
     from ...app import core_config
     from ...services.label_review_service import LabelReviewService
-    from ....llm.gateway import LLMGateway
 
     try:
         # Parse bottle from request
@@ -867,7 +885,7 @@ async def view_label_image(
         logger.debug(f"View label request: id={id}, path={path}")
 
         if id:
-            bottle = bottle_repo.get_by_id(int(id))
+            bottle = bottle_repo.get_by_id(_resolve_bottle_id(id))
             if not bottle:
                 raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {id}")
 
@@ -974,7 +992,7 @@ async def get_label_thumbnail(
 
         # If id is provided, resolve it to a media path
         if id:
-            bottle = bottle_repo.get_by_id(int(id))
+            bottle = bottle_repo.get_by_id(_resolve_bottle_id(id))
             if not bottle:
                 raise HTTPException(status_code=404, detail=f"Bottle not found for ID: {id}")
 

@@ -4,15 +4,23 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, UploadFile, File, Form, Response, Cookie, HTTPException, Request
-from ..auth.dependencies import require
+from fastapi import (
+    APIRouter,
+    Cookie,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.templating import Jinja2Templates
 from loguru import logger
-from sse_starlette.sse import EventSourceResponse
 
-from ..sessions import SessionManager
-from ..services.upload_service import UploadService
+from ..auth.dependencies import require
 from ..services.extraction_service import ExtractionService
+from ..sessions import SessionManager
 
 # ACCEPTED RISK: No rate limiting on this router.
 # All LLM extraction calls originate here, but the router requires "upload.access"
@@ -59,7 +67,7 @@ async def upload_file(
     Returns:
         Upload result with extraction_id
     """
-    from ..app import upload_service, core_config, web_config
+    from ..app import core_config, upload_service, web_config
 
     if not upload_service or not core_config or not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")

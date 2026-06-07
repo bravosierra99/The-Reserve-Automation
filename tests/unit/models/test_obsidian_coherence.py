@@ -15,11 +15,11 @@ COMPARES:
 3. Python model constraints → FileClass constraints
 """
 
+from pathlib import Path
+from typing import Any, Dict
+
 import pytest
 import yaml
-from pathlib import Path
-from typing import Dict, Any, Optional
-
 
 # ============================================================================
 # Fixtures

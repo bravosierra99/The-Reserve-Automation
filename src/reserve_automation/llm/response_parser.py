@@ -14,7 +14,8 @@ Instead, log warnings and use sensible defaults.
 import json
 import re
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union
+from typing import Any, Dict, List, Optional, Type, TypeVar
+
 from loguru import logger
 from pydantic import BaseModel, ValidationError
 

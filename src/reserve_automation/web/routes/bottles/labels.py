@@ -4,11 +4,11 @@ import io
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
-from ...auth.dependencies import require
-from pydantic import BaseModel
-from PIL import Image, ImageOps
 from loguru import logger
+from PIL import Image, ImageOps
+from pydantic import BaseModel
 
+from ...auth.dependencies import require
 
 router = APIRouter(dependencies=[Depends(require("bottles.create"))])
 
@@ -51,6 +51,73 @@ class ManualCropTempRequest(BaseModel):
     y: int
     width: int
     height: int
+
+
+class AutoCropTempRequest(BaseModel):
+    """Request to auto-crop a temporary label (upload workflow)."""
+    upload_id: str
+    label_index: int = 0  # For manifest uploads with multiple bottles
+
+
+def _resolve_temp_label(upload_id: str, label_index: int) -> Path:
+    """Locate the temp label image for an upload, raising 4xx if absent.
+
+    Shared by the manual and auto crop temp endpoints. Validates upload_id
+    against path traversal and falls back from {index}.jpg to label.jpg.
+    """
+    if not upload_id or "/" in upload_id or ".." in upload_id:
+        raise HTTPException(status_code=400, detail="Invalid upload_id")
+
+    temp_labels_dir = Path("/tmp/reserve_uploads") / upload_id / "labels"
+    if not temp_labels_dir.exists():
+        raise HTTPException(status_code=404, detail="Temp labels directory not found")
+
+    source_label = temp_labels_dir / f"{label_index}.jpg"
+    if not source_label.exists():
+        source_label = temp_labels_dir / "label.jpg"
+    if not source_label.exists():
+        raise HTTPException(status_code=404, detail=f"Temp label not found at index {label_index}")
+    return source_label
+
+
+@router.post("/api/v1/bottles/auto-crop-temp")
+async def auto_crop_temp_label(request: AutoCropTempRequest):
+    """Auto-crop a temporary uploaded label (upload workflow).
+
+    Upload-mode analogue of management's crop-current. Because the upload flow
+    has no committed label yet, this mirrors manual-crop-temp: it runs the
+    LLM/CV label detection directly on /tmp/reserve_uploads/{upload_id}/labels/
+    label.jpg and overwrites it in place (no separate preview/accept step). The
+    modal refreshes its cache-busted temp preview on success.
+    """
+    from ....llm.gateway import LLMGateway
+    from ....utils.label_processor import LabelImageProcessor
+    from ...app import core_config
+
+    if not core_config:
+        raise HTTPException(status_code=500, detail="Service not initialized")
+
+    source_label = _resolve_temp_label(request.upload_id, request.label_index)
+
+    try:
+        logger.info(f"Auto-crop temp: {source_label}")
+        processor = LabelImageProcessor(LLMGateway(core_config.llm))
+        # crop_to_label normalizes EXIF, auto-detects the label bounds, and
+        # overwrites source_label with the crop (or returns None on failure).
+        result = processor.crop_to_label(source_label)
+        if not result:
+            raise HTTPException(status_code=500, detail="Auto-crop failed to detect a label")
+
+        return {
+            "status": "success",
+            "cropped_path": str(source_label),
+            "message": "Label auto-cropped successfully",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Auto-crop temp failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/api/v1/bottles/manual-crop-temp")
@@ -268,10 +335,10 @@ async def search_labels_for_bottle(request: Request):
     Returns:
         List of label image candidates
     """
-    from ...app import core_config
-    from ...services.label_service import LabelService
-    from ...services.extraction_service import ExtractionService
     from ....core.models import BottleMetadata
+    from ...app import core_config
+    from ...services.extraction_service import ExtractionService
+    from ...services.label_service import LabelService
 
     if not core_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
@@ -280,7 +347,7 @@ async def search_labels_for_bottle(request: Request):
         # Get bottle data from request body
         bottle_data = await request.json()
 
-        logger.info(f"=== LABEL SEARCH REQUEST ===")
+        logger.info("=== LABEL SEARCH REQUEST ===")
         logger.info(f"Producer: {bottle_data.get('producer')}")
         logger.info(f"Name: {bottle_data.get('name')}")
         logger.info(f"Year: {bottle_data.get('year')}")

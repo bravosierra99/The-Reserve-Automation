@@ -1,6 +1,5 @@
 """Extract bottle metadata from label images using vision LLM."""
 
-import json
 from pathlib import Path
 from typing import Optional
 
@@ -355,49 +354,49 @@ Return only the JSON, nothing else."""
         matched_whiskey = [kw for kw in whiskey_keywords if kw in all_text]
         if matched_whiskey:
             logger.info(f"✓ Step 2 SUCCESS: Matched whiskey keywords: {matched_whiskey}")
-            logger.info(f"✓ RESULT: whiskey (from keywords)")
+            logger.info("✓ RESULT: whiskey (from keywords)")
             logger.info("=" * 80)
             return "whiskey"
 
         matched_vodka = [kw for kw in vodka_keywords if kw in all_text]
         if matched_vodka:
             logger.info(f"✓ Step 2 SUCCESS: Matched vodka keywords: {matched_vodka}")
-            logger.info(f"✓ RESULT: vodka (from keywords)")
+            logger.info("✓ RESULT: vodka (from keywords)")
             logger.info("=" * 80)
             return "vodka"
 
         matched_gin = [kw for kw in gin_keywords if kw in all_text]
         if matched_gin:
             logger.info(f"✓ Step 2 SUCCESS: Matched gin keywords: {matched_gin}")
-            logger.info(f"✓ RESULT: gin (from keywords)")
+            logger.info("✓ RESULT: gin (from keywords)")
             logger.info("=" * 80)
             return "gin"
 
         matched_rum = [kw for kw in rum_keywords if kw in all_text]
         if matched_rum:
             logger.info(f"✓ Step 2 SUCCESS: Matched rum keywords: {matched_rum}")
-            logger.info(f"✓ RESULT: rum (from keywords)")
+            logger.info("✓ RESULT: rum (from keywords)")
             logger.info("=" * 80)
             return "rum"
 
         matched_tequila = [kw for kw in tequila_keywords if kw in all_text]
         if matched_tequila:
             logger.info(f"✓ Step 2 SUCCESS: Matched tequila keywords: {matched_tequila}")
-            logger.info(f"✓ RESULT: tequila (from keywords)")
+            logger.info("✓ RESULT: tequila (from keywords)")
             logger.info("=" * 80)
             return "tequila"
 
         matched_brandy = [kw for kw in brandy_keywords if kw in all_text]
         if matched_brandy:
             logger.info(f"✓ Step 2 SUCCESS: Matched brandy keywords: {matched_brandy}")
-            logger.info(f"✓ RESULT: brandy (from keywords)")
+            logger.info("✓ RESULT: brandy (from keywords)")
             logger.info("=" * 80)
             return "brandy"
 
         matched_wine = [kw for kw in wine_keywords if kw in all_text]
         if matched_wine:
             logger.info(f"✓ Step 2 SUCCESS: Matched wine keywords: {matched_wine}")
-            logger.info(f"✓ RESULT: wine (from keywords)")
+            logger.info("✓ RESULT: wine (from keywords)")
             logger.info("=" * 80)
             return "wine"
 
@@ -444,12 +443,12 @@ Return only the JSON, nothing else."""
         logger.info(f"Alcohol field: {alcohol}")
 
         if "proof" in alcohol:  # Proof is typically used for spirits
-            logger.warning(f"✓ RESULT: 'other' (saw proof measurement, defaulting to generic spirit)")
+            logger.warning("✓ RESULT: 'other' (saw proof measurement, defaulting to generic spirit)")
             logger.info("=" * 80)
             return "other"
 
         # Last resort: default to wine if we see percentage (most common)
-        logger.warning(f"✗ ALL STEPS FAILED: Defaulting to 'wine'")
+        logger.warning("✗ ALL STEPS FAILED: Defaulting to 'wine'")
         logger.warning(f"Could not confidently determine beverage type from: {all_text[:100]}...")
         logger.info("=" * 80)
         return "wine"
@@ -637,7 +636,7 @@ Return only the JSON, nothing else."""
         }
 
         # Log what we're about to create to help debug empty fields
-        logger.info(f"About to create BottleMetadata:")
+        logger.info("About to create BottleMetadata:")
         logger.info(f"  producer: '{bottle_data['producer']}'")
         logger.info(f"  name: '{bottle_data['name']}'")
         logger.info(f"  type: '{bottle_data['type']}'")

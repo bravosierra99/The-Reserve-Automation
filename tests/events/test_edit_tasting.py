@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Test editing an existing tasting in an event."""
 import pytest
+
 pytest.skip("Manual integration test script requiring web server on localhost:8000", allow_module_level=True)
 
+
 import requests
-import json
-import urllib.parse
 
 BASE_URL = "http://localhost:8000"
 
@@ -168,10 +168,10 @@ assert "complex caramel" in tasting["tasting_data"]["nose_notes"], "Nose notes w
 print("\n" + "="*60)
 print("✅ EDIT TASTING TEST PASSED!")
 print("="*60)
-print(f"\n✓ Initial tasting: 6.6/10")
-print(f"✓ Edited tasting: 9.3/10")
-print(f"✓ Only 1 tasting exists (edit replaced original)")
-print(f"✓ Notes and scores updated correctly")
-print(f"\n🌐 View event:")
+print("\n✓ Initial tasting: 6.6/10")
+print("✓ Edited tasting: 9.3/10")
+print("✓ Only 1 tasting exists (edit replaced original)")
+print("✓ Notes and scores updated correctly")
+print("\n🌐 View event:")
 print(f"   {BASE_URL}/events/{event_id}")
 print()

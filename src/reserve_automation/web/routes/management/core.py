@@ -5,14 +5,13 @@
 #CLAUDE_REQ: BottleMetadata model (core/models.py) - fields must match DB schema
 #CLAUDE_REQ: TastingNote model (core/tasting_note.py) - fields must match DB schema
 
-from pathlib import Path
-from typing import Dict, Optional
-from fastapi import APIRouter, Depends, Request, HTTPException, BackgroundTasks
-from pydantic import BaseModel as pydantic_BaseModel
-from ...auth.dependencies import require
+from typing import Dict
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
-from sqlalchemy import select, func, update
+from pydantic import BaseModel as pydantic_BaseModel
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ....core.models import BottleMetadata
@@ -21,6 +20,7 @@ from ....db.models.bottle import BottleModel, TastingNoteModel
 from ....db.repositories import get_bottle_repo, get_tasting_repo
 from ....db.repositories.bottle_repo import SQLiteBottleRepository
 from ....db.repositories.tasting_repo import SQLiteTastingRepository
+from ...auth.dependencies import require
 from ...services.extraction_service import ExtractionService
 
 router = APIRouter(dependencies=[Depends(require("management.access"))])
@@ -435,7 +435,9 @@ async def get_all_tastings(
 
         # Also include cocktail tastings from CocktailTastingModel
         from ....db.models.cocktail import CocktailModel
-        from ....db.models.cocktail_tasting import CocktailTastingModel, CocktailTastingIngredientModel
+        from ....db.models.cocktail_tasting import (
+            CocktailTastingModel,
+        )
         cocktail_tastings = _db.query(CocktailTastingModel).all()
         cocktails_by_id = {c.id: c for c in _db.query(CocktailModel).all()}
         for ct in cocktail_tastings:
@@ -570,6 +572,7 @@ class UpdateTastingRequest(pydantic_BaseModel):
 async def update_tasting(kind: str, tasting_id: int, body: UpdateTastingRequest):
     """Update a tasting record. Omitted fields are left unchanged."""
     from datetime import date as date_type
+
     from ....db.engine import get_db
     from ....db.models.bottle import TastingNoteModel
     from ....db.models.cocktail_tasting import CocktailTastingModel
@@ -776,9 +779,10 @@ async def verify_bottle(request: Request, background_tasks: BackgroundTasks):
     Returns:
         dict: Contains task_id and status
     """
-    from ...app import core_config
-    import uuid
     import time
+    import uuid
+
+    from ...app import core_config
 
     try:
         # Get the bottle data from request body
@@ -836,9 +840,10 @@ async def verify_bottle_metadata(bottle_index: int, request: Request, background
     Returns:
         dict: Contains task_id and status
     """
-    from ...app import core_config
-    import uuid
     import time
+    import uuid
+
+    from ...app import core_config
 
     try:
         # Get the bottle data from request body
@@ -1074,8 +1079,9 @@ async def start_batch_verification(
     Returns:
         dict: Batch ID and initial status
     """
-    from ...app import core_config
     import uuid
+
+    from ...app import core_config
 
     try:
         bottles = bottle_repo.get_all()

@@ -164,7 +164,7 @@ class LLMGateway:
             # No fallback or fallback failed
             raise LLMError(
                 f"Task {task_type} failed with {provider_name}"
-                + (f" and fallback" if fallback_provider else "")
+                + (" and fallback" if fallback_provider else "")
             ) from e
 
     def _get_fallback(self, provider_name: str) -> Optional[str]:

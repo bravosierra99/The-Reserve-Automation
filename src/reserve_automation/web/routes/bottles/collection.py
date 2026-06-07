@@ -1,14 +1,14 @@
 """Bottle collection routes - public grid view accessible to all authenticated users."""
 
-from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
 
-from ...auth.dependencies import require
 from ....db.repositories import get_bottle_repo, get_tasting_repo
 from ....db.repositories.bottle_repo import SQLiteBottleRepository
 from ....db.repositories.tasting_repo import SQLiteTastingRepository
-from ..management.core import get_bottle_tastings_summary, get_bottle_tastings_list
+from ...auth.dependencies import require
+from ..management.core import get_bottle_tastings_list, get_bottle_tastings_summary
 
 router = APIRouter(dependencies=[Depends(require("bottles.view"))])
 

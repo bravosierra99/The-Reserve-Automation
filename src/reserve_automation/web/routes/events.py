@@ -4,14 +4,16 @@ import json
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 from urllib.parse import quote, unquote
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, Cookie
-from ..auth.dependencies import require
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 
+from ...db.repositories import get_bottle_repo, get_event_repo
+from ...db.repositories.bottle_repo import SQLiteBottleRepository
+from ...db.repositories.event_repo import SQLiteEventRepository
+from ..auth.dependencies import require
 from ..schemas.events import (
     AddEventCocktailRequest,
     CocktailRating,
@@ -24,13 +26,8 @@ from ..schemas.events import (
     EventStatus,
     EventType,
     JoinEventRequest,
-    Participant,
-    ParticipantSession,
     SubmitCocktailRatingRequest,
 )
-from ...db.repositories import get_event_repo, get_bottle_repo
-from ...db.repositories.event_repo import SQLiteEventRepository
-from ...db.repositories.bottle_repo import SQLiteBottleRepository
 
 router = APIRouter()
 
@@ -185,7 +182,6 @@ async def join_event(
     repo: SQLiteEventRepository = Depends(get_event_repo),
 ):
     """Join an event as a participant."""
-    from ..app import web_config
 
     try:
         event = repo.get_by_id(event_id)

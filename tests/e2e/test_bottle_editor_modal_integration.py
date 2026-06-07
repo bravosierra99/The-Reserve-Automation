@@ -13,17 +13,15 @@ These tests would have caught:
 - Frontend/backend data format mismatches
 """
 
-import json
-from pathlib import Path
 from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from reserve_automation.core.models import BottleMetadata
 from reserve_automation.web.app import app
 from reserve_automation.web.config import load_web_config
-from reserve_automation.core.models import BottleMetadata
 
 
 @pytest.fixture(scope="module")
@@ -49,8 +47,6 @@ def test_client():
 @pytest.fixture
 def test_bottle_in_vault(tmp_path):
     """Create a test bottle in a temporary vault."""
-    from reserve_automation.core.config import Config
-    from reserve_automation.generators.obsidian import ObsidianGenerator
 
     # Create vault structure
     vault_path = tmp_path / "vault"
@@ -254,10 +250,19 @@ class TestManualCropWorkflow:
 
     def test_manual_crop_endpoint_with_valid_bottle_id(self, test_client):
         """Test manual crop with bottle_id (new API contract)."""
-        # Register a test bottle in the registry
-        from reserve_automation.web import app as web_app
-        test_vault_path = "1_Whiskeys/Test Distillery - Test Bourbon - 2020"
-        test_bottle_id = web_app.bottle_registry.register(test_vault_path)
+        # Create a real bottle in the (in-memory) DB to get an integer id.
+        # The vault-era bottle_registry was removed in the SQLite migration.
+        from reserve_automation.db.engine import _SessionLocal
+        from reserve_automation.db.repositories.bottle_repo import SQLiteBottleRepository
+        session = _SessionLocal()
+        try:
+            bottle = SQLiteBottleRepository(session).create(BottleMetadata(
+                producer="Test Distillery", name="Test Bourbon",
+                type="whiskey", source="test",
+            ))
+            test_bottle_id = str(bottle.id)
+        finally:
+            session.close()
 
         response = test_client.post(
             "/api/v1/management/labels/manual-crop",
@@ -439,7 +444,6 @@ class TestDataContractValidation:
         CRITICAL: Test that BottleMetadata model handles empty strings.
         Frontend forms send empty strings, backend expects null or int/float.
         """
-        from reserve_automation.core.models import BottleMetadata
 
         # This is what frontend sends - empty strings
         data = {
@@ -471,7 +475,6 @@ class TestDataContractValidation:
         Document that frontend MUST clean empty strings before sending.
         This is the fix we just implemented.
         """
-        from reserve_automation.core.models import BottleMetadata
 
         # Bad data (what forms send)
         bad_data = {

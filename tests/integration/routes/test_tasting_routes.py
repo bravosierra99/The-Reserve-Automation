@@ -9,19 +9,10 @@ NOTE: These are integration tests that may require more setup to run properly.
 They serve as API contract documentation and can be extended as needed.
 """
 
-import pytest
-from datetime import datetime
-from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
 
-from reserve_automation.web.schemas.tasting import (
-    TastingSession,
-    TastingSessionItem,
-    TastingData,
-    TastingStatus,
-    MatchCandidate
-)
-
+import pytest
+from fastapi.testclient import TestClient
 
 # ============================================================================
 # Fixtures
@@ -31,22 +22,22 @@ from reserve_automation.web.schemas.tasting import (
 def client(tmp_path):
     """Create test client with app."""
     # Import app after setting up mocks
-    from reserve_automation.web import app as app_module
     from reserve_automation.core.config import Config
-    
+    from reserve_automation.web import app as app_module
+
     # Create temp vault
     vault_path = tmp_path / "vault"
     vault_path.mkdir(parents=True, exist_ok=True)
-    
+
     # Mock global config
     config = Config(paths={"vault": str(vault_path), "templates_dir": "templates"})
     app_module.core_config = config
-    
+
     web_config = Mock()
     web_config.sessions.secret_key = "test-secret"
     web_config.sessions.max_age_hours = 24
     app_module.web_config = web_config
-    
+
     # Create test client (bypasses lifespan)
     return TestClient(app_module.app)
 
@@ -120,22 +111,22 @@ class TestSessionValidation:
     def test_invalid_session_returns_401(self, client):
         """Invalid session cookie returns 401."""
         client.cookies.set("session", "invalid-token")
-        
+
         with patch('reserve_automation.web.routes.tastings.SessionManager') as mock_sm:
             mock_sm.return_value.read_session.return_value = None
-            
+
             response = client.get("/api/v1/tastings/test-id")
             assert response.status_code == 401
 
     def test_mismatched_extraction_id_returns_404(self, client):
         """Extraction ID mismatch returns 404."""
         client.cookies.set("session", "valid-token")
-        
+
         with patch('reserve_automation.web.routes.tastings.SessionManager') as mock_sm:
             mock_sm.return_value.read_session.return_value = {
                 "extraction_id": "different-id"
             }
-            
+
             response = client.get("/api/v1/tastings/test-id")
             assert response.status_code == 404
 
@@ -158,12 +149,12 @@ class TestErrorResponses:
     def test_not_found_returns_json_error(self, client):
         """404 errors return JSON with detail field."""
         client.cookies.set("session", "valid-token")
-        
+
         with patch('reserve_automation.web.routes.tastings.SessionManager') as mock_sm:
             mock_sm.return_value.read_session.return_value = {
                 "extraction_id": "other-id"
             }
-            
+
             response = client.get("/api/v1/tastings/test-id")
             assert response.status_code == 404
             assert "detail" in response.json()

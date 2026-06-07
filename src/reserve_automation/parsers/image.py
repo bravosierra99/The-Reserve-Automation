@@ -1,13 +1,12 @@
 """Image parser using OCR."""
 
-from pathlib import Path
 import io
-import base64
-from typing import Literal, Optional
+from pathlib import Path
+from typing import Literal
 
-from PIL import Image, ImageEnhance, ImageFilter
 import pytesseract
 from loguru import logger
+from PIL import Image, ImageEnhance, ImageFilter
 
 from ..core.exceptions import ParserError
 from ..core.models import ParserResult
@@ -301,8 +300,6 @@ class ImageParser(BaseParser):
 
         # Binarization (convert to black and white)
         # Use adaptive thresholding for better results
-        import numpy as np
-        from PIL import ImageOps
 
         # Simple thresholding
         threshold = 128

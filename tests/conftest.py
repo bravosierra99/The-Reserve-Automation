@@ -1,7 +1,60 @@
 """Pytest configuration and fixtures for all tests."""
 
 import os
+from pathlib import Path
+
 import pytest
+
+
+def _lm_studio_available() -> bool:
+    """Probe the configured LM Studio endpoint.
+
+    Mirrors the config the app/CLI use (RESERVE_LM_STUDIO_URL + LM_STUDIO_API_KEY).
+    Returns True only on HTTP 200 from /models, so a 401 (keyless) or a refused
+    connection both correctly gate real-LLM tests off.
+    """
+    import httpx
+
+    base_url = os.environ.get("RESERVE_LM_STUDIO_URL", "http://localhost:1234/v1").rstrip("/")
+    api_key = os.environ.get("LM_STUDIO_API_KEY", "")
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    try:
+        resp = httpx.get(f"{base_url}/models", headers=headers, timeout=3.0)
+        if resp.status_code != 200:
+            return False
+        # A reachable server with no model loaded returns 200 + {"data": []}.
+        # Require at least one model so real-LLM tests skip (not noisily fail)
+        # in that case — matching the skip reason's "load a model" guidance.
+        return bool(resp.json().get("data"))
+    except Exception:
+        return False
+
+
+# Cache the probe result for the whole session (None = not yet probed).
+_LM_STUDIO_AVAILABLE: bool | None = None
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-skip tests marked `requires_lm_studio` when no LM Studio is reachable.
+
+    A discoverable marker + single per-session reachability probe, offered as a
+    cleaner alternative to the ad-hoc in-test `pytest.skip("likely no LLM")`
+    pattern still used in a few suites (test_bottle_stateless_upload.py et al.).
+    """
+    global _LM_STUDIO_AVAILABLE
+    skip_marker = None
+    for item in items:
+        if item.get_closest_marker("requires_lm_studio") is None:
+            continue
+        if _LM_STUDIO_AVAILABLE is None:
+            _LM_STUDIO_AVAILABLE = _lm_studio_available()
+        if not _LM_STUDIO_AVAILABLE:
+            if skip_marker is None:
+                skip_marker = pytest.mark.skip(
+                    reason="LM Studio not reachable — set RESERVE_LM_STUDIO_URL + "
+                    "LM_STUDIO_API_KEY and load a model to run real-LLM tests"
+                )
+            item.add_marker(skip_marker)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -15,6 +68,41 @@ def setup_test_environment():
 
     # Set vault path for tests (still needed by some services that use Config)
     os.environ.setdefault("RESERVE_VAULT_PATH", "/tmp/test-vault")
+
+    # Create the isolated test vault directory so Config.load()'s path
+    # validation passes deterministically. Previously this dir was only created
+    # by tests/tastings/run_all_tests.sh, leaving vault-dependent tests reliant
+    # on test ordering / leaked env vars when pytest was run directly.
+    #
+    # Safety: only ever auto-create an isolated /tmp vault. If RESERVE_VAULT_PATH
+    # was exported to a real vault, never mkdir inside it — dev must not touch
+    # personal data (see CLAUDE.md dev/prod separation).
+    vault_path = Path(os.environ["RESERVE_VAULT_PATH"])
+    if str(vault_path).startswith("/tmp/"):
+        for subdir in ("1_Wines", "1_Whiskeys"):
+            (vault_path / subdir).mkdir(parents=True, exist_ok=True)
+
+    # Isolate label/image media to a tmp dir so the label-crop endpoint tests
+    # never read or overwrite real bottle images under data/media. The label
+    # routes resolve MEDIA_DIR/bottles/{id}/label.jpg by integer id, which
+    # collides with real bottle ids; without this a crop test would clobber a
+    # production label (CLAUDE.md: tests use isolated /tmp, never real data).
+    os.environ.setdefault("MEDIA_DIR", "/tmp/test-media")
+    media_path = Path(os.environ["MEDIA_DIR"])
+    if str(media_path).startswith("/tmp/"):
+        media_path.mkdir(parents=True, exist_ok=True)
+        # These modules captured MEDIA_DIR at import; repoint in case any were
+        # imported before this session-autouse fixture ran.
+        for _mod in (
+            "reserve_automation.web.routes.management.labels",
+            "reserve_automation.web.routes.bottles.save",
+            "reserve_automation.web.routes.bottles.serving",
+        ):
+            try:
+                import importlib
+                importlib.import_module(_mod).MEDIA_DIR = media_path
+            except Exception:
+                pass
 
     # Use in-memory SQLite for tests. This ensures the app lifespan
     # re-uses the same in-memory DB instead of creating a file-based one.
@@ -50,9 +138,9 @@ def enable_dev_mode_for_tests():
     2. _startup_auth_config (used as middleware fallback)
     3. load_auth_config (so lifespan re-loads also get dev mode)
     """
+    import reserve_automation.web.app as app_module
     import reserve_automation.web.auth.config as config_module
     import reserve_automation.web.config as web_config_module
-    import reserve_automation.web.app as app_module
 
     # 1. Enable dev mode on the already-loaded module-level config
     # require_local_subnet is also disabled because TestClient uses "testclient"

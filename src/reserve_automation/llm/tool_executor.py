@@ -1,7 +1,5 @@
 """Execute LLM tool calls locally."""
 
-import json
-from typing import Any
 
 import httpx
 from ddgs import DDGS
@@ -160,6 +158,7 @@ class ToolExecutor:
         (or any RFC1918 host) is rejected before we make the follow-up request.
         """
         from urllib.parse import urljoin
+
         from ..utils.url_validation import validate_url_not_internal
 
         current_url = url

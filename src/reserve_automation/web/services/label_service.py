@@ -8,8 +8,8 @@ from loguru import logger
 
 from reserve_automation.core.models import BottleMetadata
 from reserve_automation.llm.gateway import LLMGateway
-from reserve_automation.utils.llm_label_finder import LLMLabelFinder
 from reserve_automation.utils.label_processor import LabelImageProcessor
+from reserve_automation.utils.llm_label_finder import LLMLabelFinder
 
 
 class LabelService:

@@ -1,17 +1,15 @@
 """Extract tasting notes from filled-out tasting card images."""
 
-import json
 import logging
 from datetime import date
 from pathlib import Path
 from typing import Literal, Optional
 
-from ..core.models import LLMRequest
 from ..core.tasting_note import TastingExtractionResult, TastingNote
 from ..llm.gateway import LLMGateway
 from ..llm.response_parser import LLMResponseParser
-from ..utils.table_ocr import detect_table_structure
 from ..utils.llm_whisperer import extract_layout_text
+from ..utils.table_ocr import detect_table_structure
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +118,7 @@ Return ONLY the template type as a single word:
 
             # Save rotation-corrected image for LLM
             import tempfile
+
             import cv2
             corrected_path = Path(tempfile.mktemp(suffix='.jpg'))
             cv2.imwrite(str(corrected_path), structure['rotated_image'])
@@ -463,7 +462,7 @@ Extract EVERY wine row. Return ONLY the JSON object."""
             )
 
         data = self._validate_aws_wine_data(data)
-        logger.debug(f"Parsed JSON data successfully")
+        logger.debug("Parsed JSON data successfully")
 
         tastings = []
         for i, wine_data in enumerate(data.get("tastings", [])):
@@ -838,7 +837,6 @@ Return valid JSON only, no other text.
             return date.today()
 
         # Try common formats
-        import re
         from datetime import datetime
 
         # Clean up the date string

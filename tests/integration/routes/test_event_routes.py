@@ -6,11 +6,10 @@ participant management, result tracking).
 NOTE: These are integration tests that serve as API contract documentation.
 """
 
-import pytest
-from datetime import datetime
-from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
+import pytest
+from fastapi.testclient import TestClient
 
 # ============================================================================
 # Fixtures
@@ -19,12 +18,12 @@ from unittest.mock import Mock, patch
 @pytest.fixture
 def client(tmp_path):
     """Create test client with app."""
-    from reserve_automation.web import app as app_module
     from reserve_automation.core.config import Config
-    
+    from reserve_automation.web import app as app_module
+
     vault_path = tmp_path / "vault"
     vault_path.mkdir(parents=True, exist_ok=True)
-    
+
     config = Config(paths={"vault": str(vault_path), "templates_dir": "templates"})
     app_module.core_config = config
 
@@ -32,7 +31,7 @@ def client(tmp_path):
     web_config.sessions.secret_key = "test-secret"
     web_config.sessions.max_age_hours = 24
     app_module.web_config = web_config
-    
+
     return TestClient(app_module.app)
 
 
@@ -53,7 +52,7 @@ class TestEventCreationContracts:
                 "bottles": [{"bottle_path": "1_Wines/Test", "bottle_name": "Test"}]
             }
         )
-        
+
         # Should fail validation
         assert response.status_code == 422
 
@@ -67,7 +66,7 @@ class TestEventCreationContracts:
                 "bottles": [{"bottle_path": "1_Wines/Test", "bottle_name": "Test"}]
             }
         )
-        
+
         # Should fail validation
         assert response.status_code == 422
 
@@ -82,7 +81,7 @@ class TestEventCreationContracts:
                 "bottles": []
             }
         )
-        
+
         # Should fail - empty bottles
         assert response.status_code in [400, 422]
 
@@ -98,7 +97,6 @@ class TestEventRetrievalContracts:
     def test_get_event_returns_json_response(self, client):
         """GET /api/v1/events/{event_id} returns JSON."""
         # Create event first
-        from reserve_automation.web import app as app_module
 
         create_response = client.post(
             "/api/v1/events",
@@ -134,7 +132,7 @@ class TestParticipantManagementContracts:
             "/api/v1/events/test-id/join",
             json={}  # Missing name
         )
-        
+
         # Should fail validation
         assert response.status_code in [404, 422]  # 404 if event not found, 422 if validation fails
 
@@ -145,21 +143,21 @@ class TestEventStateContracts:
     def test_reveal_event_returns_json(self, client):
         """PUT /api/v1/events/{event_id}/reveal returns JSON."""
         response = client.put("/api/v1/events/non-existent/reveal")
-        
+
         # Should return error (404) with JSON
         assert response.status_code in [404, 500]
-        
+
     def test_close_event_returns_json(self, client):
         """PUT /api/v1/events/{event_id}/close returns JSON."""
         response = client.put("/api/v1/events/non-existent/close")
-        
+
         # Should return error with JSON
         assert response.status_code in [404, 500]
 
     def test_delete_event_returns_200_or_404(self, client):
         """DELETE /api/v1/events/{event_id} returns 200 or 404."""
         response = client.delete("/api/v1/events/non-existent")
-        
+
         # Should return 404 for non-existent
         assert response.status_code == 404
 

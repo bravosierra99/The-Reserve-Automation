@@ -1,13 +1,13 @@
 """Unit tests for extraction components."""
 
-import pytest
 from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from reserve_automation.core.exceptions import ExtractionError
 from reserve_automation.core.models import BottleMetadata, ParserResult
 from reserve_automation.extractors import BottleExtractor, ConfidenceAnalyzer
 from reserve_automation.llm.gateway import LLMResponse
-
 
 # ============================================================================
 # BottleExtractor Tests

@@ -7,29 +7,25 @@ Usage:
 
 import re
 import shutil
-import sys
 from datetime import date
 from pathlib import Path
 
 import click
-import yaml
 from loguru import logger
 from sqlalchemy.orm import sessionmaker
 
 from reserve_automation.core.bottle_registry import BottleRegistry
-from reserve_automation.core.models import BottleMetadata
-from reserve_automation.core.tasting_note import TastingNote
 from reserve_automation.db.converters import _serialize_variety
 from reserve_automation.db.engine import init_db
 from reserve_automation.db.models.bottle import BottleModel, TastingNoteModel
 from reserve_automation.db.models.cocktail import (
-    CocktailModel,
     CocktailInstructionModel,
+    CocktailModel,
     RecipeIngredientModel,
 )
 from reserve_automation.db.models.cocktail_tasting import (
-    CocktailTastingModel,
     CocktailTastingIngredientModel,
+    CocktailTastingModel,
 )
 from reserve_automation.db.models.ingredient import IngredientModel
 from reserve_automation.utils.vault_reader import VaultReader

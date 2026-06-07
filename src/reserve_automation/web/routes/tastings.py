@@ -4,26 +4,33 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, Response, Request, UploadFile
-from ..auth.dependencies import require
+from fastapi import (
+    APIRouter,
+    Cookie,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import BaseModel
 
-from ..sessions import SessionManager  # Still used for extraction workflow
-from ..services.extraction_service import ExtractionService
-from ..services.tasting_service import TastingService
+from ..auth.dependencies import require
 from ..schemas.tasting import (
-    TastingStatus,
-    TastingData,
-    TastingSession,
-    TastingSessionItem,
-    SelectMatchRequest,
-    SearchBottlesRequest,
-    MatchCandidate,
     ManualTastingMode,
     SaveManualTastingRequest,
+    SelectMatchRequest,
+    TastingSession,
+    TastingSessionItem,
+    TastingStatus,
 )
+from ..services.extraction_service import ExtractionService
+from ..services.tasting_service import TastingService
+from ..sessions import SessionManager  # Still used for extraction workflow
 
 # ACCEPTED RISK: No rate limiting on this router.
 # LLM-touching endpoints (upload-card, manual-tasting/save) require "tastings.submit"
@@ -95,7 +102,7 @@ async def get_tasting_session(
     # Get or create tasting session
     tasting_session = session_data.get("tasting_session")
     if not tasting_session:
-        logger.info(f"No tasting_session in session data, creating from extraction_data")
+        logger.info("No tasting_session in session data, creating from extraction_data")
         # Convert old-style extraction data to new session format
         extraction_data = session_data.get("extraction_data")
         if not extraction_data:
@@ -103,12 +110,12 @@ async def get_tasting_session(
             raise HTTPException(status_code=404, detail="No extraction data in session")
 
         try:
-            logger.debug(f"Converting extraction_data to TastingExtractionResult")
+            logger.debug("Converting extraction_data to TastingExtractionResult")
             extraction_service = ExtractionService(core_config)
             extraction_result = extraction_service.from_dict(extraction_data)
             logger.debug(f"Successfully converted extraction_data, got {len(extraction_result.tastings)} tastings")
 
-            logger.debug(f"Creating tasting session from extraction")
+            logger.debug("Creating tasting session from extraction")
             tasting_service = _get_tasting_service()
             tasting_session = tasting_service.create_session_from_extraction(
                 extraction_id=extraction_id,
@@ -117,21 +124,21 @@ async def get_tasting_session(
                 upload_filename=session_data.get("upload_filename"),
                 event_id=session_data.get("event_id")
             )
-            logger.debug(f"Successfully created tasting session")
+            logger.debug("Successfully created tasting session")
 
             # Store back to session (we'll update below)
-            logger.debug(f"Converting tasting session to dict for storage")
+            logger.debug("Converting tasting session to dict for storage")
             tasting_session = tasting_session.model_dump(mode='json')
-            logger.debug(f"Successfully converted tasting session to dict")
+            logger.debug("Successfully converted tasting session to dict")
 
             # Save the new tasting session to the cookie
-            logger.info(f"Saving tasting session to cookie")
+            logger.info("Saving tasting session to cookie")
             new_token = session_manager.update_session(
                 token=session_token,
                 updates={"tasting_session": tasting_session}
             )
             if new_token:
-                logger.info(f"Generated new token, setting cookie")
+                logger.info("Generated new token, setting cookie")
                 response.set_cookie(
                     key="session",
                     value=new_token,
@@ -139,16 +146,16 @@ async def get_tasting_session(
                     httponly=True,
                     samesite="lax"
                 )
-                logger.info(f"Successfully saved tasting session to cookie")
+                logger.info("Successfully saved tasting session to cookie")
             else:
-                logger.error(f"Failed to generate new token when updating session with tasting_session")
+                logger.error("Failed to generate new token when updating session with tasting_session")
         except Exception as e:
             logger.error(f"Failed to create tasting session from extraction: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to create session: {str(e)}")
 
     # Get stats
     try:
-        logger.debug(f"Getting session stats")
+        logger.debug("Getting session stats")
         tasting_service = _get_tasting_service()
         session_obj = TastingSession(**tasting_session) if isinstance(tasting_session, dict) else tasting_session
         stats = tasting_service.get_session_stats(session_obj)
@@ -175,8 +182,8 @@ async def get_tasting_session(
             "tastings": tastings,
             "stats": stats
         }
-        logger.debug(f"Successfully built response data")
-        logger.debug(f"=== RETURNING TASTING SESSION ===")
+        logger.debug("Successfully built response data")
+        logger.debug("=== RETURNING TASTING SESSION ===")
         logger.debug(f"Number of tastings: {len(tastings)}")
         if tastings and len(tastings) > 0:
             first_tasting = tastings[0]
@@ -314,7 +321,7 @@ async def select_match(
     """Select a bottle match for a tasting."""
     from ..app import web_config
 
-    logger.debug(f"=== SELECT MATCH ENDPOINT ===")
+    logger.debug("=== SELECT MATCH ENDPOINT ===")
     logger.debug(f"extraction_id: {extraction_id}, index: {index}, bottle_path: {request.bottle_path}")
 
     if not web_config:
@@ -407,7 +414,7 @@ async def approve_tasting(
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Approve and save a single tasting."""
-    from ..app import web_config, upload_service
+    from ..app import upload_service, web_config
 
     if not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
@@ -505,7 +512,7 @@ async def skip_tasting(
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Skip a single tasting without saving."""
-    from ..app import web_config, upload_service
+    from ..app import upload_service, web_config
 
     if not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
@@ -577,7 +584,7 @@ async def reject_all_tastings(
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Reject all tastings and clean up."""
-    from ..app import web_config, upload_service
+    from ..app import upload_service, web_config
 
     if not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")
@@ -711,7 +718,7 @@ async def upload_tasting_card(
     This endpoint is separate from /api/v1/upload so that family members
     (who have tastings.submit but not upload.access) can upload tasting cards.
     """
-    from ..app import upload_service, core_config, web_config
+    from ..app import core_config, upload_service, web_config
 
     if not upload_service or not core_config or not web_config:
         raise HTTPException(status_code=500, detail="Service not initialized")

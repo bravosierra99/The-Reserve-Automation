@@ -11,11 +11,10 @@ across all integration points:
 CRITICAL: The #CLAUDE_REQ chain requires all of these to stay synchronized.
 """
 
+
 import pytest
-from datetime import datetime
 
-from reserve_automation.core.models import BottleMetadata, BeverageType
-
+from reserve_automation.core.models import BeverageType, BottleMetadata
 
 # ============================================================================
 # Test Basic BottleMetadata Creation

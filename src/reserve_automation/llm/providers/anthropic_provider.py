@@ -3,7 +3,6 @@
 import base64
 import os
 import time
-from typing import Optional
 
 from anthropic import AsyncAnthropic
 from loguru import logger

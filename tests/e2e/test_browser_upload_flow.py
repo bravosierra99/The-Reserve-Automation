@@ -14,14 +14,9 @@ This would have caught the upload workflow breaking because it actually runs Jav
 in a real browser, not just API calls.
 """
 
-import asyncio
-import subprocess
-import time
-from pathlib import Path
 
 import pytest
-from playwright.sync_api import sync_playwright, expect
-
+from playwright.sync_api import expect, sync_playwright
 
 # Fixtures are now in conftest.py
 
@@ -122,20 +117,20 @@ class TestBrowserUploadFlow:
                 print(f"Image src (after 1s): {img_src_after_wait}")
 
                 if "no-label.svg" in img_src_after_wait:
-                    print(f"⚠ Label showing placeholder instead of actual image")
+                    print("⚠ Label showing placeholder instead of actual image")
 
                     # Check if uploadId was set correctly
                     upload_id_logs = [log for log in console_logs if 'upload_id:' in log]
                     print(f"Upload ID logs: {upload_id_logs}")
                 else:
-                    print(f"✓ Label image displayed correctly")
+                    print("✓ Label image displayed correctly")
 
                 # Success! Modal opened with extracted data
                 print("✓ Upload workflow works: Modal opened with bottle data")
 
                 # Verify console logs show bottle extraction
                 relevant_logs = [log for log in console_logs if 'Upload response' in log or 'Bottles extracted' in log or 'bottleEditor' in log]
-                print(f"\nConsole logs during upload:")
+                print("\nConsole logs during upload:")
                 for log in relevant_logs:
                     print(f"  {log}")
 
@@ -264,7 +259,7 @@ class TestBrowserUploadFlow:
 
                 # Print any alerts that appeared
                 if alert_messages:
-                    print(f"\n⚠ Alerts detected:")
+                    print("\n⚠ Alerts detected:")
                     for msg in alert_messages:
                         print(f"  {msg}")
 
@@ -443,13 +438,13 @@ class TestBrowserUploadFlow:
             error_alerts = [msg for msg in alert_messages if 'failed' in msg.lower() or '404' in msg or 'error' in msg.lower()]
 
             if error_logs:
-                print(f"\n⚠ Errors found in console logs:")
+                print("\n⚠ Errors found in console logs:")
                 for log in error_logs:
                     print(f"  {log}")
                 pytest.fail(f"Manual crop failed with errors: {error_logs}")
 
             if error_alerts:
-                print(f"\n⚠ Error alerts found:")
+                print("\n⚠ Error alerts found:")
                 for msg in error_alerts:
                     print(f"  {msg}")
                 pytest.fail(f"Manual crop showed error alert: {error_alerts}")
@@ -466,8 +461,13 @@ class TestBrowserUploadFlow:
 
             browser.close()
 
+    @pytest.mark.requires_lm_studio
     def test_auto_crop_workflow(self, web_server, sample_image):
-        """Test auto-crop workflow in upload modal."""
+        """Test auto-crop workflow in upload modal.
+
+        Uploads + extracts (LLM) and the auto-crop itself runs LLM/CV label
+        detection, so this needs a reachable LM Studio endpoint.
+        """
         console_logs = []
         alert_messages = []
 
@@ -664,12 +664,13 @@ class TestBrowserManagementFlow:
             # Enter grid mode
             self._enter_grid_mode(page, web_server)
 
-            # Wait for bottles to appear in grid
-            # Bottles have cursor-pointer and rounded-lg classes with the bottle name text
-            page.wait_for_selector(".cursor-pointer.rounded-lg", timeout=10000)
+            # Wait for bottles to appear in grid. The clickable bottle card is
+            # the inner <div @click="bottleEditor.openManagement(...)"> with
+            # classes "cursor-pointer flex-1" (see templates/bottles.html).
+            page.wait_for_selector(".cursor-pointer.flex-1", timeout=10000)
 
             # Click first bottle
-            first_bottle = page.locator(".cursor-pointer.rounded-lg").first
+            first_bottle = page.locator(".cursor-pointer.flex-1").first
             first_bottle.click()
 
             # Verify modal opens
@@ -690,10 +691,10 @@ class TestBrowserManagementFlow:
             self._enter_grid_mode(page, web_server)
 
             # Wait for bottles to load
-            page.wait_for_selector(".cursor-pointer.rounded-lg", timeout=10000)
+            page.wait_for_selector(".cursor-pointer.flex-1", timeout=10000)
 
             # Click bottle and open modal
-            page.locator(".cursor-pointer.rounded-lg").first.click()
+            page.locator(".cursor-pointer.flex-1").first.click()
             page.wait_for_selector("[x-show='bottleEditor.isOpen']", timeout=5000)
 
             # Click save
@@ -703,7 +704,7 @@ class TestBrowserManagementFlow:
             expect(page.locator("text=Bottle saved successfully")).to_be_visible(timeout=5000)
 
             # Verify page reloads (modal should close and grid should be visible again)
-            page.wait_for_selector(".cursor-pointer.rounded-lg", timeout=5000)
+            page.wait_for_selector(".cursor-pointer.flex-1", timeout=5000)
 
             print("✓ Save in management mode works: Page reloaded")
 
@@ -758,7 +759,7 @@ class TestBrowserManagementFlow:
 
             # Find a bottle that has a label (look for one that shows an image, not placeholder)
             # The fixture bottles (Weller, Caymus) should have labels
-            bottle_cards = page.locator(".cursor-pointer.rounded-lg")
+            bottle_cards = page.locator(".cursor-pointer.flex-1")
             bottle_count = bottle_cards.count()
             print(f"Found {bottle_count} bottles")
 
@@ -821,7 +822,7 @@ class TestBrowserManagementFlow:
                 screenshot_path = "/tmp/mgmt_cropper_init_failure.png"
                 page.screenshot(path=screenshot_path)
 
-                print(f"\n⚠ Cropper.js failed to initialize")
+                print("\n⚠ Cropper.js failed to initialize")
                 print(f"Screenshot saved to: {screenshot_path}")
                 print("\nConsole logs:")
                 for log in console_logs[-20:]:  # Last 20 logs
@@ -866,13 +867,13 @@ class TestBrowserManagementFlow:
             error_alerts = [msg for msg in alert_messages if 'failed' in msg.lower() or '404' in msg or 'error' in msg.lower()]
 
             if error_logs:
-                print(f"\n⚠ Errors found in console logs:")
+                print("\n⚠ Errors found in console logs:")
                 for log in error_logs:
                     print(f"  {log}")
                 pytest.fail(f"Manual crop failed with errors: {error_logs}")
 
             if error_alerts:
-                print(f"\n⚠ Error alerts found:")
+                print("\n⚠ Error alerts found:")
                 for msg in error_alerts:
                     print(f"  {msg}")
                 pytest.fail(f"Manual crop showed error alert: {error_alerts}")

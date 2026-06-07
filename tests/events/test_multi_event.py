@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Test multi-event participation - one user joins and participates in multiple events."""
 import pytest
+
 pytest.skip("Manual integration test script requiring web server on localhost:8000", allow_module_level=True)
 
-import requests
 import json
 import urllib.parse
+
+import requests
 
 BASE_URL = "http://localhost:8000"
 
@@ -95,7 +97,7 @@ if 'participant_sessions' in cookies:
     assert event2_id in sessions, "Event 2 session missing from cookie!"
     assert sessions[event1_id]['participant_id'] == participant1_id
     assert sessions[event2_id]['participant_id'] == participant2_id
-    print(f"  ✓ Cookie correctly stores both events")
+    print("  ✓ Cookie correctly stores both events")
 
 # Add tasting to Event 1
 print("\n🥃 Adding whiskey tasting to Event 1...")
@@ -205,10 +207,10 @@ assert len(alex_tastings_e2) == 1, "Should have 1 tasting in Event 2"
 print("\n" + "="*60)
 print("✅ MULTI-EVENT TEST PASSED!")
 print("="*60)
-print(f"\n✓ User successfully joined 2 events")
-print(f"✓ Cookie correctly stored both sessions")
-print(f"✓ Tastings saved to correct events")
-print(f"\n🌐 View events:")
+print("\n✓ User successfully joined 2 events")
+print("✓ Cookie correctly stored both sessions")
+print("✓ Tastings saved to correct events")
+print("\n🌐 View events:")
 print(f"   Event 1: {BASE_URL}/events/{event1_id}")
 print(f"   Event 2: {BASE_URL}/events/{event2_id}")
 print()

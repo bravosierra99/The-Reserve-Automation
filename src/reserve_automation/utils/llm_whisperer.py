@@ -7,7 +7,6 @@ spatial layout, which is perfect for table extraction where column position matt
 
 import os
 from pathlib import Path
-from typing import Optional
 
 from unstract.llmwhisperer import LLMWhispererClientV2
 

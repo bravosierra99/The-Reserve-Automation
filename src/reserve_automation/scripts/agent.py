@@ -545,11 +545,11 @@ async def run_agent(base_url: str, is_prod: bool, model: str, lm_base_url: str):
         messages = []
 
         target_label = "PROD" if is_prod else base_url
-        print(f"\nThe Reserve Agent")
+        print("\nThe Reserve Agent")
         print(f"  API: {target_label}")
         print(f"  Model: {model}")
         print(f"  LM Studio: {lm_base_url}")
-        print(f"\nType your request, /clear to reset context, or 'quit' to exit.\n")
+        print("\nType your request, /clear to reset context, or 'quit' to exit.\n")
 
         async with httpx.AsyncClient(base_url=lm_base_url, timeout=120.0) as lm_client:
             while True:

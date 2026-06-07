@@ -15,7 +15,7 @@ This tests the frontend/backend integration that API-only tests miss.
 """
 
 import pytest
-from playwright.sync_api import sync_playwright, expect
+from playwright.sync_api import expect, sync_playwright
 
 
 class TestManualTastingWizard:
@@ -30,7 +30,7 @@ class TestManualTastingWizard:
             page.goto(f"{web_server}/manual-tasting")
 
             # Verify page title
-            expect(page).to_have_title("Manual Tasting - The Reserve")
+            expect(page).to_have_title("Tastings - The Reserve")
 
             # Verify step 1 header is visible
             expect(page.locator("h2:has-text('Taster Information')")).to_be_visible()
@@ -107,9 +107,10 @@ class TestManualTastingWizard:
 
             # Check if Weller bottle appears in results
             try:
-                # Look for the result button containing the full bottle name
+                # Look for the result button containing the seeded bottle name
+                # (test_db seeds Weller / "Original Wheated Bourbon").
                 # Use .first to avoid strict mode errors when multiple elements match
-                expect(page.locator("text=THE ORIGINAL WHEATED BOURBON").first).to_be_visible(timeout=5000)
+                expect(page.locator("text=Original Wheated Bourbon").first).to_be_visible(timeout=5000)
                 print("   Found Weller bottle in search results")
             except:
                 # Print console logs for debugging
@@ -277,7 +278,7 @@ class TestManualTastingWizard:
             # First create an event via API
             import requests
             event_response = requests.post(
-                f"http://localhost:9000/api/v1/events",
+                "http://localhost:9000/api/v1/events",
                 json={
                     "name": "E2E Test Event",
                     "host_name": "E2E Host",

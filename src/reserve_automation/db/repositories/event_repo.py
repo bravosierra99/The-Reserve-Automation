@@ -6,17 +6,16 @@ simpler. The dicts are assembled from the normalized DB tables.
 """
 
 import uuid
-from datetime import datetime
 
 from sqlalchemy.orm import Session, joinedload
 
 from ..models.event import (
-    EventModel,
     EventBottleModel,
     EventCocktailModel,
+    EventCocktailRatingModel,
+    EventModel,
     EventParticipantModel,
     EventTastingModel,
-    EventCocktailRatingModel,
 )
 
 

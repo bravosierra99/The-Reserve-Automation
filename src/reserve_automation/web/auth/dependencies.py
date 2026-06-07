@@ -1,6 +1,6 @@
 """FastAPI dependencies for auth."""
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import HTTPException, Request
 
 from .models import AuthenticatedUser
 

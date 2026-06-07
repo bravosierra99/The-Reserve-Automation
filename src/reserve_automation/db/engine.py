@@ -3,10 +3,10 @@
 from collections.abc import Generator
 from pathlib import Path
 
-from sqlalchemy import event, create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool, NullPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 from .base import Base
 

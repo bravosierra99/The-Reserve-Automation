@@ -1,7 +1,8 @@
 """Bottle routes - STATELESS (no sessions)."""
 
 from fastapi import APIRouter
-from . import extraction, serving, save, labels, collection
+
+from . import collection, extraction, labels, save, serving
 
 # Create main router
 router = APIRouter()

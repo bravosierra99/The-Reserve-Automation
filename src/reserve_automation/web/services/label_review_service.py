@@ -1,16 +1,16 @@
 """Service for reviewing and improving label image quality."""
 
-import asyncio
 from pathlib import Path
 from shutil import copyfile
-from typing import List, Optional, Dict, Literal
+from typing import List, Literal, Optional
+
 from loguru import logger
 
 from ...core.models import BottleMetadata
 from ...llm.gateway import LLMGateway
 from ...utils.label_processor import LabelImageProcessor
-from ...utils.vault_reader import VaultReader
 from ...utils.llm_label_finder import LLMLabelFinder
+from ...utils.vault_reader import VaultReader
 
 
 class LabelReviewCandidate:
@@ -122,7 +122,7 @@ class LabelReviewService:
                 shows_full_bottle = await self._detect_full_bottle(label_bytes, bottle)
 
                 if score is None:
-                    logger.warning(f"Failed to score, skipping")
+                    logger.warning("Failed to score, skipping")
                     continue
 
                 logger.info(f"  Score: {score:.1f}/10, Full bottle: {shows_full_bottle}")
@@ -130,13 +130,13 @@ class LabelReviewService:
                 # Categorize
                 if score < 5.0:
                     status = "needs_replacement"
-                    logger.info(f"  🔴 Needs replacement (poor quality)")
+                    logger.info("  🔴 Needs replacement (poor quality)")
                 elif shows_full_bottle and score < 8.0:
                     status = "needs_cropping"
-                    logger.info(f"  🟡 Needs cropping (full bottle detected)")
+                    logger.info("  🟡 Needs cropping (full bottle detected)")
                 else:
                     status = "good"
-                    logger.info(f"  ✅ Good quality")
+                    logger.info("  ✅ Good quality")
 
                 # Add to candidates if needs action or showing all
                 if status != "good" or show_all:

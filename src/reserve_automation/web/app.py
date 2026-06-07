@@ -10,11 +10,22 @@ from fastapi.templating import Jinja2Templates
 from loguru import logger
 from PIL import Image
 
-from .config import load_web_config, load_auth_config
-from .logging_config import setup_web_logging
-from .routes import upload, review, health, bottles, tastings, management, events, ingredients, cocktails, autocomplete
-from .services.upload_service import UploadService
 from ..db.engine import init_db
+from .config import load_auth_config, load_web_config
+from .logging_config import setup_web_logging
+from .routes import (
+    autocomplete,
+    bottles,
+    cocktails,
+    events,
+    health,
+    ingredients,
+    management,
+    review,
+    tastings,
+    upload,
+)
+from .services.upload_service import UploadService
 
 # Cap the per-image pixel count so a maliciously-crafted decompression bomb
 # (small file, huge pixel grid) can't OOM the container. 50 MP = ~150 MB at
@@ -44,7 +55,7 @@ async def lifespan(app: FastAPI):
 
     # Load configuration
     core_config, web_config = load_web_config()
-    logger.info(f"Loaded configuration")
+    logger.info("Loaded configuration")
 
     # Initialize database
     database_url = os.getenv("DATABASE_URL", "sqlite:///data/reserve.db")
@@ -104,10 +115,12 @@ app.state.auth_config = _startup_auth_config
 
 # Register security headers middleware
 from .middleware.security_headers import SecurityHeadersMiddleware
+
 app.add_middleware(SecurityHeadersMiddleware)
 
 # Register auth middleware (must be done before app starts, not in lifespan)
 from .auth.middleware import AuthMiddleware
+
 app.add_middleware(AuthMiddleware, auth_config=_startup_auth_config)
 
 # Mount static files
@@ -151,7 +164,7 @@ async def root():
 @app.exception_handler(403)
 async def permission_denied_handler(request, exc):
     """Redirect page requests to /bottles on 403, return JSON for API."""
-    from fastapi.responses import RedirectResponse, JSONResponse
+    from fastapi.responses import JSONResponse, RedirectResponse
     if request.url.path.startswith("/api/"):
         return JSONResponse(
             status_code=403,

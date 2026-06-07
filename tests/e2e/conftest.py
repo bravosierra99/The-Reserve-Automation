@@ -1,5 +1,6 @@
 """Shared fixtures for E2E browser tests."""
 
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -7,6 +8,13 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import sync_playwright
 
+# Playwright's bundled Firefox build ships a host-validation manifest that
+# stats a phantom `firefox/lock` file which does not exist in this build, so
+# `validateDependenciesLinux` throws ENOENT before the browser ever launches
+# (upstream packaging bug). The engine itself (libxul.so etc.) is present and
+# works fine, so we skip the broken pre-launch validation. setdefault leaves an
+# explicit override in place. Without this, every E2E browser test errors.
+os.environ.setdefault("PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS", "1")
 
 # ============================================================================
 # PYTEST HOOKS FOR PROGRESS VISIBILITY
@@ -58,43 +66,59 @@ def test_db(tmp_path):
     Yields the file path string (pass as DATABASE_URL=sqlite:///path to the
     subprocess env).
     """
-    import os
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
 
     db_path = tmp_path / "e2e_test.db"
     db_url = f"sqlite:///{db_path}"
 
     # Initialise schema using the app's own init_db
+    from reserve_automation.core.models import BeverageType, BottleMetadata
     from reserve_automation.db.engine import init_db as app_init_db
     from reserve_automation.db.repositories.bottle_repo import SQLiteBottleRepository
-    from reserve_automation.core.models import BottleMetadata, BeverageType
 
     engine = app_init_db(db_url)
     from reserve_automation.db.engine import _SessionLocal
     session = _SessionLocal()
 
     repo = SQLiteBottleRepository(session)
-    repo.create(BottleMetadata(
-        producer="Weller",
-        name="Original Wheated Bourbon",
-        type=BeverageType.WHISKEY,
-        inventory=2,
-    ))
-    repo.create(BottleMetadata(
-        producer="Buffalo Trace",
-        name="Kentucky Straight Bourbon",
-        type=BeverageType.WHISKEY,
-        inventory=1,
-    ))
-    repo.create(BottleMetadata(
-        producer="Caymus",
-        name="Cabernet Sauvignon 2021",
-        type=BeverageType.WINE,
-        inventory=3,
-    ))
+    created = [
+        repo.create(BottleMetadata(
+            producer="Weller",
+            name="Original Wheated Bourbon",
+            type=BeverageType.WHISKEY,
+            inventory=2,
+            source="test",
+        )),
+        repo.create(BottleMetadata(
+            producer="Buffalo Trace",
+            name="Kentucky Straight Bourbon",
+            type=BeverageType.WHISKEY,
+            inventory=1,
+            source="test",
+        )),
+        repo.create(BottleMetadata(
+            producer="Caymus",
+            name="Cabernet Sauvignon 2021",
+            type=BeverageType.WINE,
+            inventory=3,
+            source="test",
+        )),
+    ]
     session.close()
     engine.dispose()
+
+    # Seed a real label image for each bottle under the (isolated) MEDIA_DIR so
+    # browser tests that open a bottle's label (e.g. the management manual-crop
+    # / Cropper.js flow) have an image to initialize on. The vault-era test
+    # fixtures copied labeled bottles; the SQLite test_db otherwise has none.
+    import os
+    import shutil
+    media_dir = Path(os.environ.get("MEDIA_DIR", "data/media"))
+    fixture_label = Path(__file__).parent.parent / "fixtures" / "bottles" / "bourbon_001.jpg"
+    if str(media_dir).startswith("/tmp/") and fixture_label.exists():
+        for bottle in created:
+            label_dir = media_dir / "bottles" / str(bottle.id)
+            label_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(fixture_label, label_dir / "label.jpg")
 
     yield str(db_path)
 
@@ -120,9 +144,9 @@ def web_server(test_db):
     which the app no longer reads for data — that caused tests to silently run
     against prod data or an empty DB.
     """
-    import tempfile
     import os
     import signal
+    import tempfile
 
     # Kill any existing test servers on port 9000
     subprocess.run(["pkill", "-9", "-f", "uvicorn.*reserve_automation"], stderr=subprocess.DEVNULL)
@@ -138,13 +162,28 @@ def web_server(test_db):
     # Build subprocess env: inherit parent + override DATABASE_URL and dev auth
     server_env = os.environ.copy()
     server_env["DATABASE_URL"] = f"sqlite:///{test_db}"
-    # Ensure dev mode auth is active so tests can reach guarded endpoints
     server_env.setdefault("WEB_SECRET_KEY", "e2e-test-secret-key-not-secure-32chars")
+    # Enable dev-mode auth in the SUBPROCESS server. The root conftest patches
+    # app.state.auth_config in-process, but this fixture launches a separate
+    # uvicorn that never sees that patch — it loads config/auth.yaml, where
+    # dev.enabled is false (prod default), so every guarded route 401s and the
+    # browser sees an empty error page. AUTH_DEV_ENABLED is the documented
+    # override (web/auth/config.py); without it all browser-driven e2e fails.
+    server_env["AUTH_DEV_ENABLED"] = "1"
 
     # Start server WITHOUT --reload to avoid subprocess complexity in tests
-    # Use port 9000 to avoid conflicts with the main server on 8000
+    # Use port 9000 to avoid conflicts with the main server on 8000.
+    #
+    # When E2E_COVERAGE=1, run uvicorn under `coverage run --parallel-mode` so
+    # the server process's route/template coverage is captured (it's a separate
+    # process, so plain pytest-cov in the test process never sees it). The
+    # fixture SIGTERM-kills the server; .coveragerc has `sigterm = true` so the
+    # data flushes. Combine afterwards with `coverage combine && coverage report`.
+    launcher = ["uv", "run", "--env-file", ".env"]
+    if os.environ.get("E2E_COVERAGE"):
+        launcher += ["coverage", "run", "--parallel-mode", "--rcfile=.coveragerc", "-m"]
     server_process = subprocess.Popen(
-        ["uv", "run", "--env-file", ".env", "uvicorn",
+        [*launcher, "uvicorn",
          "reserve_automation.web.app:app", "--host", "0.0.0.0", "--port", "9000"],
         cwd=str(automation_dir),
         stdout=stdout_file,
@@ -165,7 +204,7 @@ def web_server(test_db):
                 print(f"\n✓ Test server started on port 9000 after {i+1} seconds")
                 server_ready = True
                 break
-        except Exception as e:
+        except Exception:
             if i == 0:
                 print("Waiting for test server to start on port 9000...")
         time.sleep(1)

@@ -1,11 +1,10 @@
 """Unit tests for ImageMetadataExtractor._normalize_wine_beverage_type and proof sanity check."""
 
 import io
-
-import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
 from PIL import Image
 
 from reserve_automation.extractors.image_extractor import ImageMetadataExtractor

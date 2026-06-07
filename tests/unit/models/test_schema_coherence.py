@@ -11,13 +11,12 @@ CRITICAL: These tests prevent regressions by verifying:
 4. No field leakage between beverage types
 """
 
-import pytest
 from datetime import date
 
-from reserve_automation.core.tasting_note import TastingNote, TastingExtractionResult
-from reserve_automation.web.schemas.tasting import TastingData
-from reserve_automation.core.models import BottleMetadata
+import pytest
 
+from reserve_automation.core.tasting_note import TastingNote
+from reserve_automation.web.schemas.tasting import TastingData
 
 # ============================================================================
 # Test Field Completeness Across Models

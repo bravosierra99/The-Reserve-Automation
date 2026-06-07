@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Create a test event for whiskey tasting with Stagg bottles."""
 
+
 import requests
-import json
 
 # Configuration
 API_BASE = "http://localhost:8000"
@@ -64,12 +64,12 @@ def main():
     event = create_response.json()
     event_id = event["event_id"]
 
-    print(f"\n✅ Event created successfully!")
+    print("\n✅ Event created successfully!")
     print(f"   Event ID: {event_id}")
     print(f"   Event URL: http://localhost:8000/events/{event_id}")
-    print(f"\n   Bottles are hidden (blind mode)")
-    print(f"   Participants will see: Bottle #1, Bottle #2, Bottle #3")
-    print(f"\n💾 Saving event ID to /tmp/event_id.txt")
+    print("\n   Bottles are hidden (blind mode)")
+    print("   Participants will see: Bottle #1, Bottle #2, Bottle #3")
+    print("\n💾 Saving event ID to /tmp/event_id.txt")
 
     # Save event ID for convenience
     with open("/tmp/event_id.txt", "w") as f:
