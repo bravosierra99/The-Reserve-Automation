@@ -108,12 +108,19 @@ python3 tests/tastings/test_vault_integration.py      # Suite 3: Vault integrati
 - `src/reserve_automation/web/templates/manual_tasting.html`
 - Event schemas or cookie/session handling
 
-### Current Status: 4/4 Tests Passing ✅
+### Event Test Coverage
 
-1. ✅ **Blind Whiskey Event** - Full 3-participant tasting with scores & notes
-2. ✅ **Blind Wine Event** - Skipped (no wines in vault - add some to test)
-3. ✅ **Multi-Event Participation** - Users can join multiple events simultaneously
-4. ✅ **Edit Existing Tasting** - Verifies edits replace (don't duplicate)
+The event suite lives in `tests/events/` and runs as part of the full
+`uv run pytest` run (600+ tests overall). It exercises:
+
+1. **Blind Whiskey Event** - Full 3-participant tasting with scores & notes
+2. **Blind Wine Event** - Wine variant of the blind flow
+3. **Multi-Event Participation** - Users can join multiple events simultaneously
+4. **Edit Existing Tasting** - Verifies edits replace (don't duplicate)
+
+> Note: a few `test_cocktail_event_api.py` tests pass standalone but can fail in
+> a full-suite run due to a known cross-module SQLite test-isolation leak (not a
+> product defect). Run `uv run pytest tests/events/` to check them in isolation.
 
 ## Other Tests
 
