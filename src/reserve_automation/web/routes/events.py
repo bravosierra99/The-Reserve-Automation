@@ -104,7 +104,11 @@ async def create_event(
                 bottle_id=bottle_id,
                 bottle_name=bottle_name,
                 bottle_path=str(bottle_id),
-                blind_number=request_data.blind_numbers[i] if request_data.is_blind else None
+                blind_number=(
+                    request_data.blind_numbers[i]
+                    if request_data.is_blind and request_data.blind_numbers
+                    else None
+                )
             )
             bottles.append(event_bottle)
 
