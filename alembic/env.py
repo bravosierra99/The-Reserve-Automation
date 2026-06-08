@@ -6,10 +6,10 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
+from reserve_automation.db import models as _models  # noqa: F401
 
 # Import Base and all models so metadata is populated
 from reserve_automation.db.base import Base
-from reserve_automation.db import models as _models  # noqa: F401
 
 config = context.config
 

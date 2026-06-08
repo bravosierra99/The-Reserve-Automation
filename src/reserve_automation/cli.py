@@ -1264,7 +1264,7 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
         ctx.exit(1)
 
 
-def _get_bottle_folder_from_name(bottle: BottleMetadata, vault_path: Path) -> Optional[Path]:
+def _get_bottle_folder_from_name(bottle: BottleMetadata, vault_path: Path) -> Path | None:
     """Get bottle folder path from bottle metadata."""
     # Construct expected folder name
     parts = [bottle.producer, bottle.name]

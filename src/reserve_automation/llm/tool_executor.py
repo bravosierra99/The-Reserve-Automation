@@ -116,7 +116,6 @@ class ToolExecutor:
             response.raise_for_status()
 
             content = response.text
-            content_type = response.headers.get("content-type", "")
 
             # Extract image URLs (focus on product/bottle images)
             import re

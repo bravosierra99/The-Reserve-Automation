@@ -151,7 +151,7 @@ Region: "Napa Valley"
     def test_parse_frontmatter_empty_values(self, updater):
         """Should handle empty values."""
         content = """---
-Label: 
+Label:
 Notes: ""
 Rating: --
 ---

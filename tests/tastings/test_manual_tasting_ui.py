@@ -120,7 +120,6 @@ def test_wine_whiskey_tasting_notes_fields(client):
     response = client.get("/manual-tasting")
     assert response.status_code == 200
 
-    soup = BeautifulSoup(response.text, 'html.parser')
     content = response.text
 
     # Check wine-specific fields

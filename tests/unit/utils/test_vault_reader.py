@@ -292,7 +292,7 @@ class TestEdgeCases:
         empty_dir.mkdir()
 
         reader = VaultReader(temp_vault)
-        bottles = reader.read_all_bottles(beverage_type="wine")
+        reader.read_all_bottles(beverage_type="wine")
 
         # Should not crash, just skip the empty folder
         assert True  # If we got here, it didn't crash

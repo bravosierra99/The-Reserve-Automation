@@ -860,8 +860,6 @@ async def save_manual_tasting(
             if request_data.participant_id not in event["participants"]:
                 raise HTTPException(status_code=404, detail="Participant not found in event")
 
-            participant = event["participants"][request_data.participant_id]
-
             # The selected_bottle_id IS the DB bottle ID now
             bottle_id = request_data.selected_bottle_id
             if not bottle_id:

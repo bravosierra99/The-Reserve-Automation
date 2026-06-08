@@ -473,7 +473,7 @@ TasterName: "Alice"
 ---
 """)
 
-        warning = service.check_duplicate_tasting(
+        service.check_duplicate_tasting(
             bottle_path="1_Whiskeys/Stagg",
             taster="Alice",
             tasting_date=datetime(2025, 12, 27)

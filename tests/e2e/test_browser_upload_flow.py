@@ -246,7 +246,7 @@ class TestBrowserUploadFlow:
                     import json
                     try:
                         response_data = json.loads(verify_response[0])
-                        if response_data.get("metadata", {}).get("verified") == False:
+                        if response_data.get("metadata", {}).get("verified") is False:
                             error_msg = response_data.get("metadata", {}).get("error", "Unknown error")
                             print(f"\n⚠ Enrichment verification failed: {error_msg}")
                             pytest.fail(f"Metadata enrichment failed: {error_msg}")

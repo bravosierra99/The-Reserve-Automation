@@ -79,7 +79,21 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
-ignore = []
+# E501 (line length) is intentionally not enforced. The project carried ~480
+# long lines across live + legacy + test code; line wrapping is the formatter's
+# job, not the linter's, and hand-wrapping hundreds of legacy lines is churn for
+# no behavioral gain. Adopt `ruff format` in a dedicated commit if width control
+# is wanted later. Every other E/F/I/N/W rule IS enforced (and gated in CI).
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests grandfather idiomatic patterns: bare `except:` used as in-test
+# diagnostics, a JS-property-mirroring test name, local matrix-ish variable
+# names, and conftest imports that must follow sys.path / env setup.
+"tests/**" = ["E722", "N802", "N806", "E402"]
+# Dev utility scripts: imports after load_dotenv()/sys.path; terse one-liners.
+"scripts/**" = ["E402", "E701", "N806"]
+"src/reserve_automation/scripts/**" = ["E402", "N806"]
 
 [tool.mypy]
 python_version = "3.11"

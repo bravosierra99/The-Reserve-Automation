@@ -478,15 +478,6 @@ class TestDataContractValidation:
         This is the fix we just implemented.
         """
 
-        # Bad data (what forms send)
-        bad_data = {
-            "producer": "Test",
-            "name": "Test",
-            "type": "wine",
-            "year": "",
-            "price": ""
-        }
-
         # Good data (what we should send after cleaning)
         good_data = {
             "producer": "Test",
