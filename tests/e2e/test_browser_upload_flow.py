@@ -18,6 +18,8 @@ in a real browser, not just API calls.
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+pytestmark = pytest.mark.e2e
+
 # Fixtures are now in conftest.py
 
 

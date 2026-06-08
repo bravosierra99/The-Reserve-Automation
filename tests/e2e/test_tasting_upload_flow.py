@@ -23,7 +23,7 @@ from reserve_automation.web.config import load_web_config
 
 # Every test here uploads a tasting card and runs a real LLM extraction, so the
 # suite needs a reachable LM Studio endpoint (auto-skipped otherwise).
-pytestmark = pytest.mark.requires_lm_studio
+pytestmark = [pytest.mark.e2e, pytest.mark.requires_lm_studio]
 
 
 def _carry_session(client, upload_response):

@@ -23,6 +23,8 @@ from reserve_automation.core.models import BottleMetadata
 from reserve_automation.web.app import app
 from reserve_automation.web.config import load_web_config
 
+pytestmark = pytest.mark.e2e
+
 
 @pytest.fixture(scope="module")
 def test_client():

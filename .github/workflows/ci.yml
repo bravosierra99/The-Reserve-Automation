@@ -1,0 +1,63 @@
+name: CI
+
+# Runs the test suite on every PR and on pushes to main. This is the gate that
+# stops broken changes from merging — but a green/red run only *blocks* a merge
+# once the repo's branch-protection rules mark these checks "required" (a
+# GitHub Settings action, see README/handoff). Without that, CI only reports.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel an in-progress run when new commits land on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast, reliable gate: unit + integration + ui (no browser). Mirrors the
+  # `uv run pytest` contract developers run locally (addopts deselects e2e).
+  test:
+    name: Tests (unit + integration + ui)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --dev
+
+      - name: Run test suite
+        # Inherits addopts = "-m 'not e2e'" from pyproject.toml.
+        run: uv run pytest
+
+  # Browser E2E suite (Playwright + a real uvicorn subprocess). These cannot run
+  # under WSL locally, so CI on a Linux runner is the only place they execute.
+  # Starts NON-BLOCKING (continue-on-error) until it has gone green on the runner
+  # at least once; then drop continue-on-error and add it to required checks.
+  e2e:
+    name: E2E (browser)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --dev
+
+      - name: Install Playwright Firefox + system deps
+        run: uv run playwright install --with-deps firefox
+
+      - name: Run E2E suite
+        # `-m e2e` overrides the default `-m 'not e2e'` deselection.
+        # The LM-Studio-dependent E2E test auto-skips (no endpoint in CI).
+        run: uv run pytest -m e2e

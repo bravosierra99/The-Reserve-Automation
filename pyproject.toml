@@ -94,6 +94,11 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
+# Exclude browser E2E tests by default: they launch a uvicorn subprocess +
+# Playwright browser and hang under WSL. `uv run pytest` is therefore the fast,
+# reliable gate (unit + integration + ui). Run the browser suite explicitly with
+# `uv run pytest -m e2e` (CI does this on a Linux runner where the browser works).
+addopts = "-m 'not e2e'"
 # Timeout for individual tests (2 minutes default, E2E tests get 5 minutes)
 timeout = 120
 # Show live output during tests for progress visibility
