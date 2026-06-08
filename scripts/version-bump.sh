@@ -8,6 +8,11 @@
 #   ./scripts/version-bump.sh major              # 0.3.8 -> 1.0.0
 #   ./scripts/version-bump.sh 1.2.3              # Set explicit version
 #   ./scripts/version-bump.sh --dry-run patch    # Preview changes
+#   ./scripts/version-bump.sh --skip-tests patch # Emergency hotfix: skip the
+#                                                 # pre-release test+lint gate
+#
+# A release runs the fast test suite + ruff BEFORE committing/tagging/pushing.
+# A red build never ships unless you explicitly pass --skip-tests.
 
 set -e
 
@@ -30,6 +35,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --yes|-y)
             YES=true
+            shift
+            ;;
+        --skip-tests)
+            SKIP_TESTS=true
             shift
             ;;
         *)
@@ -114,6 +123,26 @@ if [[ "${YES}" != "true" ]]; then
         echo -e "${YELLOW}Aborted${NC}"
         exit 0
     fi
+fi
+
+# --- Pre-release gate: never tag/push a broken or unlinted tree ---
+# Runs after confirmation but BEFORE any mutation, so a red build fails fast
+# without leaving a dangling commit/tag. Override only for emergency hotfixes.
+if [ "${SKIP_TESTS}" = "true" ]; then
+    echo -e "\n${YELLOW}⚠ --skip-tests: skipping pre-release test + lint gate. Shipping UNVERIFIED.${NC}"
+else
+    echo -e "\n${BLUE}Pre-release checks (lint + fast test suite)...${NC}"
+    echo -e "${BLUE}  → ruff${NC}"
+    if ! uvx ruff check . ; then
+        echo -e "${RED}✗ Lint failed — aborting release. Fix it, or re-run with --skip-tests for an emergency hotfix.${NC}"
+        exit 1
+    fi
+    echo -e "${BLUE}  → pytest (fast suite; e2e excluded via addopts)${NC}"
+    if ! uv run pytest -q -o log_cli=false ; then
+        echo -e "${RED}✗ Tests failed — aborting release. Do NOT ship a red build (override: --skip-tests).${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✓ Pre-release checks passed${NC}"
 fi
 
 # Update pyproject.toml
