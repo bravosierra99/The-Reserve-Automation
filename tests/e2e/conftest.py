@@ -277,4 +277,7 @@ def browser_no_cache():
 @pytest.fixture
 def sample_image():
     """Sample bottle image for testing."""
-    return "/mnt/d/users/ben/Documents/spirits/automation/tests/fixtures/bottles/bourbon_001.jpg"
+    # Resolve relative to this file, NOT a hardcoded local path — the old
+    # absolute /mnt/d/... path only existed on the author's machine and made
+    # every upload e2e test FileNotFoundError on CI.
+    return str(Path(__file__).parent.parent / "fixtures" / "bottles" / "bourbon_001.jpg")
