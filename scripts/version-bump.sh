@@ -54,6 +54,16 @@ if [ -z "$BUMP_TYPE" ]; then
     exit 1
 fi
 
+# Releases live on main: commit, tag, and `git push origin main` below all
+# assume it. Bail before the gate/confirm if we're anywhere else, so a release
+# can never land on (and tag) a disposable feature branch. Merge to main first.
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$BRANCH" != "main" ]; then
+    echo -e "${RED}Error: releases run on main, but you're on '${BRANCH}'.${NC}"
+    echo -e "${YELLOW}Merge your branch into main, then re-run from main.${NC}"
+    exit 1
+fi
+
 # Get current version from pyproject.toml
 CURRENT_VERSION=$(grep "^version = " pyproject.toml | sed 's/version = "\(.*\)"/\1/')
 echo -e "${BLUE}Current version: ${CURRENT_VERSION}${NC}"
