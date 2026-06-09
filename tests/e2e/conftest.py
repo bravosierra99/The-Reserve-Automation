@@ -179,7 +179,15 @@ def web_server(test_db):
     # process, so plain pytest-cov in the test process never sees it). The
     # fixture SIGTERM-kills the server; .coveragerc has `sigterm = true` so the
     # data flushes. Combine afterwards with `coverage combine && coverage report`.
-    launcher = ["uv", "run", "--env-file", ".env"]
+    # `--env-file .env` only if it exists: uv HARD-ERRORS on a missing env file
+    # ("No environment file found at: `.env`"), which killed every browser test
+    # on CI where .env is gitignored/absent. The server's required vars
+    # (DATABASE_URL, WEB_SECRET_KEY, AUTH_DEV_ENABLED) are already injected via
+    # server_env above; .env only adds local extras (e.g. LLM keys), and the
+    # LLM-dependent e2e tests are gated to skip without LM Studio anyway.
+    launcher = ["uv", "run"]
+    if (automation_dir / ".env").exists():
+        launcher += ["--env-file", ".env"]
     if os.environ.get("E2E_COVERAGE"):
         launcher += ["coverage", "run", "--parallel-mode", "--rcfile=.coveragerc", "-m"]
     server_process = subprocess.Popen(
