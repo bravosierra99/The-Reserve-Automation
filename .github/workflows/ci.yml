@@ -40,13 +40,15 @@ jobs:
   # to route around a Firefox packaging bug), but they're slow (function-scoped
   # uvicorn-per-test) and partly LM-Studio-coupled, so releases aren't gated on
   # them — CI on a clean Linux runner is where they run automatically on every push.
-  # Starts NON-BLOCKING (continue-on-error) until it has gone green on the runner
-  # at least once. LM-Studio-dependent e2e tests MUST carry @pytest.mark.requires_lm_studio
-  # so they SKIP here (no LLM endpoint on the runner) instead of erroring red.
+  # PROMOTED to a hard signal (June 2026): it went green on the runner
+  # (27 passed / 20 skipped), so a future failure now turns the run RED instead
+  # of being swallowed. LM-Studio-dependent e2e tests MUST carry
+  # @pytest.mark.requires_lm_studio so they SKIP here (no LLM endpoint on the
+  # runner) instead of erroring red. If e2e proves flaky (function-scoped server
+  # + 60s waits), re-add `continue-on-error: true` rather than deleting the job.
   e2e:
     name: E2E (browser)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
