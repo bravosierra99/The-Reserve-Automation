@@ -35,10 +35,14 @@ jobs:
         # Inherits addopts = "-m 'not e2e'" from pyproject.toml.
         run: uv run pytest
 
-  # Browser E2E suite (Playwright + a real uvicorn subprocess). These cannot run
-  # under WSL locally, so CI on a Linux runner is the only place they execute.
+  # Browser E2E suite (Playwright Firefox + a real uvicorn subprocess). These DO
+  # run locally in WSL (the conftest sets PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS
+  # to route around a Firefox packaging bug), but they're slow (function-scoped
+  # uvicorn-per-test) and partly LM-Studio-coupled, so releases aren't gated on
+  # them — CI on a clean Linux runner is where they run automatically on every push.
   # Starts NON-BLOCKING (continue-on-error) until it has gone green on the runner
-  # at least once; then drop continue-on-error and add it to required checks.
+  # at least once. LM-Studio-dependent e2e tests MUST carry @pytest.mark.requires_lm_studio
+  # so they SKIP here (no LLM endpoint on the runner) instead of erroring red.
   e2e:
     name: E2E (browser)
     runs-on: ubuntu-latest
