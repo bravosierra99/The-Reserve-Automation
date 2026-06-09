@@ -36,7 +36,9 @@ def clean_bottle_data(bottle_data: dict) -> dict:
     cleaned = bottle_data.copy()
 
     # Optional numeric fields - convert empty string or None to None
-    optional_fields = ['year', 'price', 'abv', 'proof', 'vintage', 'age_statement', 'value_for_money']
+    optional_fields = [
+        'year', 'price', 'abv', 'proof', 'vintage', 'age_statement', 'value_for_money'
+    ]
     for field in optional_fields:
         if field in cleaned and (cleaned[field] == '' or cleaned[field] is None):
             cleaned[field] = None
@@ -117,12 +119,15 @@ async def save_bottle(
             # Replacing existing bottle
             existing = bottle_repo.get_by_id(int(request.replace_bottle_id))
             if existing:
-                updated = bottle_repo.update(int(request.replace_bottle_id), bottle)
+                bottle_repo.update(int(request.replace_bottle_id), bottle)
                 bottle_id = str(request.replace_bottle_id)
                 logger.info(f"Updated existing bottle id={bottle_id}")
             else:
                 # Old bottle doesn't exist - treat as new
-                logger.warning(f"Replace requested but bottle id={request.replace_bottle_id} not found, creating new")
+                logger.warning(
+                    f"Replace requested but bottle id={request.replace_bottle_id} "
+                    "not found, creating new"
+                )
                 created = bottle_repo.create(bottle)
                 bottle_id = str(created.id)
                 logger.info(f"Created new bottle id={bottle_id}")
@@ -132,7 +137,7 @@ async def save_bottle(
             # for a truly identical bottle (e.g. re-scanning the same label).
             exact = bottle_repo.find_exact(bottle.producer, bottle.name, bottle.year, bottle.type)
             if exact:
-                updated = bottle_repo.update(int(exact.id), bottle)
+                bottle_repo.update(int(exact.id), bottle)
                 bottle_id = str(exact.id)
                 logger.info(f"force_save: updated exact-match bottle id={bottle_id}")
             else:
@@ -167,7 +172,11 @@ async def save_bottle(
                 bottle_repo.update_label_path(int(bottle_id), f"bottles/{bottle_id}/label.jpg")
             else:
                 logger.warning(f"Temp label not found: {temp_label}")
-                logger.warning(f"  Upload dir contents: {list(temp_upload_dir.iterdir()) if temp_upload_dir.exists() else 'directory does not exist'}")
+                if temp_upload_dir.exists():
+                    dir_contents = list(temp_upload_dir.iterdir())
+                else:
+                    dir_contents = "directory does not exist"
+                logger.warning(f"  Upload dir contents: {dir_contents}")
 
         logger.info(f"Bottle saved successfully: id={bottle_id}")
 

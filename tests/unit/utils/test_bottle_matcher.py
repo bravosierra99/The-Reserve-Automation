@@ -215,11 +215,11 @@ class TestCaching:
     def test_cache_used_on_second_search(self, matcher):
         """Second search should use cached bottles."""
         # First search - populates cache
-        matches1 = matcher.find_matches("Caymus", "wine")
+        matcher.find_matches("Caymus", "wine")
         cached_bottles_count = len(matcher._cache["wine"])
 
         # Second search - uses cache
-        matches2 = matcher.find_matches("Chateau", "wine")
+        matcher.find_matches("Chateau", "wine")
 
         # Cache should still have same bottles
         assert len(matcher._cache["wine"]) == cached_bottles_count

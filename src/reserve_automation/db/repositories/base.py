@@ -5,7 +5,14 @@ The SQLite implementations are the default, but anyone can swap in PostgreSQL,
 MongoDB, or any other backend by implementing these protocols.
 """
 
-from typing import Optional, Protocol, TypeVar
+from typing import TYPE_CHECKING, Optional, Protocol, TypeVar
+
+if TYPE_CHECKING:
+    from reserve_automation.core.cocktail import CocktailRecipe
+    from reserve_automation.core.cocktail_tasting import CocktailTastingNote
+    from reserve_automation.core.ingredient import Ingredient
+    from reserve_automation.core.models import BottleMetadata
+    from reserve_automation.core.tasting_note import TastingNote
 
 T = TypeVar("T")
 

@@ -64,7 +64,7 @@ class LLMGateway:
                 continue
 
             try:
-                ProviderClass = self.PROVIDER_CLASSES[provider_type]
+                ProviderClass = self.PROVIDER_CLASSES[provider_type]  # noqa: N806
                 self.providers[name] = ProviderClass(provider_config)
                 logger.debug(f"Initialized provider: {name} ({provider_type})")
 

@@ -537,7 +537,6 @@ def _import_cocktail_tastings(db, reader: VaultReader, vault: Path, stats: dict,
 
     # Get all cocktails we just imported
     cocktails = db.query(CocktailModel).all()
-    cocktail_name_to_id = {c.name: c.id for c in cocktails}
 
     for cocktail in cocktails:
         tastings = reader.read_cocktail_tastings(cocktail.name)

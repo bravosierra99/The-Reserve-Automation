@@ -683,7 +683,6 @@ class VaultReader:
         self, metadata: dict, file_path: Path, cocktail_name: str
     ) -> CocktailTastingNote:
         """Convert vault metadata dict to CocktailTastingNote."""
-        vault_path = str(file_path.parent.relative_to(self.vault_path))
 
         # Generate opaque ID from the tasting file path
         tasting_vault_path = str(file_path.relative_to(self.vault_path))

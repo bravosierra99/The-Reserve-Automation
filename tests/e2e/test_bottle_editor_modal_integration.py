@@ -23,6 +23,8 @@ from reserve_automation.core.models import BottleMetadata
 from reserve_automation.web.app import app
 from reserve_automation.web.config import load_web_config
 
+pytestmark = pytest.mark.e2e
+
 
 @pytest.fixture(scope="module")
 def test_client():
@@ -475,15 +477,6 @@ class TestDataContractValidation:
         Document that frontend MUST clean empty strings before sending.
         This is the fix we just implemented.
         """
-
-        # Bad data (what forms send)
-        bad_data = {
-            "producer": "Test",
-            "name": "Test",
-            "type": "wine",
-            "year": "",
-            "price": ""
-        }
 
         # Good data (what we should send after cleaning)
         good_data = {

@@ -24,7 +24,8 @@ Usage:
 import asyncio
 import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field as dc_field
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -50,7 +51,7 @@ class FieldComparison:
 class TastingComparison:
     """Comparison result for a single tasting."""
     row: int
-    fields: List[FieldComparison] = field(default_factory=list)
+    fields: List[FieldComparison] = dc_field(default_factory=list)
 
     @property
     def accuracy(self) -> float:
@@ -67,8 +68,8 @@ class ExtractionTestResult:
     test_name: str
     fixture_file: str
     template_type: str
-    tastings: List[TastingComparison] = field(default_factory=list)
-    metadata_fields: List[FieldComparison] = field(default_factory=list)
+    tastings: List[TastingComparison] = dc_field(default_factory=list)
+    metadata_fields: List[FieldComparison] = dc_field(default_factory=list)
 
     @property
     def overall_accuracy(self) -> float:

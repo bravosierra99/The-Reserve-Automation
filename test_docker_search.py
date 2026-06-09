@@ -2,6 +2,7 @@
 """Test web search functionality in Docker environment."""
 
 import sys
+
 from loguru import logger
 
 # Configure logger to show debug messages

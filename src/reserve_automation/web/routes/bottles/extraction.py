@@ -168,9 +168,6 @@ async def upload_bottle(
 
     except Exception as e:
         logger.error(f"Bottle upload processing failed: {e}", exc_info=True)
-        # Clean up on error
-        if 'session_id' in locals():
-            upload_service.cleanup_session_files(session_id)
         raise HTTPException(status_code=500, detail=str(e))
 
 

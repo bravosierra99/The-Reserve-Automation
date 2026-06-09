@@ -150,7 +150,7 @@ class BottleMetadata(BaseModel):
 
         # Add non-null fields
         excluded_fields = ["producer", "name", "year", "type", "purchase_source", "inventory", "vault_path", "id"]
-        for field_name in self.model_fields:
+        for field_name in type(self).model_fields:
             value = getattr(self, field_name)
             if value is not None and field_name not in excluded_fields:
                 # Convert field_name to Title Case with hyphens

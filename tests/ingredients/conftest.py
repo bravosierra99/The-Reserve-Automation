@@ -26,15 +26,15 @@ def test_db():
     repo = SQLiteIngredientRepository(db)
 
     # Root nodes
-    spirit = repo.create(Ingredient(name="Spirit"))
-    mixer = repo.create(Ingredient(name="Mixer"))
-    garnish = repo.create(Ingredient(name="Garnish"))
+    repo.create(Ingredient(name="Spirit"))
+    repo.create(Ingredient(name="Mixer"))
+    repo.create(Ingredient(name="Garnish"))
 
     # Spirit subtree
-    vodka = repo.create(Ingredient(name="Vodka", parent="Spirit"))
+    repo.create(Ingredient(name="Vodka", parent="Spirit"))
     repo.create(Ingredient(name="Gin", parent="Spirit"))
-    flavored = repo.create(Ingredient(name="Flavored Vodka", parent="Vodka"))
-    vanilla = repo.create(Ingredient(name="Vanilla Vodka", parent="Flavored Vodka"))
+    repo.create(Ingredient(name="Flavored Vodka", parent="Vodka"))
+    repo.create(Ingredient(name="Vanilla Vodka", parent="Flavored Vodka"))
     repo.create(Ingredient(
         name="Svedka Vanilla Vodka",
         parent="Vanilla Vodka",
@@ -44,7 +44,7 @@ def test_db():
     ))
 
     # Mixer subtree
-    tonic = repo.create(Ingredient(name="Tonic Water", parent="Mixer"))
+    repo.create(Ingredient(name="Tonic Water", parent="Mixer"))
     repo.create(Ingredient(
         name="Fever-Tree Indian Tonic",
         parent="Tonic Water",

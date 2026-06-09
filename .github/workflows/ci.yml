@@ -1,0 +1,69 @@
+name: CI
+
+# Runs the test suite on every PR and on pushes to main. This is the gate that
+# stops broken changes from merging — but a green/red run only *blocks* a merge
+# once the repo's branch-protection rules mark these checks "required" (a
+# GitHub Settings action, see README/handoff). Without that, CI only reports.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel an in-progress run when new commits land on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast, reliable gate: unit + integration + ui (no browser). Mirrors the
+  # `uv run pytest` contract developers run locally (addopts deselects e2e).
+  test:
+    name: Tests (unit + integration + ui)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --dev
+
+      - name: Run test suite
+        # Inherits addopts = "-m 'not e2e'" from pyproject.toml.
+        run: uv run pytest
+
+  # Browser E2E suite (Playwright Firefox + a real uvicorn subprocess). These DO
+  # run locally in WSL (the conftest sets PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS
+  # to route around a Firefox packaging bug), but they're slow (function-scoped
+  # uvicorn-per-test) and partly LM-Studio-coupled, so releases aren't gated on
+  # them — CI on a clean Linux runner is where they run automatically on every push.
+  # PROMOTED to a hard signal (June 2026): it went green on the runner
+  # (27 passed / 20 skipped), so a future failure now turns the run RED instead
+  # of being swallowed. LM-Studio-dependent e2e tests MUST carry
+  # @pytest.mark.requires_lm_studio so they SKIP here (no LLM endpoint on the
+  # runner) instead of erroring red. If e2e proves flaky (function-scoped server
+  # + 60s waits), re-add `continue-on-error: true` rather than deleting the job.
+  e2e:
+    name: E2E (browser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --dev
+
+      - name: Install Playwright Firefox + system deps
+        run: uv run playwright install --with-deps firefox
+
+      - name: Run E2E suite
+        # `-m e2e` overrides the default `-m 'not e2e'` deselection.
+        # The LM-Studio-dependent E2E test auto-skips (no endpoint in CI).
+        run: uv run pytest -m e2e

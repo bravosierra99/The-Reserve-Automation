@@ -114,12 +114,12 @@ app = FastAPI(
 app.state.auth_config = _startup_auth_config
 
 # Register security headers middleware
-from .middleware.security_headers import SecurityHeadersMiddleware
+from .middleware.security_headers import SecurityHeadersMiddleware  # noqa: E402
 
 app.add_middleware(SecurityHeadersMiddleware)
 
 # Register auth middleware (must be done before app starts, not in lifespan)
-from .auth.middleware import AuthMiddleware
+from .auth.middleware import AuthMiddleware  # noqa: E402
 
 app.add_middleware(AuthMiddleware, auth_config=_startup_auth_config)
 

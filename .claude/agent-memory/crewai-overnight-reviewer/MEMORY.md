@@ -1,0 +1,2 @@
+- [Spirits-Crew Architecture](spirits_crew_architecture.md) — Load-bearing constraints for the spirits-crew at /spirits/spirits-crew/
+- [Task Token Budgets](task_token_budgets.md) — Measured token counts per task for qwen3.5-9b with 120k warn threshold

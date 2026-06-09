@@ -18,6 +18,8 @@ in a real browser, not just API calls.
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+pytestmark = pytest.mark.e2e
+
 # Fixtures are now in conftest.py
 
 
@@ -42,6 +44,7 @@ class TestBrowserUploadFlow:
 
             browser.close()
 
+    @pytest.mark.requires_lm_studio  # upload triggers LLM extraction; modal waits on it
     def test_upload_bottle_opens_modal(self, web_server, sample_image):
         """
         CRITICAL: Test complete upload → modal workflow in browser.
@@ -161,6 +164,7 @@ class TestBrowserUploadFlow:
 
     # Note: Removed cross-upload-type test as it's covered by the state reset fixes in clearFile()
 
+    @pytest.mark.requires_lm_studio  # upload triggers LLM extraction; modal waits on it
     def test_metadata_search_works(self, web_server, sample_image):
         """Test that metadata search (enrich) works in the bottle modal."""
         console_logs = []
@@ -244,7 +248,7 @@ class TestBrowserUploadFlow:
                     import json
                     try:
                         response_data = json.loads(verify_response[0])
-                        if response_data.get("metadata", {}).get("verified") == False:
+                        if response_data.get("metadata", {}).get("verified") is False:
                             error_msg = response_data.get("metadata", {}).get("error", "Unknown error")
                             print(f"\n⚠ Enrichment verification failed: {error_msg}")
                             pytest.fail(f"Metadata enrichment failed: {error_msg}")
@@ -339,6 +343,7 @@ class TestBrowserUploadFlow:
 
             browser.close()
 
+    @pytest.mark.requires_lm_studio  # upload triggers LLM extraction; modal waits on it
     def test_manual_crop_workflow(self, web_server, sample_image):
         """
         Test manual crop workflow in upload modal.
@@ -513,6 +518,7 @@ class TestBrowserUploadFlow:
 
             browser.close()
 
+    @pytest.mark.requires_lm_studio  # upload triggers LLM extraction; modal waits on it
     def test_cancel_manual_crop(self, web_server, sample_image):
         """Test canceling manual crop doesn't break anything."""
         with sync_playwright() as p:
@@ -560,6 +566,7 @@ class TestBrowserUploadFlow:
 
             browser.close()
 
+    @pytest.mark.requires_lm_studio  # upload triggers LLM extraction; modal waits on it
     def test_modal_save_shows_feedback(self, web_server, sample_image):
         """Test that clicking save shows success feedback."""
         with sync_playwright() as p:

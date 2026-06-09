@@ -23,14 +23,13 @@ from pathlib import Path
 
 # Suppress loguru output during benchmark (we print our own progress)
 from loguru import logger as _logger
+
 _logger.remove()
 
 from reserve_automation.core.config import Config
 from reserve_automation.core.models import BottleMetadata
 from reserve_automation.enrichment.metadata_enricher import MetadataEnricher
 from reserve_automation.llm import LLMGateway
-from reserve_automation.llm.tool_executor import ToolExecutor
-
 
 # ── Config variants to benchmark ──────────────────────────────────────────────
 CONFIGS = [
@@ -249,7 +248,7 @@ def _print_recommendation(all_results: dict[str, list[dict]]):
     print(f"    Avg time: {best_time:.1f}s  |  Avg searches: {best_srch:.1f}  |  Avg fields changed: {best_changes:.1f}")
 
     if len(scored) > 1:
-        fastest_label, fastest_time = scored[-1][1], scored[-1][2]
+        _, fastest_time = scored[-1][1], scored[-1][2]
         default_changes = max(r[3] for r in scored)
         best_changes_val = best_changes
 
@@ -257,7 +256,7 @@ def _print_recommendation(all_results: dict[str, list[dict]]):
             print(f"\n  ✓ Switching from 'Default' to '{best_label.split('(')[0].strip()}' is likely")
             print(f"    safe: similar field coverage at {best_time:.0f}s vs {fastest_time:.0f}s per bottle.")
         else:
-            print(f"\n  Run more bottles (--bottles 5+) for a more reliable recommendation.")
+            print("\n  Run more bottles (--bottles 5+) for a more reliable recommendation.")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────

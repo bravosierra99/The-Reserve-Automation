@@ -185,8 +185,8 @@ class AnthropicProvider(BaseLLMProvider):
             True if API key is valid and accessible
         """
         try:
-            # Make a minimal request to test connectivity
-            response = await self.client.messages.create(
+            # Make a minimal request to test connectivity (result intentionally unused)
+            await self.client.messages.create(
                 model=self.model,
                 max_tokens=10,
                 messages=[{"role": "user", "content": "Hi"}],

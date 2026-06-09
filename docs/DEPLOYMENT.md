@@ -180,7 +180,8 @@ docker compose ps
 
 # Test health endpoint
 curl http://localhost:8000/api/v1/health
-# Expected: {"status":"healthy","service":"The Reserve Automation","version":"0.1.0"}
+# Expected: {"status":"healthy","service":"The Reserve Automation","version":"<current>"}
+# (version reflects the deployed build; the unauthenticated /api/v1/version endpoint returns just version + commit_short for monitoring)
 
 # Test from mobile/external device
 curl http://<proxmox-ip>:8000/api/v1/health

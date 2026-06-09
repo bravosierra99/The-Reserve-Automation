@@ -8,7 +8,6 @@ Usage (from automation/):
 
 Requires LM Studio running at the URL configured in config/user.yaml.
 """
-import asyncio
 import json
 import subprocess
 import sys
@@ -150,8 +149,8 @@ def main():
             print(f"**Extraction error**: `{ext['_error'][:300]}`\n")
             continue
 
-        print(f"| Field | Extracted (new) | Enriched | Match |")
-        print(f"|-------|-----------------|----------|-------|")
+        print("| Field | Extracted (new) | Enriched | Match |")
+        print("|-------|-----------------|----------|-------|")
         rows_printed = 0
         for field in COMPARE_FIELDS:
             ev = fmt(ext.get(field))

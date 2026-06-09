@@ -17,6 +17,8 @@ This tests the frontend/backend integration that API-only tests miss.
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+pytestmark = pytest.mark.e2e
+
 
 class TestManualTastingWizard:
     """E2E tests for manual tasting wizard in browser."""
