@@ -13,12 +13,6 @@ services:
       - ./config:/app/config:ro
       - reserve_temp:/tmp/reserve_uploads
       - reserve_logs:/app/logs
-    # Load all runtime vars from the persistent, gitignored .env on the host.
-    # This is the source of truth for anything not hardcoded below, so config
-    # like AUTH_DEV_ENABLED survives `git reset --hard` on deploy. The explicit
-    # `environment:` entries below take precedence over .env on any conflict.
-    env_file:
-      - .env
     environment:
       - WEB_SECRET_KEY=${WEB_SECRET_KEY}
       - DATABASE_URL=sqlite:///data/reserve.db
