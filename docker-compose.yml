@@ -22,6 +22,12 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - LLMWHISPERER_API_KEY=${LLMWHISPERER_API_KEY:-}
       - CF_ACCESS_CLIENT_ID=${CF_ACCESS_CLIENT_ID:-}
+      # Pass auth dev-mode toggle through from .env. Committed here so it
+      # survives `git reset --hard` on deploy; the value stays in the host's
+      # gitignored .env (no secret in git). Curated explicitly — do NOT switch
+      # to `env_file: .env`, which also injects RESERVE_VAULT_PATH=/vault/Cellar
+      # and crashes CoreConfig (the container doesn't mount /vault).
+      - AUTH_DEV_ENABLED=${AUTH_DEV_ENABLED:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
