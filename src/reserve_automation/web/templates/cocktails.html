@@ -362,7 +362,7 @@ function cocktailsApp() {
                 });
                 if (!response.ok) {
                     const error = await response.json();
-                    this.formError = error.detail || 'Failed to save';
+                    this.formError = formatApiError(error.detail, 'Failed to save');
                     return;
                 }
                 this.showCreateForm = false;
@@ -399,7 +399,7 @@ function cocktailsApp() {
                 });
                 if (!response.ok) {
                     const error = await response.json();
-                    this.newIngredientError = error.detail || 'Failed to save ingredient';
+                    this.newIngredientError = formatApiError(error.detail, 'Failed to save ingredient');
                     return;
                 }
                 const created = await response.json();
@@ -451,7 +451,7 @@ function cocktailsApp() {
                 });
                 if (!response.ok) {
                     const error = await response.json();
-                    this.recipeSearchError = error.detail || 'Failed to find recipe';
+                    this.recipeSearchError = formatApiError(error.detail, 'Failed to find recipe');
                     return;
                 }
                 const recipe = await response.json();

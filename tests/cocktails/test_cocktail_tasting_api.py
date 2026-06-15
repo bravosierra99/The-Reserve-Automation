@@ -81,6 +81,39 @@ class TestCreateCocktailTasting:
         assert data["bottles_used"][0]["recipe_ingredient"] == "Vodka"
         assert data["bottles_used"][0]["actual_product"] == "Svedka"
 
+    def test_create_tasting_null_bottle_entry_rejected_with_array_detail(self, test_client):
+        """A null entry in bottles_used (sparse-array hole from the UI) returns a
+        422 whose detail is a list of error objects.
+
+        The frontend used to render that list straight into a string as
+        "[object Object]"; it now densifies bottles_used before submit so this
+        payload should never leave the browser. This test pins the backend
+        contract that makes the densify necessary.
+        """
+        response = test_client.get("/api/v1/cocktails")
+        mule = next(c for c in response.json() if c["name"] == "Moscow Mule")
+
+        response = test_client.post(f"/api/v1/cocktails/{mule['id']}/tastings", json={
+            "taster_name": "HoleTester",
+            "bottles_used": [None, {"recipe_ingredient": "Vodka", "actual_product": "Svedka"}],
+        })
+        assert response.status_code == 422
+        assert isinstance(response.json()["detail"], list)
+
+    def test_create_tasting_partial_selection_succeeds(self, test_client):
+        """Selecting a product for only some ingredients (the rest omitted) is
+        valid — the densified payload simply carries fewer entries.
+        """
+        response = test_client.get("/api/v1/cocktails")
+        mule = next(c for c in response.json() if c["name"] == "Moscow Mule")
+
+        response = test_client.post(f"/api/v1/cocktails/{mule['id']}/tastings", json={
+            "taster_name": "PartialTester",
+            "bottles_used": [{"recipe_ingredient": "Vodka", "actual_product": "Svedka"}],
+        })
+        assert response.status_code == 200
+        assert len(response.json()["bottles_used"]) == 1
+
 
 class TestListCocktailTastings:
     """Test GET /api/v1/cocktails/{id}/tastings."""

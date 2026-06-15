@@ -151,6 +151,30 @@
     }
     </script>
 
+    <script>
+    // Shared helper: turn an API error `detail` into readable text.
+    // FastAPI 422 responses set `detail` to a list of error objects; assigning
+    // that straight into a string renders as "[object Object],[object Object]".
+    function formatApiError(detail, fallback) {
+        fallback = fallback || 'Request failed';
+        if (detail === undefined || detail === null || detail === '') return fallback;
+        if (typeof detail === 'string') return detail;
+        const one = (e) => {
+            if (e && typeof e === 'object') {
+                const loc = Array.isArray(e.loc) ? e.loc.filter(p => p !== 'body').join('.') : '';
+                const msg = e.msg || e.message || JSON.stringify(e);
+                return loc ? `${loc}: ${msg}` : msg;
+            }
+            return String(e);
+        };
+        if (Array.isArray(detail)) {
+            const msgs = detail.map(one).filter(Boolean);
+            return msgs.length ? msgs.join('; ') : fallback;
+        }
+        return one(detail) || fallback;
+    }
+    </script>
+
     <main class="container mx-auto px-4 py-6 max-w-4xl">
         {% block content %}{% endblock %}
     </main>

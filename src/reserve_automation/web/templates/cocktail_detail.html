@@ -286,6 +286,14 @@
                                             </template>
                                         </div>
                                     </div>
+                                    <!-- Create-on-the-fly: when the product isn't in the list yet -->
+                                    <button x-show="bottleSearchQueries[idx] && bottleSearchQueries[idx].trim() &&
+                                                    (!tastingData.bottles_used[idx] || tastingData.bottles_used[idx].actual_product !== bottleSearchQueries[idx].trim())"
+                                            @click="createAndSelectIngredient(idx, ing.ingredient)"
+                                            type="button"
+                                            class="mt-1 text-green-600 hover:text-green-800 text-sm font-medium">
+                                        + Create "<span x-text="bottleSearchQueries[idx]"></span>" as new ingredient
+                                    </button>
                                 </div>
                                 <div x-show="tastingData.bottles_used[idx]" class="text-sm text-gray-600">
                                     Selected: <span class="font-medium text-green-700" x-text="tastingData.bottles_used[idx]?.actual_product"></span>
@@ -567,6 +575,43 @@ function cocktailDetailApp(cocktailId) {
             this.bottleResults[ingredientIndex] = [];
         },
 
+        // Create a brand-new ingredient/product on the fly and select it for this
+        // slot. Reuses the same POST /api/v1/ingredients endpoint as recipe
+        // creation (single source of truth). Parents it under the recipe
+        // ingredient when that category exists, otherwise creates it at root.
+        async createAndSelectIngredient(ingredientIndex, recipeIngredient) {
+            const name = (this.bottleSearchQueries[ingredientIndex] || '').trim();
+            if (!name) return;
+            this.tastingError = '';
+            const post = (parent) => fetch('/api/v1/ingredients', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name, parent}),
+            });
+            try {
+                let response = await post(recipeIngredient || null);
+                // If the recipe ingredient isn't a real ingredient record, the
+                // backend rejects the parent — retry creating it at the root.
+                if (response.status === 400 && recipeIngredient) {
+                    response = await post(null);
+                }
+                // Already exists somewhere in the tree — just use it as-is.
+                if (response.status === 409) {
+                    this.selectBottle(ingredientIndex, {name}, recipeIngredient);
+                    return;
+                }
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    this.tastingError = formatApiError(error.detail, 'Failed to create ingredient');
+                    return;
+                }
+                const created = await response.json();
+                this.selectBottle(ingredientIndex, created, recipeIngredient);
+            } catch (e) {
+                this.tastingError = e.message;
+            }
+        },
+
         closeTastingForm() {
             this.showTastingForm = false;
             this.tastingStep = 1;
@@ -583,14 +628,20 @@ function cocktailDetailApp(cocktailId) {
             this.tastingSaving = true;
             this.tastingError = '';
             try {
+                // bottles_used is indexed by ingredient position and may be a sparse
+                // array (holes -> null on JSON.stringify) when some ingredients are
+                // left unselected. Drop holes/empties so we never send null entries.
+                const bottlesUsed = (this.tastingData.bottles_used || [])
+                    .filter(b => b && b.actual_product && b.actual_product.trim());
+                const payload = {...this.tastingData, bottles_used: bottlesUsed};
                 const response = await fetch(`/api/v1/cocktails/${this.cocktailId}/tastings`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(this.tastingData)
+                    body: JSON.stringify(payload)
                 });
                 if (!response.ok) {
                     const error = await response.json();
-                    this.tastingError = error.detail || 'Failed to save';
+                    this.tastingError = formatApiError(error.detail, 'Failed to save');
                     return;
                 }
                 this.closeTastingForm();
@@ -665,7 +716,7 @@ function cocktailDetailApp(cocktailId) {
                 });
                 if (!response.ok) {
                     const error = await response.json();
-                    this.editError = error.detail || 'Failed to save';
+                    this.editError = formatApiError(error.detail, 'Failed to save');
                     return;
                 }
                 this.showEditForm = false;
@@ -745,6 +796,8 @@ function cocktailDetailApp(cocktailId) {
         async saveEditTasting() {
             this.editTastingError = '';
             try {
+                const bottlesUsed = (this.editTastingData.bottles_used || [])
+                    .filter(b => b && b.actual_product && b.actual_product.trim());
                 const response = await fetch(`/api/v1/cocktails/${this.cocktailId}/tastings/${this.editingTastingId}`, {
                     method: 'PATCH',
                     headers: {'Content-Type': 'application/json'},
@@ -754,10 +807,13 @@ function cocktailDetailApp(cocktailId) {
                         score: this.editTastingData.score !== '' ? parseFloat(this.editTastingData.score) : null,
                         notes: this.editTastingData.notes,
                         bartender: this.editTastingData.bartender,
-                        bottles_used: this.editTastingData.bottles_used,
+                        bottles_used: bottlesUsed,
                     }),
                 });
-                if (!response.ok) throw new Error(`Server error ${response.status}`);
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(formatApiError(error.detail, `Server error ${response.status}`));
+                }
                 this.showEditTastingForm = false;
                 await this.loadTastings();
             } catch (e) {

@@ -6,6 +6,23 @@ Uses in-memory SQLite database for test isolation.
 import pytest
 
 
+class TestCocktailPagesRender:
+    """Smoke-test that the HTML pages render (catches Jinja/template breakage
+    that the JSON API tests cannot see)."""
+
+    def test_cocktails_page_renders(self, test_client):
+        response = test_client.get("/cocktails")
+        assert response.status_code == 200
+        assert "formatApiError" in response.text  # shared helper is wired in
+
+    def test_cocktail_detail_page_renders(self, test_client):
+        mule = next(c for c in test_client.get("/api/v1/cocktails").json()
+                    if c["name"] == "Moscow Mule")
+        response = test_client.get(f"/cocktails/{mule['id']}/detail")
+        assert response.status_code == 200
+        assert "createAndSelectIngredient" in response.text
+
+
 class TestCocktailList:
     """Test GET /api/v1/cocktails."""
 
