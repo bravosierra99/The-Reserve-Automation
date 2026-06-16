@@ -54,6 +54,40 @@ def _format_extraction_error(e: Exception) -> str:
     # Fall back to the raw message, stripped of internal details
     return f"Extraction failed: {err_str}"
 
+
+# Seconds between heartbeat events while an extraction runs. Must stay well under
+# the tightest plausible upstream proxy idle-timeout (nginx proxy_read_timeout
+# defaults to 60s). Module-level so tests can shrink it.
+_HEARTBEAT_INTERVAL_SECONDS = 15
+
+
+async def _await_with_heartbeat(coro, on_status, status, message_fn, interval=None):
+    """Await `coro` while emitting a heartbeat status event every `interval`
+    seconds.
+
+    The extraction LLM call can run for ~100s+ with no output. An SSE response
+    that goes silent that long trips an upstream proxy idle-timeout before the
+    'complete' event ever lands (nginx proxy_read_timeout defaults to 60s;
+    Cloudflare's 524 fires ~100s) — so the browser sees a failure even though
+    the backend finishes fine. Periodic heartbeats keep the stream alive.
+
+    Returns the coroutine's result; re-raises its exception.
+    """
+    import time
+
+    if interval is None:
+        interval = _HEARTBEAT_INTERVAL_SECONDS
+
+    task = asyncio.ensure_future(coro)
+    start = time.monotonic()
+    while True:
+        done, _ = await asyncio.wait({task}, timeout=interval)
+        if done:
+            return task.result()  # re-raises if the extraction failed
+        elapsed = int(time.monotonic() - start)
+        await on_status(status, message_fn(elapsed))
+
+
 router = APIRouter()
 
 # Templates
@@ -255,9 +289,14 @@ async def upload_bottle_stream(
             extraction_service = ExtractionService(core_config)
 
             if upload_type == "bottle_image":
-                bottle, _ = await extraction_service.extract_bottle_from_image(
-                    image_path=file_path,
-                    beverage_type=beverage_type
+                bottle, _ = await _await_with_heartbeat(
+                    extraction_service.extract_bottle_from_image(
+                        image_path=file_path,
+                        beverage_type=beverage_type
+                    ),
+                    on_status,
+                    "extracting",
+                    lambda s: f"Analyzing bottle label... ({s}s elapsed)",
                 )
                 if purchase_source:
                     bottle.purchase_source = purchase_source
@@ -265,10 +304,15 @@ async def upload_bottle_stream(
                 bottles = [extraction_service.bottle_to_dict(bottle)]
 
             else:  # manifest
-                extracted = await extraction_service.extract_bottles_from_manifest(
-                    file_path=file_path,
-                    beverage_type=beverage_type,
-                    expected_count=expected_count
+                extracted = await _await_with_heartbeat(
+                    extraction_service.extract_bottles_from_manifest(
+                        file_path=file_path,
+                        beverage_type=beverage_type,
+                        expected_count=expected_count
+                    ),
+                    on_status,
+                    "extracting",
+                    lambda s: f"Processing manifest... ({s}s elapsed)",
                 )
                 for b in extracted:
                     if purchase_source:

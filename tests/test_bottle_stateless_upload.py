@@ -150,6 +150,70 @@ class TestStatelessBottleUpload:
             pytest.fail(f"Upload response is not valid JSON: {e}\nResponse: {response.text}")
 
 
+class TestUploadStreamHeartbeat:
+    """The streaming upload endpoint must emit heartbeat events *during* the long
+    extraction call, so the SSE response never goes silent long enough to trip an
+    upstream proxy idle-timeout (nginx ~60s / Cloudflare ~100s 524). Without the
+    heartbeat the browser sees a failure even though the backend extraction
+    succeeds — the original "prod failed to extract my bottle" report.
+    """
+
+    def _parse_sse(self, text):
+        events = []
+        for part in text.split("\n\n"):
+            line = part.strip()
+            if line.startswith("data: "):
+                events.append(json.loads(line[len("data: "):]))
+        return events
+
+    def test_extraction_emits_heartbeats_between_extracting_and_complete(
+        self, test_client, sample_bottle_image
+    ):
+        import asyncio
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+
+        from reserve_automation.web.routes.bottles import extraction as ext
+
+        class _SlowExtractionService:
+            def __init__(self, *a, **k):
+                pass
+
+            async def extract_bottle_from_image(self, image_path, beverage_type):
+                # Sleep well past several heartbeat intervals (patched to 0.05s).
+                await asyncio.sleep(0.35)
+                return SimpleNamespace(purchase_source=None, inventory=0), {}
+
+            def bottle_to_dict(self, bottle):
+                return {"producer": "Heartbeat", "name": "Test Dram"}
+
+        with patch.object(ext, "ExtractionService", _SlowExtractionService), \
+             patch.object(ext, "_poll_for_model", AsyncMock(return_value=True)), \
+             patch.object(ext, "_HEARTBEAT_INTERVAL_SECONDS", 0.05):
+            response = test_client.post(
+                "/api/v1/bottles/upload/stream",
+                files={"file": ("bottle.jpg", sample_bottle_image, "image/jpeg")},
+                data={"upload_type": "bottle_image", "beverage_type": "whiskey"},
+            )
+
+        assert response.status_code == 200
+        events = self._parse_sse(response.text)
+        statuses = [e["status"] for e in events]
+
+        # Stream completed successfully with the extracted bottle.
+        assert statuses[-1] == "complete", statuses
+        assert events[-1]["bottles"] == [{"producer": "Heartbeat", "name": "Test Dram"}]
+
+        # At least one heartbeat fired DURING extraction — identified by the
+        # "(Ns elapsed)" suffix the heartbeat message_fn adds (the one-shot
+        # pre-extraction "extracting" event has no elapsed suffix).
+        heartbeats = [
+            e for e in events
+            if e["status"] == "extracting" and "elapsed" in e.get("message", "")
+        ]
+        assert len(heartbeats) >= 1, f"no heartbeat during extraction: {events}"
+
+
 class TestStatelessBottleSave:
     """Test stateless bottle save API with duplicate detection."""
 

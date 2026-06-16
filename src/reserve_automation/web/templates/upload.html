@@ -180,7 +180,7 @@
         <div x-show="uploading" class="text-center py-8">
             <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
             <p class="text-gray-600 text-lg" x-text="uploadType === 'manifest' ? 'Extracting bottle manifest...' : 'Extracting bottle data...'"></p>
-            <p class="text-gray-500 text-sm mt-2">This may take 5-10 seconds</p>
+            <p class="text-gray-500 text-sm mt-2" x-text="statusMessage || 'This can take a minute or two for the local model.'"></p>
         </div>
 
         <!-- Error state -->
@@ -324,6 +324,7 @@ function uploadForm() {
         selectedFile: null,
         previewUrl: null,
         uploading: false,
+        statusMessage: '',  // Live progress text streamed from the extraction SSE
         uploadComplete: false,
         extractionId: null,
         uploadId: null,  // For bottle uploads
@@ -532,7 +533,7 @@ function uploadForm() {
                     formData.append('purchase_source', this.purchaseSource);
                 }
                 formData.append('inventory', this.inventory);
-                endpoint = '/api/v1/bottles/upload';
+                endpoint = '/api/v1/bottles/upload/stream';
             } else if (this.uploadType === 'manifest') {
                 formData.append('upload_type', 'manifest');
                 formData.append('beverage_type', 'auto');
@@ -540,22 +541,58 @@ function uploadForm() {
                     formData.append('purchase_source', this.purchaseSource);
                 }
                 formData.append('inventory', this.inventory);
-                endpoint = '/api/v1/bottles/upload';
+                endpoint = '/api/v1/bottles/upload/stream';
             }
 
             try {
+                // Stream the extraction over SSE. The response starts within ~1s
+                // and emits heartbeat events throughout, so the request stays under
+                // the upstream proxy idle-timeout instead of blocking ~100s on a
+                // single response — a blocking request trips nginx/Cloudflare and
+                // looks like a failure even though the backend extraction succeeds.
                 const response = await fetch(endpoint, {
                     method: 'POST',
                     body: formData
                 });
 
                 if (!response.ok) {
-                    throw new Error('Upload failed');
+                    let detail = `Server error ${response.status}`;
+                    try { const e = await response.json(); detail = e.detail || detail; } catch (_) {}
+                    throw new Error(detail);
                 }
 
-                const result = await response.json();
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let result = null;
 
-                console.log('Full response from server:', JSON.stringify(result));
+                streaming:
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split('\n\n');
+                    buffer = parts.pop();  // keep incomplete trailing chunk
+                    for (const part of parts) {
+                        const line = part.trim();
+                        if (!line.startsWith('data: ')) continue;
+                        let event;
+                        try { event = JSON.parse(line.slice(6)); } catch (_) { continue; }
+                        if (event.status === 'complete') {
+                            result = event;
+                            break streaming;
+                        } else if (event.status === 'error') {
+                            throw new Error(event.message || 'Extraction failed');
+                        } else {
+                            // Heartbeat / progress — keep the user informed.
+                            this.statusMessage = event.message || '';
+                        }
+                    }
+                }
+
+                if (!result) {
+                    throw new Error('Upload ended before completion. Please try again.');
+                }
 
                 {
                     // Bottle upload - open modal immediately (no redirect)
@@ -611,6 +648,7 @@ function uploadForm() {
                 this.errorMessage = err.message || 'Failed to upload file. Please try again.';
             } finally {
                 this.uploading = false;
+                this.statusMessage = '';
             }
         }
     };
