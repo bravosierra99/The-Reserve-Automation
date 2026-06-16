@@ -30,7 +30,11 @@ dependencies = [
     # CLI/UI
     "rich>=13.0",
     "loguru>=0.7",
-    "ddgs>=9.9.3",
+    # Keyless web search — shared helper (pulls ddgs transitively). Installed from
+    # the tag tarball (not git+https) so the image needs no `git` and no token
+    # (public repo). Pinned for reproducible container builds. Same pattern as the
+    # quiz repo; do NOT re-vendor ddgs glue here.
+    "websearch @ https://github.com/bravosierra99/websearch/archive/refs/tags/v0.1.0.tar.gz",
     "fastapi>=0.124.2",
     "uvicorn[standard]>=0.38.0",
     "python-multipart>=0.0.20",
@@ -72,6 +76,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/reserve_automation"]
+
+# Required because `websearch` is a direct URL (tag-tarball) reference rather than
+# a PyPI version spec; hatchling refuses to build with one unless this is opted in.
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.ruff]
 line-length = 100

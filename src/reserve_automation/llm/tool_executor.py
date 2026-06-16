@@ -2,8 +2,8 @@
 
 
 import httpx
-from ddgs import DDGS
 from loguru import logger
+from websearch import web_search
 
 
 class ToolExecutor:
@@ -71,29 +71,18 @@ class ToolExecutor:
 
         logger.info(f"DuckDuckGo search: {query}")
 
-        try:
-            with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=self.max_results))
+        # Shared keyless helper: returns ({title,url,snippet}[], error) and never
+        # raises for operational problems (no egress / rate-limit / ddgs missing).
+        results, error = web_search(query, max_results=self.max_results)
+        if error:
+            logger.error(f"DuckDuckGo search failed: {error}")
+            return {"error": f"Search failed: {error}"}
 
-            # Format results
-            formatted_results = []
-            for r in results:
-                formatted_results.append({
-                    "title": r.get("title", ""),
-                    "url": r.get("href", ""),
-                    "snippet": r.get("body", ""),
-                })
-
-            logger.info(f"Found {len(formatted_results)} search results")
-
-            return {
-                "results": formatted_results,
-                "query": query,
-            }
-
-        except Exception as e:
-            logger.error(f"DuckDuckGo search failed: {e}")
-            return {"error": f"Search failed: {str(e)}"}
+        logger.info(f"Found {len(results)} search results")
+        return {
+            "results": results,
+            "query": query,
+        }
 
     def _web_fetch(self, arguments: dict) -> dict:
         """

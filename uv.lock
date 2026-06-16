@@ -2320,7 +2320,7 @@ wheels = [
 
 [[package]]
 name = "reserve-automation"
-version = "1.7.4"
+version = "1.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -2328,7 +2328,6 @@ dependencies = [
     { name = "beautifulsoup4" },
     { name = "click" },
     { name = "cryptography" },
-    { name = "ddgs" },
     { name = "easyocr" },
     { name = "fastapi" },
     { name = "gitpython" },
@@ -2357,6 +2356,7 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "sse-starlette" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "websearch" },
 ]
 
 [package.optional-dependencies]
@@ -2386,7 +2386,6 @@ requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
     { name = "click", specifier = ">=8.1" },
     { name = "cryptography", specifier = ">=41.0.0" },
-    { name = "ddgs", specifier = ">=9.9.3" },
     { name = "easyocr", specifier = ">=1.7.2" },
     { name = "fastapi", specifier = ">=0.124.2" },
     { name = "gitpython", specifier = ">=3.1" },
@@ -2419,6 +2418,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "sse-starlette", specifier = ">=3.0.3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.38.0" },
+    { name = "websearch", url = "https://github.com/bravosierra99/websearch/archive/refs/tags/v0.1.0.tar.gz" },
 ]
 provides-extras = ["dev"]
 
@@ -3153,6 +3153,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c9/81/e7fe958ce8a7fb5c73cc9fb07f5aeaf755e6aa72498c57d760af760c91f8/watchfiles-1.1.1-pp311-pypy311_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ce19e06cbda693e9e7686358af9cd6f5d61312ab8b00488bc36f5aabbaf77e24", size = 450493, upload-time = "2025-10-14T15:06:12.321Z" },
     { url = "https://files.pythonhosted.org/packages/6e/d4/ed38dd3b1767193de971e694aa544356e63353c33a85d948166b5ff58b9e/watchfiles-1.1.1-pp311-pypy311_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3e6f39af2eab0118338902798b5aa6664f46ff66bc0280de76fca67a7f262a49", size = 457546, upload-time = "2025-10-14T15:06:13.372Z" },
 ]
+
+[[package]]
+name = "websearch"
+version = "0.1.0"
+source = { url = "https://github.com/bravosierra99/websearch/archive/refs/tags/v0.1.0.tar.gz" }
+dependencies = [
+    { name = "ddgs" },
+]
+sdist = { hash = "sha256:5436420e975a32f8088c7798b85410800d2893d0920786c5df104d87823399e4" }
+
+[package.metadata]
+requires-dist = [{ name = "ddgs", specifier = ">=9.0" }]
 
 [[package]]
 name = "websockets"
