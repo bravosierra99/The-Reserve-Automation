@@ -268,13 +268,20 @@ async def upload_bottle_stream(
                 "checking_model",
                 f"Connecting to LM Studio ({model_name})..."
             )
-            model_ready = await _poll_for_model(lm_base_url, model_name, on_status)
+            model_ready, model_reason = await _poll_for_model(lm_base_url, model_name, on_status)
             if not model_ready:
-                await on_status(
-                    "error",
-                    f"Model '{model_name}' did not become available. "
-                    "Please open LM Studio, load the model, and try again."
-                )
+                if model_reason == "unreachable":
+                    await on_status(
+                        "error",
+                        f"Extraction failed — can't reach LM Studio at {lm_base_url}. "
+                        "Make sure LM Studio is running with the model loaded, then try again."
+                    )
+                else:
+                    await on_status(
+                        "error",
+                        f"Extraction failed — the model '{model_name}' didn't load in time. "
+                        "Open LM Studio, load the model, and try again."
+                    )
                 return
 
             # ── Stage 3: Extract ──────────────────────────────────────────────
@@ -373,41 +380,68 @@ async def _poll_for_model(
     on_status,
     max_wait_seconds: int = 300,
     poll_interval: int = 8,
-) -> bool:
+    unreachable_grace_seconds: float = 2,
+) -> tuple[bool, str]:
     """
-    Check whether the model is available in LM Studio.
+    Wait for the LM Studio model to be available, distinguishing two cases:
 
-    If not immediately available, stream "model_loading" status events and poll
-    every poll_interval seconds until the model appears or max_wait_seconds elapses.
+    - LM Studio reachable but the model not loaded yet → stream "model_loading"
+      status events and poll up to max_wait_seconds (loading a large model into
+      memory legitimately takes minutes).
+    - LM Studio itself unreachable (process down / wrong port) → fail fast after
+      a short grace, instead of burning the whole model-load window on a service
+      that isn't there. Without this, an upload when LM Studio is down hangs for
+      minutes before erroring (and an invalid-file upload never reaches the
+      fast-fail in extraction).
 
-    Returns True if model became available, False on timeout.
+    Returns (ok, reason): reason is "" on success, else "unreachable" or "timeout".
     """
     import time
 
-    async def _is_loaded() -> bool:
+    async def _probe() -> str:
+        """Return 'loaded' | 'not_loaded' | 'unreachable'."""
+        # Short connect timeout so a down/filtered port is detected in ~2s rather
+        # than hanging the full read window (a closed port may RST instantly, but
+        # a filtered one would otherwise stall to the read timeout).
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=2.0)) as client:
                 resp = await client.get(f"{base_url}/models")
-                if resp.status_code == 200:
-                    loaded = resp.json().get("data", [])
-                    for m in loaded:
-                        mid = m.get("id", "")
-                        if model_name in mid or mid in model_name:
-                            return True
+            if resp.status_code != 200:
+                return "unreachable"
+            loaded = resp.json().get("data", [])
         except Exception:
-            pass
-        return False
+            return "unreachable"
+        for m in loaded:
+            mid = m.get("id", "")
+            if model_name in mid or mid in model_name:
+                return "loaded"
+        return "not_loaded"
 
-    # Fast path — model already loaded
-    if await _is_loaded():
-        return True
+    state = await _probe()
+    if state == "loaded":
+        return True, ""
 
-    # Model not yet available — stream waiting messages
+    # LM Studio is down (not merely loading) → don't wait the full window. Allow a
+    # short grace for a transient blip, then give up so the user sees the error
+    # promptly rather than after minutes.
+    if state == "unreachable":
+        grace_start = time.monotonic()
+        while time.monotonic() - grace_start < unreachable_grace_seconds:
+            await asyncio.sleep(min(2, unreachable_grace_seconds))
+            state = await _probe()
+            if state == "loaded":
+                return True, ""
+            if state != "unreachable":
+                break  # came back reachable → fall through to the load wait
+        if state == "unreachable":
+            return False, "unreachable"
+
+    # Reachable but model not loaded → wait for it to finish loading.
     start = time.monotonic()
     while True:
         elapsed = int(time.monotonic() - start)
         if elapsed >= max_wait_seconds:
-            return False
+            return False, "timeout"
 
         remaining = max_wait_seconds - elapsed
         await on_status(
@@ -419,9 +453,9 @@ async def _poll_for_model(
 
         await asyncio.sleep(poll_interval)
 
-        if await _is_loaded():
+        if (await _probe()) == "loaded":
             await on_status("model_ready", "Model is ready!")
-            return True
+            return True, ""
 
 
 @router.get("/api/v1/bottles/search", dependencies=[Depends(require("bottles.view"))])

@@ -188,7 +188,7 @@ class TestUploadStreamHeartbeat:
                 return {"producer": "Heartbeat", "name": "Test Dram"}
 
         with patch.object(ext, "ExtractionService", _SlowExtractionService), \
-             patch.object(ext, "_poll_for_model", AsyncMock(return_value=True)), \
+             patch.object(ext, "_poll_for_model", AsyncMock(return_value=(True, ""))), \
              patch.object(ext, "_HEARTBEAT_INTERVAL_SECONDS", 0.05):
             response = test_client.post(
                 "/api/v1/bottles/upload/stream",
@@ -212,6 +212,74 @@ class TestUploadStreamHeartbeat:
             if e["status"] == "extracting" and "elapsed" in e.get("message", "")
         ]
         assert len(heartbeats) >= 1, f"no heartbeat during extraction: {events}"
+
+    def test_stream_shows_error_when_lm_studio_unavailable(self, test_client, sample_bottle_image):
+        """When the model never becomes available, the stream emits an 'error'
+        event whose message reads as a failure — not a silent 'complete' with 0
+        bottles. This is the unit-level guard for the browser test
+        TestBrowserUploadFlow.test_upload_bottle_shows_error_on_failure: switching
+        the page to the streaming endpoint added a model-poll step that must still
+        surface a fast, clearly-worded error when LM Studio is down.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        from reserve_automation.web.routes.bottles import extraction as ext
+
+        with patch.object(ext, "_poll_for_model", AsyncMock(return_value=(False, "unreachable"))):
+            response = test_client.post(
+                "/api/v1/bottles/upload/stream",
+                files={"file": ("bottle.jpg", sample_bottle_image, "image/jpeg")},
+                data={"upload_type": "bottle_image", "beverage_type": "whiskey"},
+            )
+
+        assert response.status_code == 200
+        events = self._parse_sse(response.text)
+        statuses = [e["status"] for e in events]
+
+        assert "error" in statuses, statuses
+        assert "complete" not in statuses, statuses
+        error_msg = next(e["message"] for e in events if e["status"] == "error")
+        # The browser test waits on text matching /error|failed/i.
+        assert "failed" in error_msg.lower() or "error" in error_msg.lower(), error_msg
+
+    @pytest.mark.asyncio
+    async def test_poll_for_model_fails_fast_when_unreachable(self):
+        """_poll_for_model returns (False, 'unreachable') quickly when LM Studio
+        isn't listening — it must NOT wait out the full model-load window."""
+        import time
+        from unittest.mock import patch
+
+        import httpx
+
+        from reserve_automation.web.routes.bottles import extraction as ext
+
+        class _UnreachableClient:
+            def __init__(self, *a, **k):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, *a, **k):
+                raise httpx.ConnectError("connection refused")
+
+        async def _noop_status(status, message, **extra):
+            pass
+
+        start = time.monotonic()
+        with patch("httpx.AsyncClient", _UnreachableClient):
+            ok, reason = await ext._poll_for_model(
+                "http://localhost:1234/v1", "any-model", _noop_status,
+                max_wait_seconds=300, poll_interval=8, unreachable_grace_seconds=0.2,
+            )
+        elapsed = time.monotonic() - start
+
+        assert ok is False
+        assert reason == "unreachable"
+        assert elapsed < 3, f"fail-fast took too long: {elapsed:.1f}s"
 
 
 class TestStatelessBottleSave:
