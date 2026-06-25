@@ -281,6 +281,92 @@ class TestUploadStreamHeartbeat:
         assert reason == "unreachable"
         assert elapsed < 3, f"fail-fast took too long: {elapsed:.1f}s"
 
+    @pytest.mark.asyncio
+    async def test_poll_for_model_sends_bearer_token(self):
+        """Regression: the model pre-flight probe MUST send the LM Studio API key
+        when one is configured. Without it, an auth-required LM Studio returns 401,
+        which the probe misreads as 'unreachable' and fail-fasts the upload even
+        though the authenticated extraction would succeed."""
+        from unittest.mock import patch
+
+        from reserve_automation.web.routes.bottles import extraction as ext
+
+        captured_headers = {}
+
+        class _CapturingClient:
+            def __init__(self, *a, **k):
+                captured_headers["value"] = k.get("headers")
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, *a, **k):
+                class _Resp:
+                    status_code = 200
+
+                    @staticmethod
+                    def json():
+                        return {"data": [{"id": "qwen/qwen3.5-9b"}]}
+
+                return _Resp()
+
+        async def _noop_status(status, message, **extra):
+            pass
+
+        with patch("httpx.AsyncClient", _CapturingClient):
+            ok, reason = await ext._poll_for_model(
+                "http://lmstudio:1234/v1", "qwen/qwen3.5-9b", _noop_status,
+                api_key="sk-lm-secret",
+            )
+
+        assert ok is True and reason == ""
+        assert captured_headers["value"] == {"Authorization": "Bearer sk-lm-secret"}
+
+    @pytest.mark.asyncio
+    async def test_poll_for_model_no_token_sends_no_auth_header(self):
+        """When no key is configured, the probe sends no Authorization header
+        (headers=None) — unchanged behaviour for keyless LM Studio setups."""
+        from unittest.mock import patch
+
+        from reserve_automation.web.routes.bottles import extraction as ext
+
+        captured_headers = {}
+
+        class _CapturingClient:
+            def __init__(self, *a, **k):
+                captured_headers["value"] = k.get("headers")
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def get(self, *a, **k):
+                class _Resp:
+                    status_code = 200
+
+                    @staticmethod
+                    def json():
+                        return {"data": [{"id": "qwen/qwen3.5-9b"}]}
+
+                return _Resp()
+
+        async def _noop_status(status, message, **extra):
+            pass
+
+        with patch("httpx.AsyncClient", _CapturingClient):
+            ok, reason = await ext._poll_for_model(
+                "http://lmstudio:1234/v1", "qwen/qwen3.5-9b", _noop_status,
+                api_key=None,
+            )
+
+        assert ok is True and reason == ""
+        assert captured_headers["value"] is None
+
 
 class TestStatelessBottleSave:
     """Test stateless bottle save API with duplicate detection."""

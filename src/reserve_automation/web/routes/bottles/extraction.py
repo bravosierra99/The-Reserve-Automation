@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import shutil
 import uuid
 from pathlib import Path
@@ -244,6 +245,13 @@ async def upload_bottle_stream(
     ocr_cfg = providers_cfg.get(ocr_provider_name, {})
     model_name = ocr_cfg.get("model", "vision model")
     lm_base_url = ocr_cfg.get("base_url", "http://localhost:1234/v1")
+    # Resolve the LM Studio API key the same way LMStudioProvider does, so the
+    # model pre-flight probe authenticates identically to the extraction call.
+    lm_api_key = (
+        ocr_cfg.get("api_key")
+        or (os.environ.get(ocr_cfg["api_key_env"]) if ocr_cfg.get("api_key_env") else None)
+        or os.environ.get("LM_STUDIO_API_KEY")
+    )
 
     async def run_pipeline(on_status):
         """Run the full upload → extract pipeline, calling on_status at each stage."""
@@ -268,7 +276,9 @@ async def upload_bottle_stream(
                 "checking_model",
                 f"Connecting to LM Studio ({model_name})..."
             )
-            model_ready, model_reason = await _poll_for_model(lm_base_url, model_name, on_status)
+            model_ready, model_reason = await _poll_for_model(
+                lm_base_url, model_name, on_status, api_key=lm_api_key
+            )
             if not model_ready:
                 if model_reason == "unreachable":
                     await on_status(
@@ -378,6 +388,7 @@ async def _poll_for_model(
     base_url: str,
     model_name: str,
     on_status,
+    api_key: str | None = None,
     max_wait_seconds: int = 300,
     poll_interval: int = 8,
     unreachable_grace_seconds: float = 2,
@@ -403,8 +414,13 @@ async def _poll_for_model(
         # Short connect timeout so a down/filtered port is detected in ~2s rather
         # than hanging the full read window (a closed port may RST instantly, but
         # a filtered one would otherwise stall to the read timeout).
+        # Send the Bearer token when one is configured — LM Studio 0.4.x can
+        # require an API key, and without it /models returns 401, which this
+        # probe would misread as "unreachable" and fail-fast the upload even
+        # though the authenticated extraction call itself would succeed.
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=2.0)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=2.0), headers=headers) as client:
                 resp = await client.get(f"{base_url}/models")
             if resp.status_code != 200:
                 return "unreachable"

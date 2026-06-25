@@ -193,6 +193,23 @@
                 Try Again
             </button>
         </div>
+
+        <!-- Session expired state: a background stream call hit a lapsed login.
+             Access can't redirect a fetch/SSE to an interactive login, so we
+             prompt a reload, which IS a top-level nav and re-triggers Access. -->
+        <div x-show="sessionExpired" x-cloak class="bg-amber-50 border border-amber-300 rounded-lg p-4">
+            <p class="text-amber-900 font-semibold">Your session expired</p>
+            <p class="text-amber-800 text-sm mt-1">
+                You were signed out while uploading, so the request couldn't complete.
+                Log back in and your file will be ready to re-upload.
+            </p>
+            <button
+                @click="window.location.reload()"
+                class="mt-3 bg-amber-600 hover:bg-amber-700 text-white font-semibold px-4 py-2 rounded-lg"
+            >
+                Log back in
+            </button>
+        </div>
     </div>
 
 </div><!-- end x-show="!showManifestPanel" -->
@@ -333,6 +350,7 @@ function uploadForm() {
         bottlesCount: 0,
         error: false,
         errorMessage: '',
+        sessionExpired: false,  // True when a stream request 401s / Access-redirects (lapsed login)
         expectedCount: null,  // Expected number of tastings (1-4)
         purchaseSource: '',  // Where bottle was purchased
         acPurchaseSources: [],  // Autocomplete suggestions for purchase source
@@ -514,11 +532,20 @@ function uploadForm() {
             this.manifestBottles = [];
         },
 
+        handleSessionExpired() {
+            // A background upload call hit a lapsed login. Show the re-login
+            // prompt instead of a generic error (the finally{} block in
+            // uploadFile clears `uploading`/`statusMessage`).
+            this.error = false;
+            this.sessionExpired = true;
+        },
+
         async uploadFile() {
             if (!this.selectedFile || !this.uploadType) return;
 
             this.uploading = true;
             this.error = false;
+            this.sessionExpired = false;
             this.uploadComplete = false;  // Reset state from previous uploads
             this.bottlesCount = 0;
 
@@ -552,8 +579,22 @@ function uploadForm() {
                 // looks like a failure even though the backend extraction succeeds.
                 const response = await fetch(endpoint, {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    // 'manual' so a Cloudflare Access login redirect (302 to a
+                    // cross-origin domain) surfaces as an opaqueredirect we can
+                    // detect, instead of fetch following it and throwing an
+                    // opaque "Failed to fetch" that looks like a server outage.
+                    redirect: 'manual'
                 });
+
+                // Lapsed login: app returns 401 for /api/*, or Access intercepts
+                // the POST with a redirect (opaqueredirect under redirect:'manual').
+                // A background fetch can't be sent to an interactive login, so
+                // prompt a reload rather than showing a generic failure.
+                if (response.status === 401 || response.type === 'opaqueredirect') {
+                    this.handleSessionExpired();
+                    return;
+                }
 
                 if (!response.ok) {
                     let detail = `Server error ${response.status}`;
