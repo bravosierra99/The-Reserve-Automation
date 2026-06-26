@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import time
 from pathlib import Path
 
@@ -47,6 +48,12 @@ from reserve_automation.parsers.pdf import PDFParser
 
 LM_STUDIO_BASE = "http://localhost:1234"
 CHAT_BASE = f"{LM_STUDIO_BASE}/v1"
+
+# LM Studio requires a Bearer token (GROUND_TRUTH.md #2/#3). The provider authenticates
+# its own chat calls, but the management-API helpers below are standalone httpx calls and
+# must carry the token too — resolve it the same way LMStudioProvider does.
+_API_KEY = os.environ.get("LM_STUDIO_API_KEY")
+_HEADERS = {"Authorization": f"Bearer {_API_KEY}"} if _API_KEY else None
 
 # Test fixtures
 MANIFEST_PATH = Path(__file__).parent.parent / "fixtures" / "manifests" / "wine_manifest_sample.pdf"
@@ -66,6 +73,8 @@ MODEL_LOAD_PARAMS: dict[str, dict] = {
     "qwen3.5-27b-claude-4.6-opus-reasoning-distilled@iq3_m": {"context_length": 16384},
     "mistralai/magistral-small-2509": {"context_length": 16384},
     "qwen3.5-35b-a3b": {"context_length": 16384},
+    "froginsect/qwythos-9b-claude-mythos-5-1m": {"context_length": 16384},
+    "empero-ai/qwythos-9b-claude-mythos-5-1m": {"context_length": 16384},
 }
 
 # Per-model gateway config extras (merged into the provider config sent to LMStudioProvider).
@@ -76,6 +85,8 @@ MODEL_GATEWAY_EXTRAS: dict[str, dict] = {
     "qwen3.5-27b-claude-4.6-opus-reasoning-distilled@iq4_xs": {"reasoning_effort": "none"},
     "qwen3.5-27b-claude-4.6-opus-reasoning-distilled@iq3_m":  {"reasoning_effort": "none"},
     "qwen3.5-35b-a3b":   {"reasoning_effort": "none"},
+    "froginsect/qwythos-9b-claude-mythos-5-1m": {"reasoning_effort": "none"},
+    "empero-ai/qwythos-9b-claude-mythos-5-1m":  {"reasoning_effort": "none"},
 }
 
 # Models available for benchmarking — add/remove as needed
@@ -120,7 +131,7 @@ async def _load(model_key: str) -> dict | None:
     context_length) into the request body.  Returns None if LM Studio refuses.
     """
     body: dict = {"model": model_key, **MODEL_LOAD_PARAMS.get(model_key, {})}
-    async with httpx.AsyncClient(timeout=600) as c:
+    async with httpx.AsyncClient(timeout=600, headers=_HEADERS) as c:
         r = await c.post(f"{LM_STUDIO_BASE}/api/v1/models/load", json=body)
         if not r.is_success:
             print(f"  [!] LM Studio refused {model_key}: {r.status_code}")
@@ -131,7 +142,7 @@ async def _load(model_key: str) -> dict | None:
 
 async def _unload(instance_id: str) -> None:
     """POST /api/v1/models/unload — frees the model instance."""
-    async with httpx.AsyncClient(timeout=60) as c:
+    async with httpx.AsyncClient(timeout=60, headers=_HEADERS) as c:
         r = await c.post(
             f"{LM_STUDIO_BASE}/api/v1/models/unload",
             json={"instance_id": instance_id},
@@ -141,7 +152,7 @@ async def _unload(instance_id: str) -> None:
 
 async def _is_loaded(model_key: str) -> bool:
     """Check whether a model has at least one loaded instance."""
-    async with httpx.AsyncClient(timeout=10) as c:
+    async with httpx.AsyncClient(timeout=10, headers=_HEADERS) as c:
         r = await c.get(f"{LM_STUDIO_BASE}/api/v1/models")
         r.raise_for_status()
         for m in r.json().get("models", []):
@@ -156,7 +167,7 @@ async def _unload_all_llms() -> list[str]:
     Skips embedding models — those are tiny and don't compete for GPU memory.
     """
     unloaded: list[str] = []
-    async with httpx.AsyncClient(timeout=30) as c:
+    async with httpx.AsyncClient(timeout=30, headers=_HEADERS) as c:
         r = await c.get(f"{LM_STUDIO_BASE}/api/v1/models")
         r.raise_for_status()
         for m in r.json().get("models", []):
