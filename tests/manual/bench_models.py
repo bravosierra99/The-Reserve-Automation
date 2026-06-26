@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import time
 from pathlib import Path
 
@@ -56,11 +57,35 @@ _API_KEY = os.environ.get("LM_STUDIO_API_KEY")
 _HEADERS = {"Authorization": f"Bearer {_API_KEY}"} if _API_KEY else None
 
 # Test fixtures
-MANIFEST_PATH = Path(__file__).parent.parent / "fixtures" / "manifests" / "wine_manifest_sample.pdf"
-BOTTLE_IMAGES = [
-    Path(__file__).parent.parent / "fixtures" / "bottles" / "bourbon_001.jpg",
-    Path(__file__).parent.parent / "fixtures" / "bottles" / "wine_001.jpg",
-]
+FIXTURE_DIR = Path(__file__).parent.parent / "fixtures"
+MANIFEST_PATH = FIXTURE_DIR / "manifests" / "wine_manifest_sample.pdf"
+BOTTLE_DIR = FIXTURE_DIR / "bottles"
+
+# Ground truth for the bottle-label images, hand-verified from the photos.
+# Each entry lists the distinctive tokens that a correct OCR read MUST surface
+# *somewhere* in the extracted fields (producer / name / additional_details /
+# style), so scoring is robust to which field a model files a token under.
+# - producer_kw / name_kw : alnum-normalized substrings; ANY hit = that dim correct
+# - year                  : exact vintage string, or None if the label has none
+# - beverage_type         : expected BottleMetadata.beverage_type value
+# - difficulty            : easy / medium / hard (legibility of the photo)
+IMAGE_GROUND_TRUTH: dict[str, dict] = {
+    "bourbon_001.jpg": {"producer_kw": ["weller"], "name_kw": ["cypb", "wheated"],
+                        "year": None, "type_kw": ["whiskey", "bourbon"], "difficulty": "easy"},
+    "bourbon_002.jpg": {"producer_kw": ["bluegrass"], "name_kw": ["elkwood"],
+                        "year": None, "type_kw": ["whiskey", "bourbon"], "difficulty": "medium"},
+    "bourbon_003.jpg": {"producer_kw": ["larue", "william"], "name_kw": ["larue", "weller"],
+                        "year": None, "type_kw": ["whiskey", "bourbon"], "difficulty": "hard"},
+    "wine_001.jpg":    {"producer_kw": ["detective"], "name_kw": ["cabernet", "syrah"],
+                        "year": "2024", "type_kw": ["wine"], "difficulty": "easy"},
+    "wine_002.jpg":    {"producer_kw": ["hedges"], "name_kw": ["cms"],
+                        "year": "2022", "type_kw": ["wine"], "difficulty": "medium"},
+    "wine_003.jpg":    {"producer_kw": ["liquid", "farm"], "name_kw": ["chardonnay", "hill"],
+                        "year": "2023", "type_kw": ["wine"], "difficulty": "hard"},
+    "wine_004.jpg":    {"producer_kw": ["cosme", "saint"], "name_kw": ["rhone", "cosme"],
+                        "year": "2024", "type_kw": ["wine"], "difficulty": "medium"},
+}
+BOTTLE_IMAGES = [BOTTLE_DIR / name for name in IMAGE_GROUND_TRUTH]
 
 # Per-model load parameters (top-level keys in the load body).
 # Several models OOM-kill on fresh API load without an explicit context_length.
@@ -114,10 +139,38 @@ PDF_KEY_BOTTLES = [
     "Sandhi - Chardonnay Sta. Rita Hills",
 ]
 
-# Ground-truth expectations for image extraction
-# Just verify that we got SOMETHING reasonable (producer + name, not garbage)
-IMAGE_MIN_PRODUCER_LEN = 3
-IMAGE_MIN_NAME_LEN = 3
+IMAGE_SCORE_DIMS = ("producer", "name", "year", "type")
+
+
+def _alnum(s: str | None) -> str:
+    """Lowercase and strip everything but [a-z0-9] for robust substring matching."""
+    return re.sub(r"[^a-z0-9]", "", s.lower()) if s else ""
+
+
+def _score_label(gt: dict, bottle) -> dict:
+    """Score one extracted bottle against its ground truth.
+
+    Builds an alnum haystack from all text-bearing fields so a token counts as
+    "read" regardless of which field the model placed it in. Returns per-dimension
+    booleans; `year` is None (not scored) when the label has no vintage.
+    """
+    variety = bottle.variety if isinstance(bottle.variety, list) else [bottle.variety]
+    haystack = _alnum(" ".join(
+        str(x) for x in (
+            bottle.producer, bottle.name, getattr(bottle, "additional_details", None),
+            bottle.style, bottle.region, bottle.year, *variety,
+        ) if x
+    ))
+    # beverage_type holds normalized categories like "Bourbon" / "Red wine", so match
+    # type by keyword across the category-bearing fields rather than an exact value.
+    type_haystack = _alnum(" ".join(
+        str(x) for x in (bottle.beverage_type, getattr(bottle, "type", None), bottle.style) if x
+    ))
+    producer_ok = any(_alnum(kw) in haystack for kw in gt["producer_kw"])
+    name_ok = any(_alnum(kw) in haystack for kw in gt["name_kw"])
+    year_ok = None if gt["year"] is None else (gt["year"] in haystack)
+    type_ok = any(_alnum(kw) in type_haystack for kw in gt["type_kw"])
+    return {"producer": producer_ok, "name": name_ok, "year": year_ok, "type": type_ok}
 
 # ---------------------------------------------------------------------------
 # LM Studio management-API helpers
@@ -308,47 +361,59 @@ async def _extract_and_score_images(model_key: str) -> dict:
     gateway = LLMGateway(_gateway_config(model_key, for_vision=True))
     extractor = ImageMetadataExtractor(gateway)
 
+    per_image: list[dict] = []  # one entry per fixture, in IMAGE_GROUND_TRUTH order
     all_bottles = []
     total_latency_ms = 0
-    failed_images = []
 
     for image_path in BOTTLE_IMAGES:
+        gt = IMAGE_GROUND_TRUTH[image_path.name]
         t0 = time.perf_counter()
+        bottle = None
+        error = None
         try:
-            bottle, metadata = await extractor.extract_from_image(image_path)
-            latency_ms = round((time.perf_counter() - t0) * 1000)
-            total_latency_ms += latency_ms
-
-            if bottle:
-                all_bottles.append(bottle)
-            else:
-                failed_images.append(image_path.name)
+            bottle, _metadata = await extractor.extract_from_image(image_path)
         except Exception as e:
-            latency_ms = round((time.perf_counter() - t0) * 1000)
-            total_latency_ms += latency_ms
-            failed_images.append(f"{image_path.name} ({e})")
+            error = str(e)
+        latency_ms = round((time.perf_counter() - t0) * 1000)
+        total_latency_ms += latency_ms
 
-    # Score based on quality of extraction
-    # For images, we just want to see:
-    # 1. Got something (not complete failure)
-    # 2. Producer and name aren't garbage (length check)
-    # 3. Has valid beverage_type
-    valid_bottles = [
-        b for b in all_bottles
-        if (b.producer and len(b.producer) >= IMAGE_MIN_PRODUCER_LEN
-            and b.name and len(b.name) >= IMAGE_MIN_NAME_LEN
-            and b.producer != "Unknown Producer"
-            and b.name != "Unknown")
-    ]
+        if bottle:
+            all_bottles.append(bottle)
+            scores = _score_label(gt, bottle)
+        else:
+            # Total failure → every scored dimension is wrong.
+            scores = {"producer": False, "name": False, "year": (None if gt["year"] is None else False), "type": False}
+
+        per_image.append({
+            "name": image_path.name,
+            "difficulty": gt["difficulty"],
+            "scores": scores,
+            "bottle": bottle,
+            "error": error,
+            "latency_ms": latency_ms,
+        })
+
+    # Aggregate field-level accuracy across all images.
+    def _dim_total(dim: str) -> tuple[int, int]:
+        scored = [p for p in per_image if p["scores"][dim] is not None]
+        correct = sum(1 for p in scored if p["scores"][dim])
+        return correct, len(scored)
+
+    dim_scores = {dim: _dim_total(dim) for dim in IMAGE_SCORE_DIMS}
+    total_correct = sum(c for c, _ in dim_scores.values())
+    total_scored = sum(t for _, t in dim_scores.values())
+    # A label "passes" if its core identity (producer AND name) was read correctly.
+    passed = sum(1 for p in per_image if p["scores"]["producer"] and p["scores"]["name"])
 
     return {
         "model": model_key,
         "mode": "image",
         "count": len(all_bottles),
-        "valid_count": len(valid_bottles),
-        "failed_images": failed_images,
-        "with_year": sum(1 for b in all_bottles if b.year),
-        "with_region": sum(1 for b in all_bottles if b.region),
+        "valid_count": passed,  # producer+name correct (kept name for summary table)
+        "per_image": per_image,
+        "dim_scores": dim_scores,
+        "field_accuracy": round(total_correct / total_scored, 3) if total_scored else 0.0,
+        "failed_images": [p["name"] for p in per_image if p["bottle"] is None],
         "avg_confidence": round(
             sum(b.confidence for b in all_bottles) / max(len(all_bottles), 1), 3
         ) if all_bottles else 0.0,
@@ -381,18 +446,30 @@ def _print_results(r: dict) -> None:
             f"  Extraction latency : {r['latency_ms']} ms",
         ]
     else:  # image mode
+        dim = r["dim_scores"]
+
+        def _frac(d: str) -> str:
+            c, t = dim[d]
+            return f"{c}/{t}" if t else "n/a"
+
         lines += [
             f"  Images tested      : {len(BOTTLE_IMAGES)}",
-            f"  Bottles extracted  : {r['count']}",
-            f"  Valid extractions  : {r['valid_count']}/{r['count']} (non-garbage)",
-            f"  Failed images      : {len(r.get('failed_images', []))}",
+            f"  Field accuracy     : {r['field_accuracy']}  "
+            f"(producer {_frac('producer')}, name {_frac('name')}, "
+            f"year {_frac('year')}, type {_frac('type')})",
+            f"  Core read (prod+name): {r['valid_count']}/{len(BOTTLE_IMAGES)}",
+            f"  Failed (no output) : {len(r.get('failed_images', []))}",
+            "",
+            "  Per-image  (P=producer N=name Y=year T=type · ✓ hit  ✗ miss  – n/a):",
         ]
-        if r.get('failed_images'):
-            for img in r['failed_images']:
-                lines.append(f"      ✗  {img}")
+        for p in r["per_image"]:
+            s = p["scores"]
+            def _m(v: object) -> str:
+                return "–" if v is None else ("✓" if v else "✗")
+            flags = f"P{_m(s['producer'])} N{_m(s['name'])} Y{_m(s['year'])} T{_m(s['type'])}"
+            tag = "FAIL" if p["bottle"] is None else flags
+            lines.append(f"      [{p['difficulty']:<6}] {p['name']:<16} {tag}  ({p['latency_ms']} ms)")
         lines += [
-            f"  Bottles with year  : {r['with_year']}/{r['count']}",
-            f"  Bottles with region: {r['with_region']}/{r['count']}",
             f"  Avg confidence     : {r['avg_confidence']}",
             f"  Total latency      : {r['latency_ms']} ms",
         ]
@@ -498,20 +575,23 @@ async def main(models: list[str], mode: str = "both") -> None:
         print("\n" + "=" * 80)
         print("  SUMMARY  (sorted by mode, then latency)")
         print("=" * 80)
-        print(f"  {'Model':<38} {'Mode':>6} {'Btls':>4} {'Valid':>6} {'ms':>7}")
-        print(f"  {'-'*38} {'-'*6} {'-'*4} {'-'*6} {'-'*7}")
+        print(f"  {'Model':<38} {'Mode':>6} {'Result':>20} {'ms':>7}")
+        print(f"  {'-'*38} {'-'*6} {'-'*20} {'-'*7}")
 
         # Sort by mode (pdf first), then latency
         sorted_results = sorted(all_results, key=lambda x: (x.get("mode", "pdf") == "image", x["latency_ms"]))
 
+        n_images = len(BOTTLE_IMAGES)
         for r in sorted_results:
             mode_str = r.get("mode", "pdf").upper()
-            valid_str = f"{r.get('valid_count', r['count'])}/{r['count']}" if r.get("mode") == "image" else ""
+            if r.get("mode") == "image":
+                result = f"{r['valid_count']}/{n_images} read · acc {r['field_accuracy']}"
+            else:
+                result = f"{r['count']} btl · {len(r['key_found'])}/{len(PDF_KEY_BOTTLES)} keys"
             print(
                 f"  {r['model']:<38} "
                 f"{mode_str:>6} "
-                f"{r['count']:>4} "
-                f"{valid_str:>6} "
+                f"{result:>20} "
                 f"{r['latency_ms']:>6}"
             )
         print("=" * 80 + "\n")
