@@ -8,11 +8,13 @@ paths:
 
 # Override LLM provider settings
 # IMPORTANT: Update these to match YOUR loaded models in LM Studio
+# NOTE: qwen/qwen3.5-9b is multimodal (vision + text), so it's a valid choice for BOTH
+#       providers below. See docs/GROUND_TRUTH.md — don't assume a model is text-only.
 llm:
   providers:
     lm_studio_vision:
       base_url: "http://192.168.1.100:1234/v1"  # Your LM Studio IP
-      model: "qwen/qwen3-vl-8b"  # Your actual vision model (check LM Studio)
+      model: "qwen/qwen3-vl-8b"  # Your vision model — qwen/qwen3.5-9b also works here
     lm_studio_text:
       base_url: "http://192.168.1.100:1234/v1"  # Your LM Studio IP
       model: "qwen3-coder-30b-a3b-instruct"  # Your actual text model

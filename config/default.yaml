@@ -18,6 +18,12 @@ paths:
 # Override any of these in user.yaml (gitignored) for your deployment.
 # See config/llm.yaml.example for annotated provider/routing options.
 llm:
+  # GROUND TRUTH (see docs/GROUND_TRUTH.md): qwen/qwen3.5-9b is MULTIMODAL — it does
+  # vision/OCR *and* text. Deployments routinely point lm_studio_vision at it (prod does).
+  # Do NOT "correct" a vision provider away from qwen3.5-9b to a *-vl model on the belief
+  # that 3.5-9b is text-only — it is not. Never infer a model's vision capability from its
+  # name. The vision/text model split below is about latency/quality, not capability.
+  # tests/test_llm_config_vision.py enforces that vision routing stays on a known-vision model.
   providers:
     lm_studio_vision:
       provider: lm_studio
@@ -43,7 +49,7 @@ llm:
     lm_studio_agent:
       provider: lm_studio
       base_url: "http://localhost:1234/v1"
-      model: "qwen/qwen3.5-9b"
+      model: "qwen/qwen3.5-9b"   # multimodal — also valid for vision/OCR (see note above)
       timeout: 300
       max_retries: 1
       context_length: 16384

@@ -73,6 +73,7 @@ When the user asks to "bump the version" or "create a new release":
 
 | Scenario | Read This FIRST | Why |
 |----------|-----------------|-----|
+| **LM Studio / vision / model / upload-extraction** issues | [docs/GROUND_TRUTH.md](docs/GROUND_TRUTH.md) | Non-obvious deployed-system facts (e.g. qwen3.5-9b IS vision-capable; LM Studio needs a Bearer token) — read BEFORE diagnosing |
 | **Modifying tests** or creating new tests | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Complete testing philosophy, protocols, and patterns |
 | **Running tests** for a specific system | [docs/TESTING.md](docs/TESTING.md) | Quick reference table for which command to run |
 | **Docker deployment** questions | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Comprehensive Docker setup, networking, troubleshooting |
@@ -93,6 +94,7 @@ When the user asks to "bump the version" or "create a new release":
 4. **User asks about Proxmox setup?** → Read docs/CLAUDE_HANDOFF.md first
 5. **About to modify bottle field** (model, template, generator, vault reader)? → Read this file's "CRITICAL: Working with Bottle Fields" section
 6. **About to create E2E tests?** → Read tests/e2e/TESTING_SAFETY.md first
+7. **About to diagnose an LM Studio / vision / model / upload-extraction problem?** → Read docs/GROUND_TRUTH.md first (it will save you from a known false trail)
 
 ### How to Use This Guide
 
