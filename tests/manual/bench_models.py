@@ -100,6 +100,9 @@ MODEL_LOAD_PARAMS: dict[str, dict] = {
     "qwen3.5-35b-a3b": {"context_length": 16384},
     "froginsect/qwythos-9b-claude-mythos-5-1m": {"context_length": 16384},
     "empero-ai/qwythos-9b-claude-mythos-5-1m": {"context_length": 16384},
+    "qwen/qwen3-14b": {"context_length": 16384},
+    "minicpm-v-4": {"context_length": 16384},
+    "minicpm-o-4_5": {"context_length": 16384},
 }
 
 # Per-model gateway config extras (merged into the provider config sent to LMStudioProvider).
@@ -112,6 +115,7 @@ MODEL_GATEWAY_EXTRAS: dict[str, dict] = {
     "qwen3.5-35b-a3b":   {"reasoning_effort": "none"},
     "froginsect/qwythos-9b-claude-mythos-5-1m": {"reasoning_effort": "none"},
     "empero-ai/qwythos-9b-claude-mythos-5-1m":  {"reasoning_effort": "none"},
+    "qwen/qwen3-14b": {"reasoning_effort": "none"},  # real Qwen3 honors /no_think
 }
 
 # Models available for benchmarking — add/remove as needed
