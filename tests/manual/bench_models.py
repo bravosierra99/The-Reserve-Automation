@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import re
 import time
@@ -61,31 +62,33 @@ FIXTURE_DIR = Path(__file__).parent.parent / "fixtures"
 MANIFEST_PATH = FIXTURE_DIR / "manifests" / "wine_manifest_sample.pdf"
 BOTTLE_DIR = FIXTURE_DIR / "bottles"
 
-# Ground truth for the bottle-label images, hand-verified from the photos.
-# Each entry lists the distinctive tokens that a correct OCR read MUST surface
-# *somewhere* in the extracted fields (producer / name / additional_details /
-# style), so scoring is robust to which field a model files a token under.
-# - producer_kw / name_kw : alnum-normalized substrings; ANY hit = that dim correct
-# - year                  : exact vintage string, or None if the label has none
-# - beverage_type         : expected BottleMetadata.beverage_type value
-# - difficulty            : easy / medium / hard (legibility of the photo)
+# Ground truth for the bottle-label images lives in a data-driven manifest
+# (ground_truth.json) so the fixture set is extensible without touching code:
+# drop a .jpg in BOTTLE_DIR and add an entry. Each entry lists the distinctive
+# tokens a correct OCR read MUST surface *somewhere* in the extracted fields,
+# matched alnum-normalized (robust to punctuation/accents/field placement):
+#   - producer_kw / name_kw : ANY hit = that dimension correct
+#   - year                  : exact vintage string, or null if the label has none
+#   - type_kw               : ANY hit against the category fields
+#   - difficulty            : easy / medium / hard (legibility of the photo)
+GROUND_TRUTH_PATH = BOTTLE_DIR / "ground_truth.json"
 IMAGE_GROUND_TRUTH: dict[str, dict] = {
-    "bourbon_001.jpg": {"producer_kw": ["weller"], "name_kw": ["cypb", "wheated"],
-                        "year": None, "type_kw": ["whiskey", "bourbon"], "difficulty": "easy"},
-    "bourbon_002.jpg": {"producer_kw": ["bluegrass"], "name_kw": ["elkwood"],
-                        "year": None, "type_kw": ["whiskey", "bourbon"], "difficulty": "medium"},
-    "bourbon_003.jpg": {"producer_kw": ["larue", "william"], "name_kw": ["larue", "weller"],
-                        "year": None, "type_kw": ["whiskey", "bourbon"], "difficulty": "hard"},
-    "wine_001.jpg":    {"producer_kw": ["detective"], "name_kw": ["cabernet", "syrah"],
-                        "year": "2024", "type_kw": ["wine"], "difficulty": "easy"},
-    "wine_002.jpg":    {"producer_kw": ["hedges"], "name_kw": ["cms"],
-                        "year": "2022", "type_kw": ["wine"], "difficulty": "medium"},
-    "wine_003.jpg":    {"producer_kw": ["liquid", "farm"], "name_kw": ["chardonnay", "hill"],
-                        "year": "2023", "type_kw": ["wine"], "difficulty": "hard"},
-    "wine_004.jpg":    {"producer_kw": ["cosme", "saint"], "name_kw": ["rhone", "cosme"],
-                        "year": "2024", "type_kw": ["wine"], "difficulty": "medium"},
+    name: gt
+    for name, gt in json.loads(GROUND_TRUTH_PATH.read_text()).items()
+    if not name.startswith("_")  # skip the _README key
 }
-BOTTLE_IMAGES = [BOTTLE_DIR / name for name in IMAGE_GROUND_TRUTH]
+
+# Difficulty filter, set from --difficulty on the CLI ("all" = no filter).
+DIFFICULTY = "all"
+
+
+def selected_fixtures() -> list[tuple[Path, dict]]:
+    """(path, ground_truth) for fixtures that exist on disk and match DIFFICULTY."""
+    return [
+        (BOTTLE_DIR / name, gt)
+        for name, gt in IMAGE_GROUND_TRUTH.items()
+        if (BOTTLE_DIR / name).exists() and DIFFICULTY in ("all", gt["difficulty"])
+    ]
 
 # Per-model load parameters (top-level keys in the load body).
 # Several models OOM-kill on fresh API load without an explicit context_length.
@@ -369,8 +372,7 @@ async def _extract_and_score_images(model_key: str) -> dict:
     all_bottles = []
     total_latency_ms = 0
 
-    for image_path in BOTTLE_IMAGES:
-        gt = IMAGE_GROUND_TRUTH[image_path.name]
+    for image_path, gt in selected_fixtures():
         t0 = time.perf_counter()
         bottle = None
         error = None
@@ -456,12 +458,13 @@ def _print_results(r: dict) -> None:
             c, t = dim[d]
             return f"{c}/{t}" if t else "n/a"
 
+        n_img = len(r["per_image"])
         lines += [
-            f"  Images tested      : {len(BOTTLE_IMAGES)}",
+            f"  Images tested      : {n_img}",
             f"  Field accuracy     : {r['field_accuracy']}  "
             f"(producer {_frac('producer')}, name {_frac('name')}, "
             f"year {_frac('year')}, type {_frac('type')})",
-            f"  Core read (prod+name): {r['valid_count']}/{len(BOTTLE_IMAGES)}",
+            f"  Core read (prod+name): {r['valid_count']}/{n_img}",
             f"  Failed (no output) : {len(r.get('failed_images', []))}",
             "",
             "  Per-image  (P=producer N=name Y=year T=type · ✓ hit  ✗ miss  – n/a):",
@@ -566,7 +569,7 @@ async def main(models: list[str], mode: str = "both") -> None:
     if mode in ("pdf", "both"):
         print(f"  PDF Manifest: {MANIFEST_PATH.name}")
     if mode in ("image", "both"):
-        print(f"  Image Fixtures: {len(BOTTLE_IMAGES)} bottle images")
+        print(f"  Image Fixtures: {len(selected_fixtures())} bottle images (difficulty={DIFFICULTY})")
     print(f"{'=' * 80}\n")
 
     all_results: list[dict] = []
@@ -585,11 +588,10 @@ async def main(models: list[str], mode: str = "both") -> None:
         # Sort by mode (pdf first), then latency
         sorted_results = sorted(all_results, key=lambda x: (x.get("mode", "pdf") == "image", x["latency_ms"]))
 
-        n_images = len(BOTTLE_IMAGES)
         for r in sorted_results:
             mode_str = r.get("mode", "pdf").upper()
             if r.get("mode") == "image":
-                result = f"{r['valid_count']}/{n_images} read · acc {r['field_accuracy']}"
+                result = f"{r['valid_count']}/{len(r['per_image'])} read · acc {r['field_accuracy']}"
             else:
                 result = f"{r['count']} btl · {len(r['key_found'])}/{len(PDF_KEY_BOTTLES)} keys"
             print(
@@ -620,11 +622,18 @@ if __name__ == "__main__":
         help="Which extraction mode to test (default: both)",
     )
     parser.add_argument(
+        "--difficulty",
+        choices=["easy", "medium", "hard", "all"],
+        default="all",
+        help="Image mode: only score fixtures of this difficulty (default: all).",
+    )
+    parser.add_argument(
         "--list",
         action="store_true",
         help="Print configured model keys and exit (no LM Studio connection).",
     )
     args = parser.parse_args()
+    DIFFICULTY = args.difficulty
 
     if args.list:
         print("\nConfigured models:")

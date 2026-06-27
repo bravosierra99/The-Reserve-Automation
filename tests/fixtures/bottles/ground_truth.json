@@ -1,0 +1,24 @@
+{
+  "_README": "Ground truth for the OCR image benchmark (tests/manual/bench_models.py). To add a fixture: drop the .jpg in this dir and add an entry. Keywords are matched alnum-normalized (lowercase, [a-z0-9] only) as substrings ANYWHERE in the model's extracted text fields, so they survive punctuation (C.Y.P.B.), accents (Rosé->ros), and which field a token lands in. producer_kw/name_kw: ANY hit = that dimension correct. year: exact vintage string, or null if the label shows none. type_kw: ANY hit against the category fields. difficulty: easy|medium|hard (legibility of the photo).",
+
+  "bourbon_001.jpg": {"producer_kw": ["weller"], "name_kw": ["cypb", "wheated"], "year": null, "type_kw": ["whiskey", "bourbon"], "difficulty": "easy"},
+  "bourbon_002.jpg": {"producer_kw": ["bluegrass"], "name_kw": ["elkwood"], "year": null, "type_kw": ["whiskey", "bourbon"], "difficulty": "medium"},
+  "bourbon_003.jpg": {"producer_kw": ["larue", "william"], "name_kw": ["larue", "weller"], "year": null, "type_kw": ["whiskey", "bourbon"], "difficulty": "hard"},
+  "wine_001.jpg": {"producer_kw": ["detective"], "name_kw": ["cabernet", "syrah"], "year": "2024", "type_kw": ["wine"], "difficulty": "easy"},
+  "wine_002.jpg": {"producer_kw": ["hedges"], "name_kw": ["cms"], "year": "2022", "type_kw": ["wine"], "difficulty": "medium"},
+  "wine_003.jpg": {"producer_kw": ["liquid", "farm"], "name_kw": ["chardonnay", "hill"], "year": "2023", "type_kw": ["wine"], "difficulty": "hard"},
+  "wine_004.jpg": {"producer_kw": ["cosme", "saint"], "name_kw": ["rhone", "cosme"], "year": "2024", "type_kw": ["wine"], "difficulty": "medium"},
+
+  "hard_damilano_97.jpg": {"producer_kw": ["damilano"], "name_kw": ["barolo", "cinquevigne"], "year": "2021", "type_kw": ["wine"], "difficulty": "medium"},
+  "hard_suduiraut_37.jpg": {"producer_kw": ["suduiraut"], "name_kw": ["lions", "suduiraut", "blanc"], "year": "2023", "type_kw": ["wine"], "difficulty": "medium"},
+  "hard_hautbages_23.jpg": {"producer_kw": ["bages", "haut"], "name_kw": ["pauillac", "bages"], "year": "2022", "type_kw": ["wine"], "difficulty": "hard"},
+  "hard_vennstone_36.jpg": {"producer_kw": ["vennstone", "vernstone"], "name_kw": ["pinot", "vennstone"], "year": null, "type_kw": ["wine"], "difficulty": "hard"},
+  "hard_wolffer_85.jpg": {"producer_kw": ["wolffer", "wlffer"], "name_kw": ["summer", "bottle"], "year": null, "type_kw": ["wine", "ros"], "difficulty": "hard"},
+  "hard_feudomontoni_91.jpg": {"producer_kw": ["feudo", "montoni"], "name_kw": ["nerello", "mascalese", "adele"], "year": "2024", "type_kw": ["wine", "ros"], "difficulty": "hard"},
+  "hard_stagg_58.jpg": {"producer_kw": ["stagg"], "name_kw": ["stagg"], "year": null, "type_kw": ["whiskey", "bourbon"], "difficulty": "hard"},
+  "hard_willett_54.jpg": {"producer_kw": ["willett"], "name_kw": ["willett", "family", "estate"], "year": null, "type_kw": ["whiskey", "bourbon"], "difficulty": "hard"},
+  "hard_willett8_69.jpg": {"producer_kw": ["willett"], "name_kw": ["willett"], "year": null, "type_kw": ["whiskey", "bourbon"], "difficulty": "hard"},
+  "hard_highwest_62.jpg": {"producer_kw": ["highwest", "west"], "name_kw": ["prisoner"], "year": null, "type_kw": ["whiskey", "bourbon"], "difficulty": "hard"},
+  "hard_neeley_82.jpg": {"producer_kw": ["neeley", "jett"], "name_kw": ["jett", "brothers"], "year": null, "type_kw": ["whiskey", "bourbon"], "difficulty": "hard"},
+  "hard_winery_83.jpg": {"producer_kw": ["winery"], "name_kw": ["rye", "kentucky"], "year": null, "type_kw": ["whiskey", "rye"], "difficulty": "hard"}
+}
