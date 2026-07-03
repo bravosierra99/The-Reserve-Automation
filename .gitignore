@@ -30,6 +30,9 @@ env/
 # UV
 .uv/
 
+# Node (vitest for frontend JS unit tests)
+node_modules/
+
 # IDEs
 .vscode/
 .idea/

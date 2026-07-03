@@ -14,6 +14,7 @@
 <script src="{{ url_for('static', path='/js/components/cropper-manager.js') }}"></script>
 <script src="{{ url_for('static', path='/js/components/bottle-editor-modal.js') }}"></script>
 <script src="{{ url_for('static', path='/js/management/tasting-review.js') }}"></script>
+<script src="{{ url_for('static', path='/js/management/event-create.js') }}"></script>
 {% endblock %}
 
 {% block content %}
@@ -1391,6 +1392,10 @@ function managementApp() {
     // Initialize bottle editor modal
     const bottleEditor = window.bottleEditorModal ? window.bottleEditorModal() : {};
 
+    // Import create-event module (state + picker logic — see /static/js/management/event-create.js)
+    const eventCreate = window.eventCreateModule ? window.eventCreateModule() : {};
+    const eventCreateState = eventCreate.initState ? eventCreate.initState() : {};
+
     return {
         mode: null,
 
@@ -1413,19 +1418,8 @@ function managementApp() {
         batchCollapsedStates: {},
         batchAppliedStates: {},
 
-        // Create event mode
-        eventName: '',
-        eventBeverageType: 'wine',
-        eventHostName: '',
-        eventIsBlind: false,
-        eventBottleSearchQuery: '',
-        eventBottleSearchTimeout: null,
-        eventBottleSearching: false,
-        eventBottleSearchResults: [],
-        eventSelectedBottles: [],
-        eventCreating: false,
-        eventCreated: false,
-        eventCreatedUrl: '',
+        // Create event mode (state from external module - see /static/js/management/event-create.js)
+        ...eventCreateState,
 
         // Manage events mode
         managedEvents: [],
@@ -2016,121 +2010,8 @@ function managementApp() {
             this.mode = null;
         },
 
-        // Create Event Functions
-        debouncedSearchBottlesForEvent() {
-            clearTimeout(this.eventBottleSearchTimeout);
-            this.eventBottleSearchTimeout = setTimeout(() => this.searchBottlesForEvent(), 300);
-        },
-
-        async searchBottlesForEvent() {
-            if (!this.eventBottleSearchQuery || this.eventBottleSearchQuery.length < 2) {
-                this.eventBottleSearchResults = [];
-                return;
-            }
-
-            this.eventBottleSearching = true;
-            try {
-                const response = await fetch(`/api/v1/management/bottles/search?q=${encodeURIComponent(this.eventBottleSearchQuery)}`);
-                const data = await response.json();
-                this.eventBottleSearchResults = data.bottles;
-            } catch (error) {
-                console.error('Bottle search failed:', error);
-                alert('Bottle search failed: ' + error.message);
-            } finally {
-                this.eventBottleSearching = false;
-            }
-        },
-
-        addBottleToEvent(bottle) {
-            if (!this.isBottleInEvent(bottle)) {
-                this.eventSelectedBottles.push(bottle);
-            }
-        },
-
-        removeBottleFromEvent(index) {
-            this.eventSelectedBottles.splice(index, 1);
-        },
-
-        isBottleInEvent(bottle) {
-            // Compare on id — search results have no _index field, and
-            // undefined === undefined made every result look "added".
-            return this.eventSelectedBottles.some(b => b.id === bottle.id);
-        },
-
-        canCreateEvent() {
-            return this.eventName.trim() !== '' &&
-                   this.eventHostName.trim() !== '' &&
-                   this.eventSelectedBottles.length > 0;
-        },
-
-        async createEvent() {
-            if (!this.canCreateEvent()) return;
-
-            this.eventCreating = true;
-            try {
-                // Build bottle IDs and blind numbers
-                const bottleIds = this.eventSelectedBottles.map(b => b.id);
-
-                // Generate randomized blind numbers for blind tastings
-                let blindNumbers = null;
-                if (this.eventIsBlind) {
-                    // Create array [1, 2, 3, ..., n]
-                    blindNumbers = Array.from({length: bottleIds.length}, (_, i) => i + 1);
-                    // Shuffle using Fisher-Yates algorithm
-                    for (let i = blindNumbers.length - 1; i > 0; i--) {
-                        const j = Math.floor(Math.random() * (i + 1));
-                        [blindNumbers[i], blindNumbers[j]] = [blindNumbers[j], blindNumbers[i]];
-                    }
-                }
-
-                const requestData = {
-                    name: this.eventName,
-                    beverage_type: this.eventBeverageType,
-                    is_blind: this.eventIsBlind,
-                    host_name: this.eventHostName,
-                    bottle_ids: bottleIds,
-                    blind_numbers: blindNumbers
-                };
-
-                const response = await fetch('/api/v1/events', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(requestData)
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || 'Failed to create event');
-                }
-
-                const event = await response.json();
-                this.eventCreatedUrl = `/events/${event.event_id}`;
-                this.eventCreated = true;
-            } catch (error) {
-                console.error('Event creation failed:', error);
-                alert('Event creation failed: ' + error.message);
-            } finally {
-                this.eventCreating = false;
-            }
-        },
-
-        cancelCreateEvent() {
-            this.mode = null;
-            this.resetCreateEvent();
-        },
-
-        resetCreateEvent() {
-            this.eventName = '';
-            this.eventBeverageType = 'wine';
-            this.eventHostName = '';
-            this.eventIsBlind = false;
-            this.eventBottleSearchQuery = '';
-            this.eventBottleSearchResults = [];
-            this.eventSelectedBottles = [];
-            this.eventCreating = false;
-            this.eventCreated = false;
-            this.eventCreatedUrl = '';
-        },
+        // Create event functions (from external module - see /static/js/management/event-create.js)
+        ...eventCreate,
 
         // Manage Events Functions
         async loadManagedEvents() {

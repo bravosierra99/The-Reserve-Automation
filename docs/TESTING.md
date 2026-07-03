@@ -9,6 +9,13 @@
 | Tasting upload/creation | `./tests/tastings/run_all_tests.sh` | `tests/tastings/` |
 | Bottle extraction | `uv run pytest tests/test_bottle_extraction_*.py -v` | `tests/` |
 | ObsidianGenerator | Management + Bottle extraction tests | Multiple |
+| Frontend JS modules (`static/js/`) | `npm test` (vitest + jsdom) | `tests/js/` |
+| Browser flows (Alpine bindings + backend) | `uv run pytest -m e2e` (slow; also runs in CI) | `tests/e2e/` |
+
+**Frontend note:** inline template JS is invisible to every pytest layer — API tests
+never execute JS and `tests/ui` only greps rendered HTML. Logic that lives in
+`static/js/` modules gets fast unit coverage via `npm test`; anything still inline
+in a template is only tested if a browser e2e test walks through it.
 
 ## Management Routes Tests ⭐ CRITICAL
 

@@ -1,0 +1,13 @@
+{
+  "name": "reserve-automation-js",
+  "private": true,
+  "description": "JS unit tests for frontend modules under src/reserve_automation/web/static/js (run: npm test)",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1",
+    "vitest": "^2.1.9"
+  }
+}

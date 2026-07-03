@@ -35,6 +35,27 @@ jobs:
         # Inherits addopts = "-m 'not e2e'" from pyproject.toml.
         run: uv run pytest
 
+  # Frontend JS unit tests (vitest + jsdom) for the modules under
+  # src/reserve_automation/web/static/js. This is the only layer that executes
+  # the picker/component logic outside a full browser — API tests never run JS,
+  # and tests/ui only greps rendered HTML. See tests/js/.
+  js-unit:
+    name: JS unit (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JS dev dependencies
+        run: npm ci
+
+      - name: Run vitest
+        run: npm test
+
   # Browser E2E suite (Playwright Firefox + a real uvicorn subprocess). These DO
   # run locally in WSL (the conftest sets PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS
   # to route around a Firefox packaging bug), but they're slow (function-scoped
