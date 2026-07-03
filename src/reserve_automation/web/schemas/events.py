@@ -105,6 +105,15 @@ class CreateCocktailEventRequest(BaseModel):
     )
 
 
+class AddEventBottleRequest(BaseModel):
+    """Request to add a bottle to an existing bottle event."""
+    bottle_id: str = Field(..., min_length=1, description="Opaque bottle ID")
+    blind_number: Optional[int] = Field(
+        None,
+        description="Blind number for blind events; defaults to the next unused number"
+    )
+
+
 class AddEventCocktailRequest(BaseModel):
     """Request to add a cocktail to a flight event."""
     cocktail_name: str = Field(..., min_length=1, description="Name of the cocktail")

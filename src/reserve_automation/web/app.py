@@ -148,6 +148,7 @@ app.include_router(upload.router, tags=["upload"])  # Unified upload page (/uplo
 app.include_router(review.router, tags=["review"])  # Tasting card review page (/review) and API endpoints
 app.include_router(bottles.router, tags=["bottles"])  # Bottle API endpoints (/api/v1/bottles/*)
 app.include_router(tastings.router, tags=["tastings"])  # New tasting review workflow
+app.include_router(tastings.participant_router, tags=["tastings"])  # Manual-tasting wizard (guest-reachable for events)
 app.include_router(management.router, tags=["management"])  # Management page for metadata updates
 app.include_router(events.router, tags=["events"])  # Event system for multi-user tastings
 app.include_router(ingredients.router, tags=["ingredients"])  # Ingredient tree management

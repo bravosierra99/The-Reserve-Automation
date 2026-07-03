@@ -14,7 +14,9 @@ from ...db.repositories import get_bottle_repo, get_event_repo
 from ...db.repositories.bottle_repo import SQLiteBottleRepository
 from ...db.repositories.event_repo import SQLiteEventRepository
 from ..auth.dependencies import require
+from ..auth.models import AuthenticatedUser
 from ..schemas.events import (
+    AddEventBottleRequest,
     AddEventCocktailRequest,
     CocktailRating,
     CreateCocktailEventRequest,
@@ -34,6 +36,26 @@ router = APIRouter()
 # Set up templates
 templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=templates_dir)
+
+
+def _can_manage_events(request: Request, user: AuthenticatedUser) -> bool:
+    """True if the user holds events.manage (host/admin view)."""
+    auth_config = getattr(request.app.state, "auth_config", None)
+    return bool(auth_config and auth_config.has_permission(user.role, "events.manage"))
+
+
+def _redact_blind_bottles(event: dict, can_manage: bool) -> dict:
+    """Hide real bottle names on blind events that haven't been revealed.
+
+    The templates only display blind numbers pre-reveal, but the API payload
+    must not leak bottle identities to participants either.
+    """
+    if can_manage or not event.get("is_blind") or event.get("status") != EventStatus.OPEN:
+        return event
+    for bottle in event.get("bottles", []):
+        number = bottle.get("blind_number")
+        bottle["bottle_name"] = f"Bottle #{number}" if number else "Mystery Bottle"
+    return event
 
 
 # ============================================================================
@@ -139,11 +161,16 @@ async def create_event(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/v1/events", dependencies=[Depends(require("events.view"))])
-async def list_events(repo: SQLiteEventRepository = Depends(get_event_repo)):
+@router.get("/api/v1/events")
+async def list_events(
+    request: Request,
+    user: AuthenticatedUser = Depends(require("events.view")),
+    repo: SQLiteEventRepository = Depends(get_event_repo),
+):
     """Get all events."""
     try:
-        events = repo.get_all()
+        can_manage = _can_manage_events(request, user)
+        events = [_redact_blind_bottles(e, can_manage) for e in repo.get_all()]
         logger.debug(f"Retrieved {len(events)} events")
         return events
 
@@ -152,9 +179,11 @@ async def list_events(repo: SQLiteEventRepository = Depends(get_event_repo)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/v1/events/{event_id}", dependencies=[Depends(require("events.view"))])
+@router.get("/api/v1/events/{event_id}")
 async def get_event(
     event_id: str,
+    request: Request,
+    user: AuthenticatedUser = Depends(require("events.view")),
     repo: SQLiteEventRepository = Depends(get_event_repo),
 ):
     """Get event details."""
@@ -164,7 +193,7 @@ async def get_event(
             raise HTTPException(status_code=404, detail="Event not found")
 
         logger.debug(f"Retrieved event: {event_id}")
-        return event
+        return _redact_blind_bottles(event, _can_manage_events(request, user))
 
     except HTTPException:
         raise
@@ -335,6 +364,94 @@ async def delete_event(
         raise
     except Exception as e:
         logger.error(f"Failed to delete event: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# API ROUTES - EVENT BOTTLES
+# ============================================================================
+
+@router.post("/api/v1/events/{event_id}/bottles", dependencies=[Depends(require("events.participate"))])
+async def add_event_bottle(
+    event_id: str,
+    request_data: AddEventBottleRequest,
+    repo: SQLiteEventRepository = Depends(get_event_repo),
+    bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+):
+    """Add a bottle to an existing bottle event (blind or standard).
+
+    For blind events the bottle gets the next unused blind number unless one
+    is supplied, so late additions stay anonymous to everyone but the person
+    who added them.
+    """
+    try:
+        event = repo.get_by_id(event_id)
+        if event is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        if event.get("event_type") != EventType.BOTTLE:
+            raise HTTPException(status_code=400, detail="Not a bottle event")
+
+        if event["status"] == EventStatus.CLOSED:
+            raise HTTPException(status_code=400, detail="Event is closed")
+
+        try:
+            bottle = bottle_repo.get_by_id(int(request_data.bottle_id))
+        except ValueError:
+            bottle = None
+        if not bottle:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Bottle not found for ID: {request_data.bottle_id}"
+            )
+
+        if any(b["bottle_id"] == request_data.bottle_id for b in event["bottles"]):
+            raise HTTPException(status_code=409, detail="Bottle is already in this event")
+
+        blind_number = None
+        if event["is_blind"]:
+            used_numbers = {b["blind_number"] for b in event["bottles"] if b["blind_number"]}
+            if request_data.blind_number is not None:
+                if request_data.blind_number in used_numbers:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Blind number {request_data.blind_number} is already taken"
+                    )
+                blind_number = request_data.blind_number
+            else:
+                blind_number = max(used_numbers, default=0) + 1
+
+        bottle_name = f"{bottle.producer} - {bottle.name}" if bottle.producer else bottle.name
+        event_bottle = EventBottle(
+            bottle_id=request_data.bottle_id,
+            bottle_name=bottle_name,
+            bottle_path=str(request_data.bottle_id),
+            blind_number=blind_number,
+        )
+
+        repo.add_bottle_to_event(event_id, event_bottle.model_dump())
+        logger.info(
+            f"Added bottle '{bottle_name}' to event {event_id}"
+            f"{f' as blind #{blind_number}' if blind_number else ''}"
+        )
+
+        # Blind events: don't echo the bottle identity back in a payload the
+        # participant UI might surface — return the blind number only.
+        if event["is_blind"] and event["status"] == EventStatus.OPEN:
+            return {
+                "message": "Bottle added",
+                "bottle": {
+                    "bottle_id": request_data.bottle_id,
+                    "bottle_name": f"Bottle #{blind_number}",
+                    "blind_number": blind_number,
+                },
+            }
+        return {"message": "Bottle added", "bottle": event_bottle}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to add bottle to event: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

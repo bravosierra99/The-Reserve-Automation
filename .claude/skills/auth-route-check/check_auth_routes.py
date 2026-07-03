@@ -24,8 +24,9 @@ AUTH_YAML = os.path.join(ROOT, "config/auth.yaml")
 
 # Routes that are intentionally public (no auth). Match on the path literal.
 #   /health  - liveness probe (details endpoint IS protected)
+#   /version - version probe (allowlisted in auth/middleware.py PUBLIC_PATHS)
 #   /me      - identity probe; returns {authenticated: false} for anonymous callers
-PUBLIC_PATHS = {"/health", "/", "/me"}
+PUBLIC_PATHS = {"/health", "/version", "/", "/me"}
 
 ROUTE_DECO = re.compile(r"@router\.(get|post|put|delete|patch|head|options)\(")
 REQUIRE_PERM = re.compile(r"require\(\s*[\"']([^\"']+)[\"']")
@@ -91,6 +92,15 @@ def analyze_file(path):
         j = idx
         while j < n and not re.match(r"\s*(async\s+)?def\s", lines[j]):
             chunk.append(lines[j])
+            j += 1
+        # Include the handler signature too — a route may take its guard as a
+        # parameter (`user: AuthenticatedUser = Depends(require("x"))`).
+        depth = 0
+        while j < n:
+            chunk.append(lines[j])
+            depth += lines[j].count("(") - lines[j].count(")")
+            if depth <= 0:
+                break
             j += 1
         chunk_text = "\n".join(chunk)
         # Extract the route path (first string arg of the decorator).

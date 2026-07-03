@@ -33,10 +33,16 @@ from ..services.tasting_service import TastingService
 from ..sessions import SessionManager  # Still used for extraction workflow
 
 # ACCEPTED RISK: No rate limiting on this router.
-# LLM-touching endpoints (upload-card, manual-tasting/save) require "tastings.submit"
-# which is admin+family only — a small, trusted set of users. Guests cannot reach
+# LLM-touching endpoints (upload-card) require "tastings.submit" which is
+# admin+family only — a small, trusted set of users. Guests cannot reach
 # any endpoint in this router (router-level "tastings.view" gates all of them).
 router = APIRouter(dependencies=[Depends(require("tastings.view"))])
+
+# The manual-tasting wizard doubles as the EVENT participant capture UI, so it
+# is gated at "events.participate" (includes guests). Non-event (Obsidian)
+# saves re-check "tastings.submit" inside the handler, and the only LLM-touching
+# endpoint the wizard uses (upload-card) stays admin+family on the router above.
+participant_router = APIRouter(dependencies=[Depends(require("events.participate"))])
 
 # Templates
 templates_dir = Path(__file__).parent.parent / "templates"
@@ -786,13 +792,13 @@ async def upload_tasting_card(
 # ============================================================================
 
 
-@router.get("/manual-tasting", include_in_schema=False)
+@participant_router.get("/manual-tasting", include_in_schema=False)
 async def manual_tasting_page(request: Request):
     """Serve manual tasting wizard page."""
     return templates.TemplateResponse(request, "manual_tasting.html")
 
 
-@router.post("/api/v1/manual-tasting/save", dependencies=[Depends(require("tastings.submit"))])
+@participant_router.post("/api/v1/manual-tasting/save")
 async def save_manual_tasting(
     request_data: SaveManualTastingRequest,
     request: Request,
@@ -830,6 +836,9 @@ async def save_manual_tasting(
 
         # Save based on mode
         if request_data.mode == ManualTastingMode.OBSIDIAN:
+            # Personal (non-event) tastings stay admin+family only; the router
+            # gate is events.participate so guests can submit EVENT tastings.
+            require("tastings.submit")(request)
             tasting_service = _get_tasting_service()
             success, file_path, error = await tasting_service.save_manual_tasting_direct(
                 taster_name=request_data.taster_name,

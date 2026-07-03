@@ -217,7 +217,7 @@ class TastingService:
             db = next(get_db())
             from ...db.repositories.event_repo import SQLiteEventRepository
             event_repo = SQLiteEventRepository(db)
-            event = event_repo.get(event_id)
+            event = event_repo.get_by_id(event_id)
             if not event:
                 return []
 
@@ -434,7 +434,7 @@ class TastingService:
 
             db = next(get_db())
             event_repo = SQLiteEventRepository(db)
-            event = event_repo.get(event_id)
+            event = event_repo.get_by_id(event_id)
 
             if not event:
                 return False, None, "Event not found"
