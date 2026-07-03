@@ -16,6 +16,10 @@
 never execute JS and `tests/ui` only greps rendered HTML. Logic that lives in
 `static/js/` modules gets fast unit coverage via `npm test`; anything still inline
 in a template is only tested if a browser e2e test walks through it.
+Run `npm run test:coverage` for a per-module JS coverage report (scoped to
+`static/js/`; HTML report in `coverage-js/`). A 0% row there means a module has
+no unit tests yet — as of July 2026 that's `bottle-editor-modal.js` and
+`cropper-manager.js` (both DOM/Cropper.js-heavy, covered only via browser e2e).
 
 ## Management Routes Tests ⭐ CRITICAL
 

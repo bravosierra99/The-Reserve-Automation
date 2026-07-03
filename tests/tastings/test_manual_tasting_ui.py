@@ -9,11 +9,19 @@ Tests that form fields have correct Alpine.js bindings for:
 Uses FastAPI TestClient to test without requiring a running server.
 """
 
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
+
+# The wizard component (window.manualTastingWizard) — extracted from the
+# template so it gets vitest unit coverage (tests/js/manual-tasting.test.js).
+_WIZARD_MODULE = (
+    Path(__file__).parents[2]
+    / "src/reserve_automation/web/static/js/tastings/manual-tasting.js"
+)
 
 
 @pytest.fixture
@@ -98,15 +106,24 @@ def test_event_mode_fields_readonly(client):
 
 
 def test_isEventMode_computed_property(client):
-    """Test that isEventMode computed property exists in template."""
+    """Test that isEventMode computed property exists and the page loads it.
+
+    The wizard logic lives in static/js/tastings/manual-tasting.js (extracted
+    July 2026 for vitest coverage), so the property is asserted in the module
+    file and the page is asserted to include that module.
+    """
     response = client.get("/manual-tasting")
     assert response.status_code == 200
 
     content = response.text
 
-    # Check that the isEventMode computed property exists in the template
-    assert "get isEventMode()" in content, \
-        "isEventMode computed property not found in template"
+    # The page must load the wizard module that defines the component
+    assert "/static/js/tastings/manual-tasting.js" in content, \
+        "manual-tasting page should load the wizard module"
+
+    wizard_js = _WIZARD_MODULE.read_text(encoding="utf-8")
+    assert "get isEventMode()" in wizard_js, \
+        "isEventMode computed property not found in the wizard module"
 
     # Verify it's used in bindings
     assert ':readonly="isEventMode"' in content, \
@@ -162,5 +179,6 @@ def test_wine_whiskey_tasting_notes_fields(client):
     # Verify tasting form mixin is loaded (contains the note functions)
     assert "tasting-form-mixin.js" in content, "Should load tasting-form-mixin.js"
 
-    # Verify the template uses parseNotes() to convert input text to note arrays
-    assert "parseNotes" in content, "Should use parseNotes function for converting text to arrays"
+    # Verify the wizard module (loaded by the page) converts input text to note arrays
+    assert "parseNotes" in _WIZARD_MODULE.read_text(encoding="utf-8"), \
+        "Wizard module should use parseNotes to convert text to arrays"

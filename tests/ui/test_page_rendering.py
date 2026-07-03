@@ -16,6 +16,8 @@ What they don't test (covered elsewhere):
 - Form submission outcomes  → tests/ui/test_manual_tasting.py
 """
 
+from pathlib import Path
+
 import pytest
 from bs4 import BeautifulSoup
 
@@ -81,8 +83,20 @@ class TestManualTastingPage:
         )
 
     def test_is_event_mode_computed_property_exists(self, ui_client):
+        # The wizard logic lives in static/js/tastings/manual-tasting.js
+        # (extracted July 2026); the page must load it and the module must
+        # define the computed property. Its behavior is unit-tested in
+        # tests/js/manual-tasting.test.js.
         content = ui_client.get("/manual-tasting").text
-        assert "get isEventMode()" in content, (
+        assert "/static/js/tastings/manual-tasting.js" in content, (
+            "manual-tasting page no longer loads the wizard module — "
+            "the page would render but the Alpine component would be undefined"
+        )
+        wizard_js = (
+            Path(__file__).parents[2]
+            / "src/reserve_automation/web/static/js/tastings/manual-tasting.js"
+        ).read_text(encoding="utf-8")
+        assert "get isEventMode()" in wizard_js, (
             "isEventMode computed property missing — event mode detection broken"
         )
 

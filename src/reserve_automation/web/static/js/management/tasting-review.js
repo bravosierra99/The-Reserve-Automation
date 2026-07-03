@@ -316,18 +316,28 @@ window.tastingReviewModule = function() {
                 return;
             }
             this.trEditingId = this.trRowKey(t);
-            // Deep-copy the mutable fields into the edit buffer
+            const joinNotes = (v) => Array.isArray(v) ? v.join(', ') : (v || '');
+            // Deep-copy the mutable fields into the edit buffer.
+            // #CLAUDE_REQ: note keys here mirror the per-type `notes` dicts built by
+            // get_all_tastings in web/routes/management/core.py — whiskey notes come
+            // back as nose/palate/finish, wine notes as appearance/aroma/taste/aftertaste.
+            // Reading the wrong keys loads '' and trSaveEdit then WIPES the real notes
+            // (the July 2026 wine-notes bug) — keep both sets distinct.
             this.trEditData = {
                 taster_name: t.taster,
                 tasting_date: t.date,
                 // Scores (flat copy)
                 ...Object.fromEntries(Object.entries(t.scores).map(([k, v]) => [k, v ?? ''])),
-                // Notes
-                nose_notes: Array.isArray(t.notes?.nose) ? t.notes.nose.join(', ') : (t.notes?.nose || ''),
-                palate_notes: Array.isArray(t.notes?.palate) ? t.notes.palate.join(', ') : (t.notes?.palate || ''),
-                finish_notes: Array.isArray(t.notes?.finish) ? t.notes.finish.join(', ') : (t.notes?.finish || ''),
+                // Whiskey notes
+                nose_notes: joinNotes(t.notes?.nose),
+                palate_notes: joinNotes(t.notes?.palate),
+                finish_notes: joinNotes(t.notes?.finish),
                 overall_notes: t.notes?.overall || '',
-                appearance_notes: Array.isArray(t.notes?.appearance) ? t.notes.appearance.join(', ') : (t.notes?.appearance || ''),
+                // Wine notes
+                appearance_notes: joinNotes(t.notes?.appearance),
+                aroma_notes: joinNotes(t.notes?.aroma),
+                taste_notes: joinNotes(t.notes?.taste),
+                aftertaste_notes: joinNotes(t.notes?.aftertaste),
                 notes: t.notes?.notes || '',
                 bartender: t.bartender || '',
                 days_from_crack: t.days_from_crack ?? '',
@@ -362,14 +372,17 @@ window.tastingReviewModule = function() {
                     fill_level: d.fill_level !== '' ? parseInt(d.fill_level) : null,
                 });
             } else if (t.type === 'wine') {
+                // #CLAUDE_REQ: the PATCH handler in web/routes/management/core.py stores
+                // wine aroma in the nose_notes DB column, taste in palate_notes, and
+                // aftertaste in finish_notes (same mapping get_all_tastings reads back).
                 Object.assign(payload, {
                     wine_appearance: parseFloat(d.appearance) || null,
                     wine_aroma: parseFloat(d.aroma) || null,
                     wine_taste: parseFloat(d.taste) || null,
                     wine_aftertaste: parseFloat(d.aftertaste) || null,
                     wine_overall: parseFloat(d.overall) || null,
-                    appearance_notes: d.appearance_notes, nose_notes: d.palate_notes,
-                    palate_notes: d.taste_notes, finish_notes: d.finish_notes,
+                    appearance_notes: d.appearance_notes, nose_notes: d.aroma_notes,
+                    palate_notes: d.taste_notes, finish_notes: d.aftertaste_notes,
                     overall_notes: d.overall_notes,
                 });
             } else if (t.type === 'cocktail') {

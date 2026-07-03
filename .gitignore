@@ -78,3 +78,4 @@ results/
 *.extraction.json
 src/reserve_automation/version.json
 config/llm.yaml
+coverage-js/

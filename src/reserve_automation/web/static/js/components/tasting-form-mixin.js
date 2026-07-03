@@ -155,3 +155,7 @@ function tastingFormMixin() {
         }
     };
 }
+
+// Explicit window attachment so consumers (and vitest, where a top-level function
+// declaration stays module-scoped) can always resolve the mixin the same way.
+window.tastingFormMixin = tastingFormMixin;
