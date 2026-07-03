@@ -132,6 +132,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "e2e: marks tests as end-to-end browser tests",
     "requires_lm_studio: needs a reachable LM Studio endpoint; auto-skipped when unavailable (see tests/conftest.py)",
+    "prod_smoke: opt-in live-prod smoke via Cloudflare service token; skipped unless RUN_PROD_SMOKE=1 (see tests/events/test_prod_cloudflare_smoke.py)",
 ]
 
 [dependency-groups]
