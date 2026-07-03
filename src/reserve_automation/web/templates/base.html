@@ -87,93 +87,10 @@
         </div>
     </div>
 
-    <script>
-    function backupBanner() {
-        return {
-            visible: false,
-            dismissed: false,
-            level: 'amber',
-            message: '',
-            async init() {
-                try {
-                    const me = await fetch('/api/v1/me').then(r => r.json());
-                    if (!me.permissions?.management_access) return;
-                    const bs = await fetch('/api/v1/admin/backup-status').then(r => r.ok ? r.json() : null);
-                    if (!bs) return;
-                    if (bs.status === 'error') {
-                        this.level = 'red';
-                        this.message = `Backup error: ${bs.error || 'unknown error'}`;
-                        this.visible = true;
-                    } else if (bs.status === 'unknown') {
-                        this.level = 'amber';
-                        this.message = 'Backup status unknown — status file missing';
-                        this.visible = true;
-                    } else if (bs.age_minutes !== null && bs.age_minutes >= 120) {
-                        this.level = 'red';
-                        const hours = Math.round(bs.age_minutes / 60 * 10) / 10;
-                        this.message = `Backup alert: backups have not run in ${hours} hour${hours !== 1 ? 's' : ''}`;
-                        this.visible = true;
-                    } else if (bs.age_minutes !== null && bs.age_minutes >= 30) {
-                        this.level = 'amber';
-                        this.message = `Backup warning: last successful backup was ${bs.age_minutes} minutes ago`;
-                        this.visible = true;
-                    }
-                } catch (e) { /* silent — don't break the page */ }
-            }
-        };
-    }
-    </script>
-
-    <script>
-    function authNav() {
-        return {
-            displayName: '',
-            role: '',
-            p: {},
-            mobileOpen: false,
-            async init() {
-                try {
-                    const resp = await fetch('/api/v1/me');
-                    const data = await resp.json();
-                    this.displayName = data.display_name || '';
-                    this.role = data.role || '';
-                    this.p = data.permissions || {};
-                } catch (e) {
-                    // Default: show all links if /me fails
-                    this.p = {
-                        bottles_view: true, upload_access: true, tastings_submit: true,
-                        ingredients_view: true, cocktails_view: true,
-                        events_view: true, management_access: true,
-                    };
-                }
-            }
-        };
-    }
-    </script>
-
-    <script>
-    // Shared helper: turn an API error `detail` into readable text.
-    // FastAPI 422 responses set `detail` to a list of error objects; assigning
-    // that straight into a string renders as "[object Object],[object Object]".
-    function formatApiError(detail, fallback) {
-        fallback = fallback || 'Request failed';
-        if (detail === undefined || detail === null || detail === '') return fallback;
-        if (typeof detail === 'string') return detail;
-        const one = (e) => {
-            if (e && typeof e === 'object') {
-                const loc = Array.isArray(e.loc) ? e.loc.filter(p => p !== 'body').join('.') : '';
-                const msg = e.msg || e.message || JSON.stringify(e);
-                return loc ? `${loc}: ${msg}` : msg;
-            }
-            return String(e);
-        };
-        if (Array.isArray(detail)) {
-            const msgs = detail.map(one).filter(Boolean);
-            return msgs.length ? msgs.join('; ') : fallback;
-        }
-        return one(detail) || fallback;
-    }
-    </script>
+    <!-- authNav() / backupBanner() / formatApiError() live in
+         /static/js/components/base-page.js
+         (extracted July 2026 for vitest coverage — tests/js/base-page.test.js) -->
+    <script src="/static/js/components/base-page.js"></script>
 
     <main class="container mx-auto px-4 py-6 max-w-4xl">
         {% block content %}{% endblock %}

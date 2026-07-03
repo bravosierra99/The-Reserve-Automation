@@ -3,7 +3,16 @@
 Uses in-memory SQLite database for test isolation.
 """
 
+from pathlib import Path
+
 import pytest
+
+# formatApiError lives in the base-page module (extracted from base.html
+# July 2026 for vitest coverage — tests/js/base-page.test.js).
+_BASE_PAGE_MODULE = (
+    Path(__file__).parents[2]
+    / "src/reserve_automation/web/static/js/components/base-page.js"
+)
 
 
 class TestCocktailPagesRender:
@@ -13,14 +22,42 @@ class TestCocktailPagesRender:
     def test_cocktails_page_renders(self, test_client):
         response = test_client.get("/cocktails")
         assert response.status_code == 200
-        assert "formatApiError" in response.text  # shared helper is wired in
+        # Shared error helper is wired in via the base-page module
+        assert "/static/js/components/base-page.js" in response.text
+        assert "formatApiError" in _BASE_PAGE_MODULE.read_text(encoding="utf-8")
+        # The page logic lives in static/js/cocktails/cocktails-page.js
+        # (extracted July 2026); the page must load it and the module must
+        # define the Alpine factory. Behavior is unit-tested in
+        # tests/js/cocktails-page.test.js.
+        assert '/static/js/cocktails/cocktails-page.js"></script>' in response.text, (
+            "cocktails page no longer loads its component module — the page "
+            "would render but the Alpine component would be undefined"
+        )
+        page_js = (
+            Path(__file__).parents[2]
+            / "src/reserve_automation/web/static/js/cocktails/cocktails-page.js"
+        ).read_text(encoding="utf-8")
+        assert "window.cocktailsApp" in page_js
 
     def test_cocktail_detail_page_renders(self, test_client):
         mule = next(c for c in test_client.get("/api/v1/cocktails").json()
                     if c["name"] == "Moscow Mule")
         response = test_client.get(f"/cocktails/{mule['id']}/detail")
         assert response.status_code == 200
-        assert "createAndSelectIngredient" in response.text
+        # The page logic (incl. the create-on-the-fly ingredient flow) lives in
+        # static/js/cocktails/cocktail-detail.js (extracted July 2026); the
+        # page must load it. Behavior is unit-tested in
+        # tests/js/cocktail-detail.test.js.
+        assert '/static/js/cocktails/cocktail-detail.js"></script>' in response.text, (
+            "cocktail detail page no longer loads its component module — the "
+            "page would render but the Alpine component would be undefined"
+        )
+        detail_js = (
+            Path(__file__).parents[2]
+            / "src/reserve_automation/web/static/js/cocktails/cocktail-detail.js"
+        ).read_text(encoding="utf-8")
+        assert "window.cocktailDetailApp" in detail_js
+        assert "createAndSelectIngredient" in detail_js
 
 
 class TestCocktailList:
@@ -145,6 +182,33 @@ class TestCocktailUpdate:
     def test_update_nonexistent(self, test_client):
         response = test_client.put("/api/v1/cocktails/99999", json={"garnish": "test"})
         assert response.status_code == 404
+
+    def test_parent_cocktail_survives_edit_roundtrip(self, test_client):
+        """Regression (July 2026): parent_cocktail was missing from API
+        responses, so the detail page's edit form seeded it as null and every
+        recipe edit silently wiped a stored parent."""
+        created = test_client.post("/api/v1/cocktails", json={
+            "name": "Kentucky Mule",
+            "parent_cocktail": "Moscow Mule",
+            "ingredients": [{"ingredient": "Bourbon", "amount": 2, "unit": "oz"}],
+        })
+        assert created.status_code == 200
+        cid = created.json()["id"]
+
+        # The GET response must expose the parent (this was the missing piece)
+        fetched = test_client.get(f"/api/v1/cocktails/{cid}").json()
+        assert fetched["parent_cocktail"] == "Moscow Mule"
+
+        # An edit that PUTs the fetched value back must not change it —
+        # mirrors what the detail page's edit form sends.
+        response = test_client.put(f"/api/v1/cocktails/{cid}", json={
+            "garnish": "candied ginger",
+            "parent_cocktail": fetched["parent_cocktail"] or None,
+        })
+        assert response.status_code == 200
+        assert response.json()["parent_cocktail"] == "Moscow Mule"
+
+        test_client.delete(f"/api/v1/cocktails/{cid}")
 
 
 class TestCocktailDelete:

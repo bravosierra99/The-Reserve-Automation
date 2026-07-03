@@ -51,6 +51,10 @@ def _cocktail_to_dict(c: CocktailRecipe, avg_score: float | None = None) -> dict
         "glassware": c.glassware,
         "method": c.method,
         "style": c.style,
+        # Must be included: the detail page's edit form seeds from this field
+        # and PUTs it back — omitting it made every recipe edit silently wipe
+        # a stored parent (found July 2026 during the JS extraction).
+        "parent_cocktail": c.parent_cocktail,
         "serving_size": c.serving_size,
         "stars": c.stars,
         "photo": c.photo,
@@ -189,6 +193,7 @@ async def create_cocktail(
         cocktail = CocktailRecipe(
             name=request_data.name,
             description=request_data.description,
+            parent_cocktail=request_data.parent_cocktail,
             ingredients=request_data.ingredients,
             instructions=request_data.instructions,
             garnish=request_data.garnish,

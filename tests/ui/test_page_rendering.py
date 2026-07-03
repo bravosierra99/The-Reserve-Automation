@@ -40,9 +40,21 @@ class TestBottlesPage:
         )
 
     def test_bottles_page_has_collection_api_reference(self, ui_client):
+        # The grid logic lives in static/js/bottles/bottles-page.js (extracted
+        # July 2026); the page must load it and the module must reference the
+        # collection API endpoint. Its behavior is unit-tested in
+        # tests/js/bottles-page.test.js.
         content = ui_client.get("/bottles").text
-        assert "/api/v1/bottles/collection" in content, (
-            "Page must reference the collection API endpoint; "
+        assert "/static/js/bottles/bottles-page.js" in content, (
+            "bottles page no longer loads the grid module — "
+            "the page would render but the Alpine component would be undefined"
+        )
+        page_js = (
+            Path(__file__).parents[2]
+            / "src/reserve_automation/web/static/js/bottles/bottles-page.js"
+        ).read_text(encoding="utf-8")
+        assert "/api/v1/bottles/collection" in page_js, (
+            "Module must reference the collection API endpoint; "
             "removing it breaks the bottle grid entirely"
         )
 

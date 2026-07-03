@@ -13,13 +13,15 @@
 | Browser flows (Alpine bindings + backend) | `uv run pytest -m e2e` (slow; also runs in CI) | `tests/e2e/` |
 
 **Frontend note:** inline template JS is invisible to every pytest layer — API tests
-never execute JS and `tests/ui` only greps rendered HTML. Logic that lives in
-`static/js/` modules gets fast unit coverage via `npm test`; anything still inline
-in a template is only tested if a browser e2e test walks through it.
-Run `npm run test:coverage` for a per-module JS coverage report (scoped to
-`static/js/`; HTML report in `coverage-js/`). A 0% row there means a module has
-no unit tests yet — as of July 2026 that's `bottle-editor-modal.js` and
-`cropper-manager.js` (both DOM/Cropper.js-heavy, covered only via browser e2e).
+never execute JS and `tests/ui` only greps rendered HTML. As of July 2026 ALL page
+logic lives in `static/js/` modules (every template's inline script was extracted;
+only one-line `window.PAGE_DATA` bootstraps remain inline) and every module has a
+vitest suite in `tests/js/` — `npm test` runs them, `npm run test:coverage` gives
+the per-module report (scoped to `static/js/`; HTML report in `coverage-js/`).
+Keep it that way: new frontend logic goes in a `static/js/` module with a vitest
+suite, never inline in a template. A 0% coverage row is a regression.
+Page factories with `get foo()` getters must attach as WHOLE factories
+(`window.fooApp = function() {...}`) — spreading one freezes its getters.
 
 ## Management Routes Tests ⭐ CRITICAL
 

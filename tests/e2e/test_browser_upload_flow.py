@@ -328,8 +328,13 @@ class TestBrowserUploadFlow:
             page.set_input_files("input[type='file']", str(invalid_file))
             page.click("text=✓ Upload & Extract")
 
-            # Should show error, NOT "Found 0 bottles"
-            page.wait_for_selector("text=/error|failed/i", timeout=10000)
+            # Should show error, NOT "Found 0 bottles". Wait on the error
+            # container itself: matching error TEXT is environment-dependent
+            # (with LM Studio reachable the backend returns a friendly
+            # "Could not extract bottle data..." message with no
+            # "error"/"failed" in it, and a text=/error|failed/i selector
+            # pins itself to the hidden "✗ 0 failed" manifest badge instead).
+            page.wait_for_selector("div[x-show='error']", state="visible", timeout=15000)
 
             # Verify we DON'T see "Found 0 bottle(s)"
             found_zero_text = page.locator("text=Found 0 bottle(s)")

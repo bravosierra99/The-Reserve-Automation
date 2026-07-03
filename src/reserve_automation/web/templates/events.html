@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 
+{% block head %}
+<!-- Page component (window.eventsApp) — logic lives in a static module
+     so it gets vitest unit coverage; see tests/js/events-page.test.js -->
+<script src="{{ url_for('static', path='/js/events/events-page.js') }}"></script>
+{% endblock %}
+
 {% block content %}
 <div class="max-w-6xl mx-auto p-4" x-data="eventsApp()">
     <div class="mb-6">
@@ -74,32 +80,6 @@
     </div>
 </div>
 
-<script>
-function eventsApp() {
-    return {
-        events: [],
-        loading: true,
-
-        async init() {
-            await this.loadEvents();
-            // Refresh events every 10 seconds
-            setInterval(() => this.loadEvents(), 10000);
-        },
-
-        async loadEvents() {
-            try {
-                const response = await fetch('/api/v1/events');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                this.events = await response.json();
-                this.loading = false;
-            } catch (error) {
-                console.error('Failed to load events:', error);
-                this.loading = false;
-            }
-        }
-    };
-}
-</script>
+<!-- eventsApp() lives in /static/js/events/events-page.js
+     (extracted July 2026 for vitest coverage — tests/js/events-page.test.js) -->
 {% endblock %}
