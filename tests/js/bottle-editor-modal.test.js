@@ -86,6 +86,7 @@ beforeEach(() => {
 afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+    document.body.style.overflow = '';
 });
 
 // ---------------------------------------------------------------------------
@@ -229,6 +230,36 @@ describe('close', () => {
         expect(window.cropperManager.destroyCropper).toHaveBeenCalledWith({ mock: 'cropper' });
         expect(m.cropperInstance).toBeNull();
         expect(m.manualCropActive).toBe(false);
+    });
+});
+
+describe('body scroll lock', () => {
+    // Without the lock, iOS Safari chains modal touch-scrolls to the page body:
+    // the modal rebounds and the page behind scrolls, hiding the Save footer.
+    it('locks page scroll on openManagement and releases it on close', async () => {
+        const m = freshModal();
+        global.fetch = routeFetch([
+            ['/api/v1/bottles/tastings-summary', jsonResponse({ tasting_count: 0 })],
+        ]);
+
+        await m.openManagement(WINE_BOTTLE);
+        expect(document.body.style.overflow).toBe('hidden');
+
+        m.close();
+        expect(document.body.style.overflow).toBe('');
+    });
+
+    it('locks page scroll on openUpload and releases it on close', async () => {
+        const m = freshModal();
+        global.fetch = routeFetch([
+            ['/api/v1/bottles/check-duplicates', jsonResponse({ duplicates: [] })],
+        ]);
+
+        await m.openUpload(WHISKEY_BOTTLE, 'up-123');
+        expect(document.body.style.overflow).toBe('hidden');
+
+        m.close();
+        expect(document.body.style.overflow).toBe('');
     });
 });
 

@@ -4,21 +4,24 @@
 <div x-show="bottleEditor.isOpen"
      x-cloak
      @keydown.escape="bottleEditor.close()"
-     class="fixed inset-0 z-50 overflow-y-auto"
+     class="fixed inset-0 z-50"
      style="display: none;">
 
     <!-- Overlay -->
     <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
          @click="bottleEditor.close()"></div>
 
-    <!-- Modal Container -->
-    <div class="relative min-h-screen flex items-center justify-center p-4">
+    <!-- Modal Container: flex column with fixed header/footer and ONE internal
+         scroll region. max-height uses dvh (visible viewport) with a vh fallback
+         so the footer (Save) is always on screen on iOS Safari; overscroll-contain
+         on the scroller stops iOS scroll-chaining/rubber-band to the page behind. -->
+    <div class="relative h-full flex items-center justify-center p-4">
         <div @click.stop
-             id="bottle-editor-scroll"
-             class="relative bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+             class="relative bg-white rounded-lg shadow-2xl max-w-6xl w-full flex flex-col overflow-hidden"
+             style="max-height: 90vh; max-height: 90dvh;">
 
             <!-- Header -->
-            <div class="sticky top-0 bg-white border-b-2 border-gray-300 p-6 z-10">
+            <div class="shrink-0 bg-white border-b-2 border-gray-300 p-6">
                 <div class="flex justify-between items-start gap-3">
                     <div class="min-w-0">
                         <h2 class="text-xl lg:text-3xl font-bold text-gray-800 mb-2 leading-tight">
@@ -48,8 +51,8 @@
                 </div>
             </div>
 
-            <!-- Content -->
-            <div class="p-6 space-y-6">
+            <!-- Content (the single scroll region) -->
+            <div id="bottle-editor-scroll" class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-6">
 
                 <!-- Metadata Section -->
                 <div class="bg-gray-50 rounded-lg p-6 border-2 border-gray-300">
@@ -832,8 +835,8 @@
             <datalist id="be-ac-vineyard"><template x-for="v in bottleEditor.acData.vineyard" :key="v"><option :value="v"></option></template></datalist>
             <datalist id="be-ac-style"><template x-for="v in bottleEditor.acData.style" :key="v"><option :value="v"></option></template></datalist>
 
-            <!-- Footer Actions -->
-            <div class="sticky bottom-0 bg-white border-t-2 border-gray-300 px-4 py-3 lg:p-6 flex flex-wrap justify-between items-center gap-3">
+            <!-- Footer Actions (fixed flex row — always visible, never below the fold) -->
+            <div class="shrink-0 bg-white border-t-2 border-gray-300 px-4 py-3 lg:p-6 flex flex-wrap justify-between items-center gap-3">
                 <div class="flex gap-3">
                     <!-- Navigation (Upload/Manifest Mode) -->
                     <button x-show="bottleEditor.manifestContext && (bottleEditor.manifestContext.currentIndex || 0) > 0"
@@ -892,14 +895,15 @@
 <!-- Duplicate Detection Dialog (Upload Mode Only) -->
 <div x-show="bottleEditor.showDuplicateDialog"
      x-cloak
-     class="fixed inset-0 z-60 overflow-y-auto"
+     class="fixed inset-0 z-60"
      style="display: none;">
 
     <div class="fixed inset-0 bg-black bg-opacity-75"></div>
 
-    <div class="relative min-h-screen flex items-center justify-center p-4">
+    <div class="relative h-full flex items-center justify-center p-4">
         <div @click.stop
-             class="relative bg-white rounded-lg shadow-2xl max-w-4xl w-full p-6">
+             class="relative bg-white rounded-lg shadow-2xl max-w-4xl w-full p-6 overflow-y-auto overscroll-contain"
+             style="max-height: 90vh; max-height: 90dvh;">
 
             <h3 class="text-2xl font-bold text-red-600 mb-4">⚠️ Potential Duplicate Found</h3>
             <p class="text-gray-700 mb-4">This bottle appears to already exist in your vault. What would you like to do?</p>
