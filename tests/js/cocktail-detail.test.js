@@ -695,8 +695,10 @@ describe('openEditTastingModal', () => {
     });
 });
 
-describe('searchEditBottles', () => {
-    it('searches by the typed query and sorts products first', async () => {
+// Edit mode reuses the SAME searchBottles implementation (ONE PATH) — the
+// 'edit' mode argument only redirects which query/result buckets are used.
+describe('searchBottles (edit mode)', () => {
+    it('searches by the typed query, reading/writing the edit buckets', async () => {
         const fetchMock = routeFetch([
             ['/api/v1/ingredients/search', jsonResponse([ING_BOURBON, ING_WELLER])],
         ]);
@@ -704,11 +706,13 @@ describe('searchEditBottles', () => {
 
         const app = freshApp('7');
         app.editBottleQueries[0] = 'weller';
-        await app.searchEditBottles(0, 'bourbon');
+        await app.searchBottles(0, 'bourbon', 'edit');
 
         expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingredients/search?q=weller');
         expect(app.editBottleResults[0].map(r => r.name))
             .toEqual(['Weller Special Reserve', 'Bourbon']);
+        // add-mode buckets untouched
+        expect(app.bottleResults).toEqual({});
     });
 
     it('with no query, defaults to the recipe node plus descendants', async () => {
@@ -718,9 +722,24 @@ describe('searchEditBottles', () => {
             ['/api/v1/ingredients/3/descendants', jsonResponse([ING_WELLER])],
         ]));
         const app = freshApp('7');
-        await app.searchEditBottles(0, 'Bourbon');
+        await app.searchBottles(0, 'Bourbon', 'edit');
         expect(app.editBottleResults[0].map(r => r.name))
             .toEqual(['Weller Special Reserve', 'Bourbon']);
+    });
+
+    it('ignores the add-mode query for the same slot', async () => {
+        const fetchMock = routeFetch([
+            ['/api/v1/ingredients/search', jsonResponse([ING_WELLER])],
+            ['/api/v1/ingredients?flat=true', jsonResponse([])],
+        ]);
+        vi.stubGlobal('fetch', fetchMock);
+
+        const app = freshApp('7');
+        app.bottleSearchQueries[0] = 'weller'; // add-mode bucket must not leak in
+        await app.searchBottles(0, 'rye', 'edit');
+        // empty edit query -> falls back to the recipe ingredient
+        expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingredients/search?q=rye');
+        expect(app.editBottleResults[0]).toEqual([ING_WELLER]);
     });
 
     it('bails silently on a failed search', async () => {
@@ -728,14 +747,15 @@ describe('searchEditBottles', () => {
             ['/api/v1/ingredients/search', jsonResponse({}, { ok: false, status: 500 })],
         ]));
         const app = freshApp('7');
-        await app.searchEditBottles(0, 'bourbon');
+        await app.searchBottles(0, 'bourbon', 'edit');
         expect(app.editBottleResults[0]).toBeUndefined();
     });
 
     it('swallows thrown errors', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
         const app = freshApp('7');
-        await expect(app.searchEditBottles(0, 'bourbon')).resolves.toBeUndefined();
+        await expect(app.searchBottles(0, 'bourbon', 'edit')).resolves.toBeUndefined();
+        expect(console.error).toHaveBeenCalled();
     });
 });
 

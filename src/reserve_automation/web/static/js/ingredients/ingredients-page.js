@@ -262,9 +262,9 @@ window.ingredientsApp = function() {
             this.formData = {
                 name: ing.name || '',
                 parent: ing.parent || '',
-                cost: ing.cost || null,
-                volume_ml: ing.volume_ml || null,
-                abv: ing.abv || null,
+                cost: ing.cost ?? null,       // ?? not ||: 0 is a real value
+                volume_ml: ing.volume_ml ?? null,
+                abv: ing.abv ?? null,
                 notes: ing.notes || ''
             };
             this.formError = '';
@@ -327,12 +327,15 @@ window.ingredientsApp = function() {
             this.formError = '';
 
             try {
-                // Clean up empty strings to null
+                // Clean up empty strings to null. Numeric fields must keep a
+                // legitimate 0 (free ingredient, non-alcoholic) — only '' or
+                // a missing value becomes null (same pattern as
+                // components/bottle-editor-modal.js).
                 const payload = { ...this.formData };
                 if (!payload.parent) payload.parent = null;
-                if (!payload.cost) payload.cost = null;
-                if (!payload.volume_ml) payload.volume_ml = null;
-                if (!payload.abv) payload.abv = null;
+                if (payload.cost === '' || payload.cost == null) payload.cost = null;
+                if (payload.volume_ml === '' || payload.volume_ml == null) payload.volume_ml = null;
+                if (payload.abv === '' || payload.abv == null) payload.abv = null;
                 if (!payload.notes) payload.notes = null;
 
                 let response;

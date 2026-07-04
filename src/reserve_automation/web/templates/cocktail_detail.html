@@ -105,10 +105,12 @@
                                 <th class="text-left py-2"></th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <template x-for="(t, idx) in tastings" :key="idx">
-                                <>
-                                <tr class="border-b" :class="t.bottles_used && t.bottles_used.length ? '' : 'last:border-0'">
+                        <!-- One tbody per tasting: <template x-for> needs a single root
+                             element and a tr pair can't share a wrapper inside tbody.
+                             template + repeated tbody are both valid table content. -->
+                        <template x-for="(t, idx) in tastings" :key="idx">
+                            <tbody>
+                                <tr class="border-b">
                                     <td class="py-2 pr-4" x-text="t.tasting_date"></td>
                                     <td class="py-2 pr-4" x-text="t.taster_name"></td>
                                     <td class="py-2 pr-4">
@@ -124,7 +126,7 @@
                                                 class="text-red-600 hover:text-red-800 text-xs">Delete</button>
                                     </td>
                                 </tr>
-                                <tr x-show="t.bottles_used && t.bottles_used.length > 0" class="border-b last:border-0 bg-gray-50">
+                                <tr x-show="t.bottles_used && t.bottles_used.length > 0" class="border-b bg-gray-50">
                                     <td colspan="6" class="py-1 px-2 pb-2">
                                         <div class="flex flex-wrap gap-2">
                                             <template x-for="bu in t.bottles_used" :key="bu.recipe_ingredient">
@@ -136,9 +138,8 @@
                                         </div>
                                     </td>
                                 </tr>
-                                </>
-                            </template>
-                        </tbody>
+                            </tbody>
+                        </template>
                     </table>
                 </div>
             </div>
@@ -167,8 +168,8 @@
                                     <div class="relative">
                                         <input type="text"
                                                x-model="editBottleQueries[bidx]"
-                                               @input.debounce.300ms="searchEditBottles(bidx, ing.ingredient)"
-                                               @focus="searchEditBottles(bidx, ing.ingredient)"
+                                               @input.debounce.300ms="searchBottles(bidx, ing.ingredient, 'edit')"
+                                               @focus="searchBottles(bidx, ing.ingredient, 'edit')"
                                                :placeholder="'Search or select ' + ing.ingredient"
                                                class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm">
                                         <div x-show="editBottleResults[bidx] && editBottleResults[bidx].length > 0"

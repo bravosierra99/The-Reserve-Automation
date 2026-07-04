@@ -116,7 +116,6 @@ describe('initial state', () => {
         expect(app.joined).toBe(false);
         expect(app.showQRModal).toBe(false);
         expect(app.eventUrl).toBe('');
-        expect(app.qrCodeInstance).toBeNull();
         expect(app.addBottleQuery).toBe('');
         expect(app.addBottleResults).toEqual([]);
         expect(app.addBottleMessage).toBe('');
@@ -444,6 +443,30 @@ describe('searchBottlesToAdd', () => {
         ]);
     });
 
+    it('dedupes legacy event bottles that carry only bottle_path (no bottle_id)', async () => {
+        // Regression: the dedupe set used to be built from b.bottle_id only, so a
+        // legacy event bottle without bottle_id collected `undefined` and its
+        // search hit (keyed by bottle_path) reappeared in the results.
+        vi.stubGlobal('fetch', routeFetch([
+            ['/api/v1/bottles/search', jsonResponse({
+                query: 'we',
+                results: [
+                    { bottle_path: '7', bottle_name: 'Legacy In Event' },
+                    { bottle_path: '3', bottle_name: 'Weller Antique' },
+                ],
+            })],
+        ]));
+        const app = freshApp();
+        const event = makeEvent();
+        event.bottles.push({ bottle_name: 'Legacy In Event', bottle_path: '7', blind_number: 3 });
+        app.event = event;
+        app.addBottleQuery = 'we';
+        await app.searchBottlesToAdd();
+        expect(app.addBottleResults).toEqual([
+            { bottle_path: '3', bottle_name: 'Weller Antique' },
+        ]);
+    });
+
     it('handles a missing results key and no loaded event', async () => {
         vi.stubGlobal('fetch', routeFetch([
             ['/api/v1/bottles/search', jsonResponse({ query: 'we' })],
@@ -537,59 +560,8 @@ describe('addBottleToEvent', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Blind display helpers + host detection
+// Host detection
 // ---------------------------------------------------------------------------
-
-describe('displayBottleName (blind redaction)', () => {
-    it('shows only the blind number while a blind event is open', () => {
-        const app = freshApp();
-        app.event = makeEvent({ is_blind: true, status: 'open' });
-        expect(app.displayBottleName({ bottle_name: 'Weller 12', blind_number: 2 }))
-            .toBe('Bottle #2');
-    });
-
-    it('shows the real name once revealed', () => {
-        const app = freshApp();
-        app.event = makeEvent({ is_blind: true, status: 'revealed' });
-        expect(app.displayBottleName({ bottle_name: 'Weller 12', blind_number: 2 }))
-            .toBe('Weller 12');
-    });
-
-    it('shows the real name on non-blind events and unnumbered bottles', () => {
-        const app = freshApp();
-        app.event = makeEvent({ is_blind: false, status: 'open' });
-        expect(app.displayBottleName({ bottle_name: 'Weller 12', blind_number: 2 }))
-            .toBe('Weller 12');
-
-        app.event = makeEvent({ is_blind: true, status: 'open' });
-        expect(app.displayBottleName({ bottle_name: 'Weller 12', blind_number: null }))
-            .toBe('Weller 12');
-    });
-});
-
-describe('hasTasted', () => {
-    it('is false before joining or before the event loads', () => {
-        const app = freshApp();
-        expect(app.hasTasted({ bottle_path: '1' })).toBe(false);
-        app.participantInfo = { participant_id: 'p-ben' };
-        expect(app.hasTasted({ bottle_path: '1' })).toBe(false);
-    });
-
-    it('is false when the participant is not in the event roster', () => {
-        const app = freshApp();
-        app.event = makeEvent();
-        app.participantInfo = { participant_id: 'p-ghost' };
-        expect(app.hasTasted({ bottle_path: '1' })).toBe(false);
-    });
-
-    it('reflects the participant tastings by bottle_path', () => {
-        const app = freshApp();
-        app.event = makeEvent();
-        app.participantInfo = { participant_id: 'p-ben' };
-        expect(app.hasTasted({ bottle_path: '1' })).toBe(true);
-        expect(app.hasTasted({ bottle_path: '2' })).toBe(false);
-    });
-});
 
 describe('isHost', () => {
     it('matches the participant name against the event host', () => {

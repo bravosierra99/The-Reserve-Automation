@@ -185,11 +185,6 @@ window.eventResultsApp = function eventResultsApp(eventId) {
             return participant.tastings.find(t => t.bottle_path === bottlePath);
         },
 
-        getBottleName(bottlePath) {
-            const bottle = this.event.bottles.find(b => b.bottle_path === bottlePath);
-            return bottle ? bottle.bottle_name : bottlePath;
-        },
-
         formatTastingNotes(tasting) {
             if (!tasting || !tasting.tasting_data) return '<p class="text-gray-500">No tasting data</p>';
 

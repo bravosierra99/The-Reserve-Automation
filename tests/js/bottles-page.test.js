@@ -115,7 +115,6 @@ describe('composition and initial state', () => {
         const app = freshApp();
         expect(app.labelsLoading).toBe(false);
         expect(app.labelBottles).toEqual([]);
-        expect(app.selectedLabelBottle).toBeNull();
         expect(app.gridFilterType).toBe('all');
         expect(app.gridSearchQuery).toBe('');
         expect(app.gridFilterRegion).toBe('');
@@ -322,13 +321,6 @@ describe('option providers', () => {
         expect(app.gridAvailableBeverageTypes()).toEqual(['Red', 'White']);
     });
 
-    it('gridAvailableVarieties flattens wine varieties only', () => {
-        const app = appWithBottles();
-        expect(app.gridAvailableVarieties()).toEqual(
-            ['Cabernet Sauvignon', 'Merlot', 'Sauvignon Blanc'],
-        );
-    });
-
     it('gridAvailableStyles lists wine styles only', () => {
         const app = appWithBottles();
         expect(app.gridAvailableStyles()).toEqual(['Bold', 'Crisp']);
@@ -436,20 +428,17 @@ describe('init', () => {
 // ---------------------------------------------------------------------------
 
 describe('loadBottles', () => {
-    it('fetches the exact collection endpoint and updates the timestamp', async () => {
+    it('fetches the exact collection endpoint and stores the bottles', async () => {
         vi.spyOn(console, 'log').mockImplementation(() => {});
         vi.stubGlobal('fetch', routeFetch([
             ['/api/v1/bottles/collection', jsonResponse({ bottles: BOTTLES, count: 4 })],
         ]));
 
         const app = freshApp();
-        const before = app.labelGridTimestamp;
-        await new Promise(r => setTimeout(r, 2));   // ensure Date.now() can advance
         await app.loadBottles();
 
         expect(fetch).toHaveBeenCalledWith('/api/v1/bottles/collection');
         expect(app.labelBottles).toEqual(BOTTLES);
-        expect(app.labelGridTimestamp).toBeGreaterThanOrEqual(before);
         expect(app.labelsLoading).toBe(false);
     });
 

@@ -43,7 +43,6 @@ window.eventDetailApp = function eventDetailApp(eventId) {
         joined: false,
         showQRModal: false,
         eventUrl: '',
-        qrCodeInstance: null,
         addBottleQuery: '',
         addBottleResults: [],
         addBottleMessage: '',
@@ -174,8 +173,16 @@ window.eventDetailApp = function eventDetailApp(eventId) {
                 const response = await fetch(url);
                 if (response.ok) {
                     const data = await response.json();
-                    // Hide bottles already in the event
-                    const inEvent = new Set((this.event?.bottles || []).map(b => b.bottle_id));
+                    // Hide bottles already in the event.
+                    // #CLAUDE_REQ: Two different id fields meet here. Event bottles
+                    //              carry both bottle_id and bottle_path (events.py
+                    //              sets bottle_path = str(bottle_id) in the DB era);
+                    //              search results (MatchCandidate) carry the DB id
+                    //              ONLY in a field named bottle_path — there is no
+                    //              bottle_id on search results. Key event bottles by
+                    //              bottle_id with a bottle_path fallback (legacy rows)
+                    //              and match against the result's bottle_path.
+                    const inEvent = new Set((this.event?.bottles || []).map(b => b.bottle_id ?? b.bottle_path));
                     this.addBottleResults = (data.results || []).filter(r => !inEvent.has(r.bottle_path));
                 }
             } catch (e) {
@@ -191,6 +198,9 @@ window.eventDetailApp = function eventDetailApp(eventId) {
                 const response = await fetch(`/api/v1/events/${this.eventId}/bottles`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    // #CLAUDE_REQ: NOT a typo — result.bottle_path holds the DB id
+                    //              (search results have no bottle_id field), and the
+                    //              endpoint's request field is named bottle_id.
                     body: JSON.stringify({ bottle_id: result.bottle_path })
                 });
                 const data = await response.json();
@@ -209,20 +219,6 @@ window.eventDetailApp = function eventDetailApp(eventId) {
             } finally {
                 this.addingBottle = false;
             }
-        },
-
-        displayBottleName(bottle) {
-            if (this.event?.is_blind && this.event?.status === 'open' && bottle.blind_number) {
-                return `Bottle #${bottle.blind_number}`;
-            }
-            return bottle.bottle_name;
-        },
-
-        hasTasted(bottle) {
-            if (!this.participantInfo || !this.event) return false;
-            const participant = this.event.participants[this.participantInfo.participant_id];
-            if (!participant) return false;
-            return participant.tastings.some(t => t.bottle_path === bottle.bottle_path);
         },
 
         isHost() {

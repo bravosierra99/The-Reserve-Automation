@@ -39,12 +39,6 @@ async def upload_page(request: Request):
     return templates.TemplateResponse(request, "upload.html")
 
 
-@router.get("/review-bottles/{extraction_id}", include_in_schema=False)
-async def review_bottles_page(extraction_id: str, request: Request):
-    """Serve the bottle review page."""
-    return templates.TemplateResponse(request, "review_bottles.html")
-
-
 @router.post("/api/v1/upload")
 async def upload_file(
     response: Response,

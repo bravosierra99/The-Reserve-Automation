@@ -216,14 +216,12 @@ describe('handleFileSelect', () => {
 });
 
 describe('clearFile / clearError', () => {
-    it('clearFile resets file state, counts and the native input', () => {
+    it('clearFile resets file state and the native input', () => {
         const app = freshApp();
         app.selectedFile = FILE;
         app.previewUrl = 'blob:preview-1';
         app.imageLoadHandled = true;
         app.uploadComplete = true;
-        app.bottlesCount = 3;
-        app.tastingsCount = 2;
 
         app.clearFile();
 
@@ -232,8 +230,6 @@ describe('clearFile / clearError', () => {
         expect(app.$refs.fileInput.value).toBe('');
         expect(app.imageLoadHandled).toBe(false);
         expect(app.uploadComplete).toBe(false);
-        expect(app.bottlesCount).toBe(0);
-        expect(app.tastingsCount).toBe(0);
     });
 
     it('clearError clears the error flags and delegates to clearFile', () => {
@@ -474,7 +470,6 @@ describe('uploadFile stream handling', () => {
 
         expect(app.bottleEditor.openUpload).toHaveBeenCalledWith(BOTTLE_A, 'up-1', null);
         expect(app.uploadId).toBe('up-1');
-        expect(app.bottlesCount).toBe(0);  // clearFile() zeroes the count after the modal opens
         expect(app.selectedFile).toBeNull();
         expect(app.uploadType).toBeNull();
         expect(app.uploadComplete).toBe(false);

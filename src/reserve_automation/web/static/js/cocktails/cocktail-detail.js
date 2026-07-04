@@ -102,8 +102,14 @@ window.cocktailDetailApp = function cocktailDetailApp(cocktailId) {
             }
         },
 
-        async searchBottles(ingredientIndex, recipeIngredient) {
-            const query = this.bottleSearchQueries[ingredientIndex] || '';
+        // ONE PATH: the single bottle/product search used by BOTH the "Rate This"
+        // wizard (mode 'add' -> bottleSearchQueries/bottleResults) and the
+        // edit-tasting modal (mode 'edit' -> editBottleQueries/editBottleResults).
+        // Do not fork a per-mode copy of this logic.
+        async searchBottles(ingredientIndex, recipeIngredient, mode = 'add') {
+            const queries = mode === 'edit' ? this.editBottleQueries : this.bottleSearchQueries;
+            const resultsMap = mode === 'edit' ? this.editBottleResults : this.bottleResults;
+            const query = queries[ingredientIndex] || '';
             try {
                 // Search ingredients - smart filter by default shows descendants of recipe ingredient
                 // But also allows full search if user types something different
@@ -134,7 +140,7 @@ window.cocktailDetailApp = function cocktailDetailApp(cocktailId) {
                         if (!a.is_product && b.is_product) return 1;
                         return 0;
                     });
-                    this.bottleResults[ingredientIndex] = results;
+                    resultsMap[ingredientIndex] = results;
                 }
             } catch (e) {
                 console.error('Failed to search bottles:', e);
@@ -335,28 +341,6 @@ window.cocktailDetailApp = function cocktailDetailApp(cocktailId) {
             };
             this.editTastingError = '';
             this.showEditTastingForm = true;
-        },
-
-        async searchEditBottles(bidx, recipeIngredient) {
-            const query = this.editBottleQueries[bidx] || '';
-            try {
-                const response = await fetch(`/api/v1/ingredients/search?q=${encodeURIComponent(query || recipeIngredient)}`);
-                if (!response.ok) return;
-                let results = await response.json();
-                if (!query) {
-                    const allResp = await fetch('/api/v1/ingredients?flat=true');
-                    if (allResp.ok) {
-                        const allIng = await allResp.json();
-                        const node = allIng.find(i => i.name.toLowerCase() === recipeIngredient.toLowerCase());
-                        if (node) {
-                            const descResp = await fetch(`/api/v1/ingredients/${node.id}/descendants`);
-                            if (descResp.ok) results = [node, ...(await descResp.json())];
-                        }
-                    }
-                }
-                results.sort((a, b) => (a.is_product && !b.is_product ? -1 : !a.is_product && b.is_product ? 1 : 0));
-                this.editBottleResults[bidx] = results;
-            } catch (e) {}
         },
 
         selectEditBottle(bidx, result, recipeIngredient) {

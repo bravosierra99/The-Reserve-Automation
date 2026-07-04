@@ -34,21 +34,17 @@ window.uploadForm = function uploadForm() {
     return {
         // Bottle editor will be initialized in init()
         bottleEditor: null,
-        uploadType: null,  // 'tasting_card' or 'bottle'
+        uploadType: null,  // 'bottle' or 'manifest'
         selectedFile: null,
         previewUrl: null,
         uploading: false,
         statusMessage: '',  // Live progress text streamed from the extraction SSE
         uploadComplete: false,
-        extractionId: null,
-        uploadId: null,  // For bottle uploads
+        uploadId: null,  // upload_id from the extraction "complete" event (bottle + manifest)
         bottles: [],  // Extracted bottles
-        tastingsCount: 0,
-        bottlesCount: 0,
         error: false,
         errorMessage: '',
         sessionExpired: false,  // True when a stream request 401s / Access-redirects (lapsed login)
-        expectedCount: null,  // Expected number of tastings (1-4)
         purchaseSource: '',  // Where bottle was purchased
         acPurchaseSources: [],  // Autocomplete suggestions for purchase source
         inventory: 0,  // Number of bottles in inventory
@@ -106,8 +102,6 @@ window.uploadForm = function uploadForm() {
             this.$refs.fileInput.value = '';
             this.imageLoadHandled = false;  // Reset flag
             this.uploadComplete = false;  // Reset upload complete state
-            this.bottlesCount = 0;  // Reset bottle count
-            this.tastingsCount = 0;  // Reset tasting count
         },
 
         clearError() {
@@ -244,7 +238,6 @@ window.uploadForm = function uploadForm() {
             this.error = false;
             this.sessionExpired = false;
             this.uploadComplete = false;  // Reset state from previous uploads
-            this.bottlesCount = 0;
 
             const formData = new FormData();
             formData.append('file', this.selectedFile);
@@ -332,54 +325,52 @@ window.uploadForm = function uploadForm() {
                     throw new Error('Upload ended before completion. Please try again.');
                 }
 
-                {
-                    // Bottle upload - open modal immediately (no redirect)
-                    this.uploadId = result.upload_id;
-                    this.bottles = result.bottles || [];
-                    this.bottlesCount = this.bottles.length;
+                // Extraction complete — hand the bottles straight to the review
+                // UI (modal for single/multi bottle, panel for manifests).
+                this.uploadId = result.upload_id;
+                this.bottles = result.bottles || [];
 
-                    console.log('Upload response:', JSON.stringify(result));
-                    console.log('upload_id:', result.upload_id);
-                    console.log('bottles array:', result.bottles);
-                    console.log('Bottles extracted:', this.bottles.length);
-                    console.log('bottleEditor exists:', !!this.bottleEditor);
-                    console.log('bottleEditor.openUpload exists:', !!this.bottleEditor?.openUpload);
+                console.log('Upload response:', JSON.stringify(result));
+                console.log('upload_id:', result.upload_id);
+                console.log('bottles array:', result.bottles);
+                console.log('Bottles extracted:', this.bottles.length);
+                console.log('bottleEditor exists:', !!this.bottleEditor);
+                console.log('bottleEditor.openUpload exists:', !!this.bottleEditor?.openUpload);
 
-                    if (this.bottles.length === 0) {
-                        throw new Error('No bottles extracted from image');
-                    }
+                if (this.bottles.length === 0) {
+                    throw new Error('No bottles extracted from image');
+                }
 
-                    if (!this.bottleEditor || !this.bottleEditor.openUpload) {
-                        throw new Error('Bottle editor not initialized. Please refresh the page.');
-                    }
+                if (!this.bottleEditor || !this.bottleEditor.openUpload) {
+                    throw new Error('Bottle editor not initialized. Please refresh the page.');
+                }
 
-                    if (this.bottles.length === 1) {
-                        // Single bottle - open modal directly (unchanged flow)
-                        this.bottleEditor.openUpload(this.bottles[0], this.uploadId, null);
-                        // Don't show uploadComplete - modal is handling everything
-                        this.clearFile();
-                        this.uploadType = null;
-                    } else if (this.uploadType === 'manifest') {
-                        // Manifest: show panel with parallel enrichment
-                        this.manifestBottles = this.bottles.map((b, i) => ({
-                            ...b, _idx: i, _enrichStatus: 'enriching',
-                            _taskId: null, _enrichResult: null, _enrichError: null
-                        }));
-                        this.showManifestPanel = true;
-                        this.clearFile();
-                        this.uploadType = null;
-                        this.startParallelEnrichment();
-                    } else {
-                        // Multiple bottles (non-manifest) - open modal with navigation
-                        this.bottleEditor.openUpload(
-                            this.bottles[0],
-                            this.uploadId,
-                            { bottles: this.bottles, currentIndex: 0 }
-                        );
-                        // Don't show uploadComplete - modal is handling everything
-                        this.clearFile();
-                        this.uploadType = null;
-                    }
+                if (this.bottles.length === 1) {
+                    // Single bottle - open modal directly (unchanged flow)
+                    this.bottleEditor.openUpload(this.bottles[0], this.uploadId, null);
+                    // Don't show uploadComplete - modal is handling everything
+                    this.clearFile();
+                    this.uploadType = null;
+                } else if (this.uploadType === 'manifest') {
+                    // Manifest: show panel with parallel enrichment
+                    this.manifestBottles = this.bottles.map((b, i) => ({
+                        ...b, _idx: i, _enrichStatus: 'enriching',
+                        _taskId: null, _enrichResult: null, _enrichError: null
+                    }));
+                    this.showManifestPanel = true;
+                    this.clearFile();
+                    this.uploadType = null;
+                    this.startParallelEnrichment();
+                } else {
+                    // Multiple bottles (non-manifest) - open modal with navigation
+                    this.bottleEditor.openUpload(
+                        this.bottles[0],
+                        this.uploadId,
+                        { bottles: this.bottles, currentIndex: 0 }
+                    );
+                    // Don't show uploadComplete - modal is handling everything
+                    this.clearFile();
+                    this.uploadType = null;
                 }
             } catch (err) {
                 this.error = true;

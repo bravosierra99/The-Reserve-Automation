@@ -45,16 +45,6 @@
                 </a>
             </div>
 
-            <!-- Event context (if in event mode) -->
-            <div x-show="session?.event_id" class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                <p class="text-blue-800 font-semibold">
-                    🎭 Event Tasting
-                </p>
-                <p class="text-blue-700 text-sm">
-                    You are submitting tastings for an event. Bottles are restricted to those selected for the event.
-                </p>
-            </div>
-
             <!-- Count mismatch warning -->
             <div x-show="session?.count_mismatch" class="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mb-3">
                 <p class="text-yellow-800 font-semibold">

@@ -459,6 +459,19 @@ describe('form lifecycle', () => {
         expect(focus).toHaveBeenCalled();
     });
 
+    it('editIngredient keeps legitimate 0 values for cost, volume_ml, and abv', () => {
+        // Regression: `ing.cost || null` blanked 0 in the edit form, so just
+        // opening and re-saving an ingredient wiped its zero values.
+        const app = freshApp();
+        app.editIngredient({
+            id: 8, name: 'Fresh Lime Juice', parent: 'Mixer',
+            cost: 0, volume_ml: 0, abv: 0, notes: '',
+        });
+        expect(app.formData.cost).toBe(0);
+        expect(app.formData.volume_ml).toBe(0);
+        expect(app.formData.abv).toBe(0);
+    });
+
     it('openAddForm resets the form and pre-fills the parent when given', () => {
         const app = freshApp();
         app.formData.name = 'leftover';
@@ -541,6 +554,38 @@ describe('saveIngredient', () => {
                 abv: 40, notes: 'renamed',
             }),
         });
+    });
+
+    it('preserves legitimate 0 values for cost, volume_ml, and abv in the payload', async () => {
+        // Regression: falsy checks (`!payload.cost`) coerced 0 to null, so a
+        // free ingredient (cost 0) or non-alcoholic ingredient (abv 0) was
+        // silently saved as "unknown". Only '' / null / undefined may null out.
+        const app = freshApp();
+        app.formData = {
+            name: 'Fresh Lime Juice', parent: 'Mixer', cost: 0, volume_ml: 0,
+            abv: 0, notes: '',
+        };
+        await app.saveIngredient();
+        expect(fetch).toHaveBeenCalledWith('/api/v1/ingredients', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: 'Fresh Lime Juice', parent: 'Mixer', cost: 0, volume_ml: 0,
+                abv: 0, notes: null,
+            }),
+        });
+    });
+
+    it('nulls out empty-string numeric inputs (cleared form fields)', async () => {
+        const app = freshApp();
+        app.formData = {
+            name: 'Gin', parent: '', cost: '', volume_ml: '', abv: '', notes: '',
+        };
+        await app.saveIngredient();
+        const body = JSON.parse(fetch.mock.calls[0][1].body);
+        expect(body.cost).toBeNull();
+        expect(body.volume_ml).toBeNull();
+        expect(body.abv).toBeNull();
     });
 
     it('reloads the tree after a successful save', async () => {

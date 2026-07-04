@@ -58,7 +58,8 @@ window.tastingReview = function() {
         searchTimeout: null,
         approving: false,
         skipping: false,
-        participantSession: null,  // Store event session info
+        // Note: the event-context banner (session?.event_id) was removed — upload sessions never carry event_id (see routes/upload.py TODO); restoring it requires API support.
+        participantSession: null,  // Store event session info (used only to auto-fill taster_name)
 
         get currentTasting() {
             if (!this.session?.tastings) return null;

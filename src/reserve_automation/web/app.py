@@ -144,7 +144,7 @@ templates.env.cache = None
 # See config/auth.yaml for the full permission → role mapping.
 # When adding a new router: grep its file for require() before including it here.
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
-app.include_router(upload.router, tags=["upload"])  # Unified upload page (/upload) and /review-bottles routes
+app.include_router(upload.router, tags=["upload"])  # Unified upload page (/upload)
 app.include_router(review.router, tags=["review"])  # Tasting card review page (/review) and API endpoints
 app.include_router(bottles.router, tags=["bottles"])  # Bottle API endpoints (/api/v1/bottles/*)
 app.include_router(tastings.router, tags=["tastings"])  # New tasting review workflow

@@ -362,20 +362,6 @@ describe('getTastingForBottle', () => {
     });
 });
 
-describe('getBottleName', () => {
-    it('resolves the display name from the event bottle list', () => {
-        const app = freshApp();
-        app.event = makeWhiskeyEvent();
-        expect(app.getBottleName('2')).toBe('Eagle Rare');
-    });
-
-    it('falls back to the raw path when unknown', () => {
-        const app = freshApp();
-        app.event = makeWhiskeyEvent();
-        expect(app.getBottleName('missing')).toBe('missing');
-    });
-});
-
 // ---------------------------------------------------------------------------
 // formatTastingNotes / formatNotesAsHashtags / escapeHtml
 // ---------------------------------------------------------------------------

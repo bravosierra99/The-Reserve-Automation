@@ -33,7 +33,6 @@ window.bottlesApp = function bottlesApp() {
         // Grid state
         labelsLoading: false,
         labelBottles: [],
-        selectedLabelBottle: null,
         gridFilterType: 'all',
         gridSearchQuery: '',
         gridFilterRegion: '',
@@ -42,7 +41,6 @@ window.bottlesApp = function bottlesApp() {
         gridFilterStyle: '',
         gridFilterBarrelType: '',
         gridFilterInStockOnly: false,
-        labelGridTimestamp: Date.now(),
 
         // Permission flags
         canEdit: false,
@@ -155,13 +153,6 @@ window.bottlesApp = function bottlesApp() {
             return [...seen].sort();
         },
 
-        gridAvailableVarieties() {
-            let bottles = this.labelBottles.filter(b => b.type === 'wine');
-            const seen = new Set();
-            bottles.forEach(b => { (b.variety || []).forEach(va => { if (va) seen.add(va); }); });
-            return [...seen].sort();
-        },
-
         gridAvailableStyles() {
             let bottles = this.labelBottles.filter(b => b.type === 'wine');
             const seen = new Set();
@@ -210,7 +201,6 @@ window.bottlesApp = function bottlesApp() {
                 const response = await fetch('/api/v1/bottles/collection');
                 const data = await response.json();
                 this.labelBottles = data.bottles;
-                this.labelGridTimestamp = Date.now();
                 console.log(`Loaded ${this.labelBottles.length} bottles for collection`);
             } catch (error) {
                 console.error('Failed to load bottles:', error);
