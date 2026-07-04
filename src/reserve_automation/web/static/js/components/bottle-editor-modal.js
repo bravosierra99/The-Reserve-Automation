@@ -42,6 +42,16 @@ window.bottleEditorModal = function() {
         // Metadata editing
         editableBottle: {},
 
+        // Shared bottle notes (single text block, editable by admin+family).
+        // Kept OUT of editableBottle: existing bottles save notes ONLY via
+        // saveNotes() -> PUT /api/v1/bottles/{id}/notes; upload mode folds the
+        // draft into the create payload.
+        notesDraft: '',
+        notesSaving: false,
+        canEditNotes: false,
+        _permsLoaded: false,
+        _sourceBottle: null,  // Grid's bottle object, updated in place after notes save
+
         // Enrichment/verification
         searchResult: null,
         verifying: false,
@@ -86,6 +96,20 @@ window.bottleEditorModal = function() {
         labelActionInProgress: false,
         currentLabelTimestamp: Date.now(),
 
+        async loadPermissions() {
+            if (this._permsLoaded) return;
+            try {
+                const resp = await fetch('/api/v1/me');
+                if (resp.ok) {
+                    const me = await resp.json();
+                    this.canEditNotes = me.permissions?.bottles_notes_edit || false;
+                }
+                this._permsLoaded = true;
+            } catch (e) {
+                console.warn('Permission load failed:', e);
+            }
+        },
+
         async loadAutocomplete() {
             if (this._acLoaded) return;
             try {
@@ -109,6 +133,9 @@ window.bottleEditorModal = function() {
             this.readOnly = readOnly;
             this.bottle = { ...bottle };
             this.originalBottle = { ...bottle };
+            this._sourceBottle = bottle;
+            this.notesDraft = bottle.notes || '';
+            this.loadPermissions();
             this.bottleId = bottle.id;
             console.log('Set bottleId to:', this.bottleId);
             this.uploadId = null;
@@ -136,6 +163,8 @@ window.bottleEditorModal = function() {
             this.mode = 'upload';
             this.bottle = { ...bottle };
             this.originalBottle = { ...bottle };
+            this._sourceBottle = null;
+            this.notesDraft = bottle.notes || '';
             this.uploadId = uploadId;
             console.log('Set this.uploadId to:', this.uploadId);
             this.manifestContext = manifestContext;
@@ -259,6 +288,8 @@ window.bottleEditorModal = function() {
                 this.mode = null;
                 this.bottle = null;
                 this.originalBottle = null;
+                this._sourceBottle = null;
+                this.notesDraft = '';
                 this.bottleId = null;
                 this.uploadId = null;
                 this.manifestContext = null;
@@ -316,12 +347,15 @@ window.bottleEditorModal = function() {
                 if (cleanBottle.abv === '') cleanBottle.abv = null;
                 if (cleanBottle.proof === '') cleanBottle.proof = null;
 
+                // The route only persists fields sent in `updates` (applied onto a
+                // fresh DB copy) — sending edits solely inside `bottle` silently
+                // saves nothing. Notes are deliberately excluded: saveNotes() owns them.
                 const response = await fetch('/api/v1/management/bottles/update-fields', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         bottle: cleanBottle,
-                        changes: this.approvedChanges
+                        updates: { ...this.editableBottle }
                     })
                 });
 
@@ -347,6 +381,35 @@ window.bottleEditorModal = function() {
                 this.showToast('✗ Save failed: ' + error.message, 'error');
             } finally {
                 this.saving = false;
+            }
+        },
+
+        /**
+         * Save the shared notes block (management mode; admin + family)
+         */
+        async saveNotes() {
+            if (!this.bottleId) return;
+            this.notesSaving = true;
+            try {
+                const response = await fetch(`/api/v1/bottles/${encodeURIComponent(this.bottleId)}/notes`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notes: this.notesDraft })
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to save notes');
+                }
+                const result = await response.json();
+                this.notesDraft = result.notes || '';
+                this.bottle.notes = result.notes;
+                // Keep the grid's copy fresh so reopening the modal shows the new notes
+                if (this._sourceBottle) this._sourceBottle.notes = result.notes;
+                this.showToast('✓ Notes saved', 'success');
+            } catch (error) {
+                console.error('Notes save failed:', error);
+                this.showToast('✗ Notes save failed: ' + error.message, 'error');
+            } finally {
+                this.notesSaving = false;
             }
         },
 
@@ -389,6 +452,9 @@ window.bottleEditorModal = function() {
                     console.error('Bottle data:', cleanBottle);
                     throw new Error('Missing bottle type field');
                 }
+
+                // New bottle: fold the notes draft into the create payload
+                cleanBottle.notes = this.notesDraft.trim() || null;
 
                 console.log('Saving bottle with type:', cleanBottle.type);
                 console.log('Duplicate action:', this.duplicateAction);

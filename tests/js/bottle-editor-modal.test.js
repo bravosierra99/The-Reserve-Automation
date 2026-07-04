@@ -295,7 +295,10 @@ describe('startTasting', () => {
 // ---------------------------------------------------------------------------
 
 describe('saveManagement', () => {
-    it('POSTs edited fields with empty numeric strings converted to null', async () => {
+    it('POSTs edited fields in `updates` — the only key the route persists', async () => {
+        // Regression: the modal used to send edits only inside `bottle` (plus a
+        // `changes` key the route never read), so every management-mode edit
+        // was silently discarded while the UI showed a success toast.
         const m = freshModal();
         let sentBody = null;
         global.fetch = routeFetch([
@@ -310,14 +313,16 @@ describe('saveManagement', () => {
         m.editableBottle.price = '';
         m.editableBottle.year = '';
         m.editableBottle.region = 'Right Bank';
-        m.approvedChanges = { region: true };
 
         await m.save(); // dispatches to saveManagement
 
+        expect(sentBody.updates.region).toBe('Right Bank');
+        expect(sentBody.updates.price).toBe('');   // server-side clean_bottle_data nulls these
+        expect(sentBody.bottle.id).toBe('b42');    // identity for the lookup
         expect(sentBody.bottle.price).toBeNull();
         expect(sentBody.bottle.year).toBeNull();
-        expect(sentBody.bottle.region).toBe('Right Bank');
-        expect(sentBody.changes).toEqual({ region: true });
+        // Notes are owned by saveNotes(), never by the field editor
+        expect(sentBody.updates.notes).toBeUndefined();
         expect(m.saveSuccess).toBe(true);
         expect(m.saving).toBe(false);
     });
@@ -361,6 +366,87 @@ describe('saveManagement', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Shared bottle notes
+// ---------------------------------------------------------------------------
+
+describe('bottle notes', () => {
+    it('initializes the draft from the bottle on openManagement and loads notes permission', async () => {
+        const m = freshModal();
+        global.fetch = routeFetch([
+            ['/api/v1/me', jsonResponse({ permissions: { bottles_notes_edit: true } })],
+        ]);
+
+        await m.openManagement({ ...WINE_BOTTLE, notes: 'decant a day' }, true);
+        await vi.waitFor(() => expect(m.canEditNotes).toBe(true));
+
+        expect(m.notesDraft).toBe('decant a day');
+    });
+
+    it('initializes an empty draft when the bottle has no notes', async () => {
+        const m = freshModal();
+        await m.openManagement(WINE_BOTTLE);
+        expect(m.notesDraft).toBe('');
+    });
+
+    it('saveNotes PUTs to the notes endpoint and syncs modal + grid copies', async () => {
+        const m = freshModal();
+        const gridBottle = { ...WINE_BOTTLE, notes: null };
+        let sentBody = null;
+        global.fetch = routeFetch([
+            ['/api/v1/bottles/b42/notes', (url, opts) => {
+                expect(opts.method).toBe('PUT');
+                sentBody = JSON.parse(opts.body);
+                return jsonResponse({ status: 'success', notes: 'great in an Old Fashioned' });
+            }],
+        ]);
+        await m.openManagement(gridBottle);
+        m.notesDraft = 'great in an Old Fashioned';
+
+        await m.saveNotes();
+
+        expect(sentBody).toEqual({ notes: 'great in an Old Fashioned' });
+        expect(m.bottle.notes).toBe('great in an Old Fashioned');
+        // Grid's object updated in place so reopening shows fresh notes
+        expect(gridBottle.notes).toBe('great in an Old Fashioned');
+        expect(m.notesSaving).toBe(false);
+        expect(document.body.textContent).toContain('Notes saved');
+    });
+
+    it('saveNotes surfaces failures as a toast and keeps the draft', async () => {
+        const m = freshModal();
+        global.fetch = routeFetch([
+            ['/notes', jsonResponse({}, { ok: false, status: 500 })],
+        ]);
+        await m.openManagement({ ...WINE_BOTTLE });
+        m.notesDraft = 'unsaved text';
+
+        await m.saveNotes();
+
+        expect(m.notesDraft).toBe('unsaved text');
+        expect(m.notesSaving).toBe(false);
+        expect(document.body.textContent).toContain('Notes save failed');
+    });
+
+    it('saveNotes is a no-op without a bottleId (upload mode)', async () => {
+        const m = freshModal();
+        m.bottleId = null;
+        await m.saveNotes();
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('close() clears the draft and grid reference', async () => {
+        vi.useFakeTimers();
+        const m = freshModal();
+        m.notesDraft = 'stale';
+        m._sourceBottle = { id: 'x' };
+        m.close();
+        await vi.advanceTimersByTimeAsync(300);
+        expect(m.notesDraft).toBe('');
+        expect(m._sourceBottle).toBeNull();
+    });
+});
+
+// ---------------------------------------------------------------------------
 // Saving — upload mode + duplicate detection
 // ---------------------------------------------------------------------------
 
@@ -391,6 +477,25 @@ describe('saveUpload', () => {
         expect(sentBody.replace_bottle_id).toBeNull();
         expect(m.savedBottleId).toBe('b-new');
         expect(m.saving).toBe(false);
+    });
+
+    it('folds the notes draft into the create payload (trimmed, empty → null)', async () => {
+        const m = uploadModal();
+        let sentBody = null;
+        global.fetch = routeFetch([
+            ['/api/v1/bottles/save', (url, opts) => {
+                sentBody = JSON.parse(opts.body);
+                return jsonResponse({ status: 'saved', id: 'b-new' });
+            }],
+        ]);
+        m.notesDraft = '  drink on hot days  ';
+
+        await m.saveUpload();
+        expect(sentBody.bottle.notes).toBe('drink on hot days');
+
+        m.notesDraft = '   ';
+        await m.saveUpload();
+        expect(sentBody.bottle.notes).toBeNull();
     });
 
     it('shows the duplicate dialog with save_new pre-selected when the backend flags duplicates', async () => {

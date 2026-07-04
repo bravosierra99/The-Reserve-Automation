@@ -134,6 +134,22 @@ class TestFamilyEndpoints:
         assert resp.status_code == expected
 
     @pytest.mark.parametrize("role,expected", [
+        # 404 = passed the permission check and reached the handler
+        # (bottle 99999999 doesn't exist); guest must be rejected outright.
+        ("admin", 404),
+        ("family", 404),
+        ("guest", 403),
+    ])
+    def test_bottle_notes_update(self, perm_client, role, expected):
+        """PUT /api/v1/bottles/{id}/notes requires bottles.notes.edit (admin + family)."""
+        resp = _request(
+            perm_client, "put", "/api/v1/bottles/99999999/notes",
+            role=role,
+            json={"notes": "decant for a day"},
+        )
+        assert resp.status_code == expected
+
+    @pytest.mark.parametrize("role,expected", [
         ("admin", 200),
         ("family", 200),
         ("guest", 403),

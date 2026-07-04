@@ -1234,6 +1234,10 @@ async def update_bottle_fields(
                 bottle_dict[field] = value
                 logger.info(f"Applying update: {field}: {old_value} -> {value}")
 
+        # Updates come straight from form inputs, so numeric fields may arrive
+        # as empty strings — clean the merged dict before validation.
+        bottle_dict = clean_bottle_data(bottle_dict)
+
         updated_bottle = BottleMetadata(**bottle_dict)
         result = bottle_repo.update(int(bottle_id), updated_bottle)
 

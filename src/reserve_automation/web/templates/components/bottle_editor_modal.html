@@ -293,6 +293,30 @@
                     </div>
                 </div>
 
+                <!-- Notes: one shared text block per bottle (serving, decanting,
+                     cocktail ideas). Editable by admin+family even when the rest of
+                     the editor is read-only; saved via its own endpoint so the
+                     admin-only field editor stays out of the loop. -->
+                <div class="bg-amber-50 rounded-lg p-6 border-2 border-amber-200">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-xl font-bold text-gray-800">📝 Notes</h3>
+                        <button x-show="bottleEditor.mode === 'management' && bottleEditor.canEditNotes"
+                                @click="bottleEditor.saveNotes()"
+                                :disabled="bottleEditor.notesSaving"
+                                class="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition-colors">
+                            <span x-text="bottleEditor.notesSaving ? 'Saving...' : '💾 Save Notes'"></span>
+                        </button>
+                    </div>
+                    <textarea x-model="bottleEditor.notesDraft"
+                              rows="4"
+                              :disabled="bottleEditor.mode === 'management' && !bottleEditor.canEditNotes"
+                              placeholder="Shared notes for this bottle — e.g. better decanted for a day, makes a great Old Fashioned, save for a hot day…"
+                              class="w-full px-3 py-2 border-2 border-amber-300 rounded-lg focus:border-amber-500 focus:ring-2 focus:ring-amber-200 disabled:bg-gray-100 disabled:text-gray-500 bg-white"></textarea>
+                    <p x-show="bottleEditor.mode === 'upload'" class="text-xs text-gray-500 mt-1">
+                        Notes are saved together with the bottle.
+                    </p>
+                </div>
+
                 <!-- Duplicate detection (Upload Mode) — ALWAYS rendered so the user
                      has controls and a manual override even when nothing matched. -->
                 <div x-show="bottleEditor.mode === 'upload'"

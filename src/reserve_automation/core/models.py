@@ -95,7 +95,7 @@ class BottleMetadata(BaseModel):
     # Enrichment
     enriched: bool = False
     label_image_url: Optional[str] = None
-    notes: Optional[str] = Field(None, description="Extraction notes or warnings")
+    notes: Optional[str] = Field(None, description="Shared free-text notes about the bottle (serving, decanting, cocktail ideas)")
 
     model_config = {"use_enum_values": True}
 
