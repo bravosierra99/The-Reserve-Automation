@@ -612,8 +612,9 @@ class TestBrowserUploadFlow:
             page.wait_for_selector("[x-show='bottleEditor.isOpen']", timeout=60000)
 
             # Fill in required fields (producer and name should be extracted)
-            # Click save button (use first if multiple exist)
-            save_button = page.locator("button:has-text('💾 Save')")
+            # Footer save button by id — "has-text('💾 Save')" would also match
+            # the notes section's "💾 Save Notes" button.
+            save_button = page.locator("#bottle-editor-save")
             expect(save_button).to_be_visible()
             save_button.click()
 
@@ -721,8 +722,9 @@ class TestBrowserManagementFlow:
             page.locator(".cursor-pointer.flex-1").first.click()
             page.wait_for_selector("[x-show='bottleEditor.isOpen']", timeout=5000)
 
-            # Click save
-            page.click("button:has-text('💾 Save')")
+            # Click the footer save button (by id — a text selector would also
+            # match the notes section's "💾 Save Notes" button)
+            page.click("#bottle-editor-save")
 
             # Verify success toast appears
             expect(page.locator("text=Bottle saved successfully")).to_be_visible(timeout=5000)
