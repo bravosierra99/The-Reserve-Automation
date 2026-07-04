@@ -20,7 +20,7 @@
 {% endblock %}
 
 {% block content %}
-<div x-data="managementApp()" class="max-w-6xl mx-auto">
+<div x-data="managementApp()" x-effect="window.modalScrollLock(trCocktailModalOpen)" class="max-w-6xl mx-auto">
     <!-- Toast Container -->
     <div class="fixed top-4 right-4 z-50 space-y-2">
         <template x-for="toast in toasts" :key="toast.id">
@@ -1209,7 +1209,7 @@
     <div x-show="trCocktailModalOpen" x-transition
          class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
          @click.self="trCocktailModalOpen = false">
-        <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 overflow-y-auto overscroll-contain" style="max-height: 90vh; max-height: 90dvh;">
             <div class="p-6">
                 <h2 class="text-xl font-bold mb-4">Edit Cocktail Tasting</h2>
 

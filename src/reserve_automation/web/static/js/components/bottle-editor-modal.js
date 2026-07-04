@@ -122,7 +122,7 @@ window.bottleEditorModal = function() {
 
             // Open modal
             this.isOpen = true;
-            this._lockBodyScroll();
+            window.modalScrollLock(true);
 
             // Reset state
             this.resetState();
@@ -146,7 +146,7 @@ window.bottleEditorModal = function() {
 
             // Open modal
             this.isOpen = true;
-            this._lockBodyScroll();
+            window.modalScrollLock(true);
 
             // Reset state
             this.resetState();
@@ -244,19 +244,6 @@ window.bottleEditorModal = function() {
         },
 
         /**
-         * Lock/unlock page scroll behind the modal. Without the lock, iOS Safari
-         * chains touch scrolls from the modal to the page body (the modal "rebounds"
-         * and the page behind scrolls instead).
-         */
-        _lockBodyScroll() {
-            document.body.style.overflow = 'hidden';
-        },
-
-        _unlockBodyScroll() {
-            document.body.style.overflow = '';
-        },
-
-        /**
          * Close modal
          */
         close() {
@@ -265,7 +252,7 @@ window.bottleEditorModal = function() {
             this.cancelManualCropDownloaded();
 
             this.isOpen = false;
-            this._unlockBodyScroll();
+            window.modalScrollLock(false);
 
             // Clear state after animation
             setTimeout(() => {

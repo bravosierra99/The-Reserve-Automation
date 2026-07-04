@@ -4,7 +4,7 @@
 <style>
     [x-cloak] { display: none !important; }
 </style>
-<div class="max-w-6xl mx-auto p-4" x-data="eventDetailApp('{{ event_id }}')">
+<div class="max-w-6xl mx-auto p-4" x-data="eventDetailApp('{{ event_id }}')" x-effect="window.modalScrollLock(showQRModal)">
     <!-- Loading state -->
     <div x-show="loading" class="text-center py-12">
         <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>

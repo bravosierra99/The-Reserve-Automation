@@ -14,6 +14,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// base-page.js provides window.modalScrollLock (shared body-scroll lock)
+import '../../src/reserve_automation/web/static/js/components/base-page.js';
 import '../../src/reserve_automation/web/static/js/components/bottle-editor-modal.js';
 
 const WINE_BOTTLE = {

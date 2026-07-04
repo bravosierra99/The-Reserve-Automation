@@ -4,7 +4,7 @@
 <style>
     [x-cloak] { display: none !important; }
 </style>
-<div class="max-w-7xl mx-auto p-4" x-data="eventResultsApp('{{ event_id }}')">
+<div class="max-w-7xl mx-auto p-4" x-data="eventResultsApp('{{ event_id }}')" x-effect="window.modalScrollLock(showModal)">
     <!-- Loading state -->
     <div x-show="loading" class="text-center py-12">
         <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -147,7 +147,7 @@
              x-cloak
              @click.self="showModal = false"
              class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full overflow-y-auto overscroll-contain" style="max-height: 90vh; max-height: 90dvh;">
                 <!-- Modal Header -->
                 <div class="sticky top-0 bg-white border-b border-gray-200 p-6 flex justify-between items-start">
                     <div>

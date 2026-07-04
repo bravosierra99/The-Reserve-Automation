@@ -194,3 +194,30 @@ describe('formatApiError', () => {
         expect(fmt([])).toBe('Request failed');
     });
 });
+
+describe('modalScrollLock', () => {
+    // Shared body-scroll lock for every modal — iOS Safari otherwise chains
+    // modal touch-scrolls to the page body (the modal rebounds and the page
+    // behind scrolls, hiding footer buttons).
+    afterEach(() => {
+        document.body.style.overflow = '';
+    });
+
+    it('locks page scroll while a modal is open', () => {
+        window.modalScrollLock(true);
+        expect(document.body.style.overflow).toBe('hidden');
+    });
+
+    it('releases page scroll when the last modal closes', () => {
+        window.modalScrollLock(true);
+        window.modalScrollLock(false);
+        expect(document.body.style.overflow).toBe('');
+    });
+
+    it('accepts the x-effect combined-flags expression shape (truthy/falsy)', () => {
+        window.modalScrollLock(false || true);
+        expect(document.body.style.overflow).toBe('hidden');
+        window.modalScrollLock(false || false);
+        expect(document.body.style.overflow).toBe('');
+    });
+});

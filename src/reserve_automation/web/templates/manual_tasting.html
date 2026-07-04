@@ -10,7 +10,7 @@
 {% endblock %}
 
 {% block content %}
-<div x-data="manualTastingWizard()" x-init="init()" class="max-w-4xl mx-auto px-4 py-6">
+<div x-data="manualTastingWizard()" x-init="init()" x-effect="window.modalScrollLock(showSearchModal)" class="max-w-4xl mx-auto px-4 py-6">
     <!-- Loading state -->
     <div x-show="loading" class="text-center py-16">
         <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
@@ -481,7 +481,7 @@
          @click.self="showSearchModal = false"
          @keydown.escape.window="showSearchModal = false"
          class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col" @click.stop>
+        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full flex flex-col" style="max-height: 80vh; max-height: 80dvh;" @click.stop>
             <!-- Modal header -->
             <div class="p-4 border-b flex items-center justify-between">
                 <h3 class="text-xl font-bold text-gray-800">Search Vault</h3>
@@ -505,7 +505,7 @@
             </div>
 
             <!-- Search results -->
-            <div class="flex-1 overflow-y-auto p-4">
+            <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4">
                 <div x-show="searching" class="text-center py-8 text-gray-500">
                     Searching...
                 </div>

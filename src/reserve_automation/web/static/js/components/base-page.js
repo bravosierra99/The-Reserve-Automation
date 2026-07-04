@@ -101,3 +101,12 @@ window.formatApiError = function(detail, fallback) {
     }
     return one(detail) || fallback;
 };
+
+// Body-scroll lock shared by every modal. Without it, iOS Safari chains modal
+// touch-scrolls to the page body — the modal rebounds and the page behind
+// scrolls, hiding footer buttons. Template-boolean modals wire it via
+// x-effect="window.modalScrollLock(flagA || flagB)" on the page root;
+// JS-driven modals (bottle editor) call it from their open()/close().
+window.modalScrollLock = function(anyOpen) {
+    document.body.style.overflow = anyOpen ? 'hidden' : '';
+};
