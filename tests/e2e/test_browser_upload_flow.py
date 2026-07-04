@@ -15,8 +15,17 @@ in a real browser, not just API calls.
 """
 
 
+import re
+
 import pytest
 from playwright.sync_api import expect, sync_playwright
+
+
+def _has_404(text: str) -> bool:
+    """True when a console/alert line reports an HTTP 404. Must be a standalone
+    number: cache-busting Date.now() query params can contain the substring 404
+    (e.g. t=1783189404135) and must not count as an error."""
+    return bool(re.search(r'(?<!\d)404(?!\d)', text))
 
 pytestmark = pytest.mark.e2e
 
@@ -445,10 +454,10 @@ class TestBrowserUploadFlow:
             cropper_container = page.locator(".cropper-container")
 
             # Check for errors in console
-            error_logs = [log for log in console_logs if 'error' in log.lower() or '404' in log or 'failed' in log.lower()]
+            error_logs = [log for log in console_logs if 'error' in log.lower() or _has_404(log) or 'failed' in log.lower()]
 
             # Check for alerts (errors would show as alerts)
-            error_alerts = [msg for msg in alert_messages if 'failed' in msg.lower() or '404' in msg or 'error' in msg.lower()]
+            error_alerts = [msg for msg in alert_messages if 'failed' in msg.lower() or _has_404(msg) or 'error' in msg.lower()]
 
             if error_logs:
                 print("\n⚠ Errors found in console logs:")
@@ -515,7 +524,7 @@ class TestBrowserUploadFlow:
             page.wait_for_timeout(5000)
 
             # Check for errors
-            error_logs = [log for log in console_logs if 'error' in log.lower() or '404' in log]
+            error_logs = [log for log in console_logs if 'error' in log.lower() or _has_404(log)]
             if error_logs:
                 pytest.fail(f"Auto-crop failed with errors: {error_logs}")
 
@@ -876,10 +885,10 @@ class TestBrowserManagementFlow:
             cropper_container = page.locator(".cropper-container")
 
             # Check for errors in console
-            error_logs = [log for log in console_logs if 'error' in log.lower() or '404' in log or 'failed' in log.lower()]
+            error_logs = [log for log in console_logs if 'error' in log.lower() or _has_404(log) or 'failed' in log.lower()]
 
             # Check for alerts (errors would show as alerts)
-            error_alerts = [msg for msg in alert_messages if 'failed' in msg.lower() or '404' in msg or 'error' in msg.lower()]
+            error_alerts = [msg for msg in alert_messages if 'failed' in msg.lower() or _has_404(msg) or 'error' in msg.lower()]
 
             if error_logs:
                 print("\n⚠ Errors found in console logs:")
