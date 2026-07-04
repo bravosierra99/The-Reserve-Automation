@@ -187,8 +187,8 @@ window.ingredientsApp = function() {
             name.textContent = node.name;
             left.appendChild(name);
 
-            // Cost badge
-            if (node.cost) {
+            // Cost badge — != null, not truthy: a free ingredient's $0 is real
+            if (node.cost != null) {
                 const cost = document.createElement('span');
                 cost.className = 'text-green-700 text-sm font-medium';
                 cost.textContent = `$${node.cost}`;

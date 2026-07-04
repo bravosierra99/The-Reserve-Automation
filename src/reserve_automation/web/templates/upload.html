@@ -46,7 +46,7 @@
 <div x-data="uploadForm()" class="max-w-2xl mx-auto upload-section">
 <div x-show="!showManifestPanel">
     <!-- Upload Type Selection -->
-    <div class="bg-white rounded-lg shadow-md p-6 mb-6" x-show="!selectedFile && !uploading && !uploadComplete">
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6" x-show="!selectedFile && !uploading">
         <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold text-gray-800">What would you like to import?</h2>
             <a href="/events" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors">
@@ -74,7 +74,7 @@
     </div>
 
     <!-- Purchase Info (shown for bottles and manifests) -->
-    <div x-show="(uploadType === 'bottle' || uploadType === 'manifest') && !uploading && !uploadComplete"
+    <div x-show="(uploadType === 'bottle' || uploadType === 'manifest') && !uploading"
          class="bg-white rounded-lg shadow-md p-4 mb-6">
         <h3 class="font-bold text-gray-800 mb-4">Purchase Information</h3>
 
@@ -150,7 +150,7 @@
         </div>
 
         <!-- Preview and upload -->
-        <div x-show="selectedFile && !uploading && !uploadComplete" class="space-y-4">
+        <div x-show="selectedFile && !uploading" class="space-y-4">
             <div class="image-container relative">
                 <!-- Image with min-height to prevent layout shift on mobile -->
                 <img

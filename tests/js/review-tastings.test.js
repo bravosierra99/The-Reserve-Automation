@@ -315,11 +315,9 @@ describe('loadSession', () => {
         setParticipantCookie({ 'evt-1': { participant_id: 'p-9', participant_name: 'Alice' } });
         const app = await loadedApp(wineSession());
 
-        expect(app.participantSession).toEqual({
-            event_id: 'evt-1',
-            participant_id: 'p-9',
-            participant_name: 'Alice',
-        });
+        // Only participant_name is returned — event_id/participant_id were
+        // trimmed as unused (approve reads event context server-side).
+        expect(app.participantSession).toEqual({ participant_name: 'Alice' });
         // Empty taster filled, existing taster preserved.
         expect(app.session.tastings[0].tasting_data.taster_name).toBe('Alice');
         expect(app.session.tastings[1].tasting_data.taster_name).toBe('Sarah');
@@ -372,11 +370,7 @@ describe('getParticipantSession', () => {
 
     it('returns the session for exactly one event', () => {
         setParticipantCookie({ 'evt-7': { participant_id: 'p-3', participant_name: 'Cara' } });
-        expect(freshApp().getParticipantSession()).toEqual({
-            event_id: 'evt-7',
-            participant_id: 'p-3',
-            participant_name: 'Cara',
-        });
+        expect(freshApp().getParticipantSession()).toEqual({ participant_name: 'Cara' });
     });
 
     it('returns null (and logs) on a malformed cookie', () => {

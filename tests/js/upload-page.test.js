@@ -221,7 +221,6 @@ describe('clearFile / clearError', () => {
         app.selectedFile = FILE;
         app.previewUrl = 'blob:preview-1';
         app.imageLoadHandled = true;
-        app.uploadComplete = true;
 
         app.clearFile();
 
@@ -229,7 +228,6 @@ describe('clearFile / clearError', () => {
         expect(app.previewUrl).toBeNull();
         expect(app.$refs.fileInput.value).toBe('');
         expect(app.imageLoadHandled).toBe(false);
-        expect(app.uploadComplete).toBe(false);
     });
 
     it('clearError clears the error flags and delegates to clearFile', () => {
@@ -472,7 +470,6 @@ describe('uploadFile stream handling', () => {
         expect(app.uploadId).toBe('up-1');
         expect(app.selectedFile).toBeNull();
         expect(app.uploadType).toBeNull();
-        expect(app.uploadComplete).toBe(false);
         expect(app.error).toBe(false);
     });
 

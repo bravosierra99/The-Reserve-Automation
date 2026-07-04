@@ -297,6 +297,16 @@ describe('renderNode', () => {
         expect(el.textContent).toContain('$12.99');
     });
 
+    it('renders a $0 cost badge for free ingredients', () => {
+        // Regression: `if (node.cost)` hid the badge for a legitimate 0 cost.
+        const free = {
+            id: 9, name: 'Tap Water', parent: 'Mixer', cost: 0, volume_ml: null,
+            abv: null, notes: null, label_image: null, is_product: true, children: [],
+        };
+        const { el } = render(free);
+        expect(el.textContent).toContain('$0');
+    });
+
     it('indents rows by depth', () => {
         const { row } = render(TREE[1], 2);
         expect(row.style.paddingLeft).toBe('64px'); // 16 + 2*24

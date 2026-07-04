@@ -39,7 +39,6 @@ window.uploadForm = function uploadForm() {
         previewUrl: null,
         uploading: false,
         statusMessage: '',  // Live progress text streamed from the extraction SSE
-        uploadComplete: false,
         uploadId: null,  // upload_id from the extraction "complete" event (bottle + manifest)
         bottles: [],  // Extracted bottles
         error: false,
@@ -101,7 +100,6 @@ window.uploadForm = function uploadForm() {
             this.previewUrl = null;
             this.$refs.fileInput.value = '';
             this.imageLoadHandled = false;  // Reset flag
-            this.uploadComplete = false;  // Reset upload complete state
         },
 
         clearError() {
@@ -237,7 +235,6 @@ window.uploadForm = function uploadForm() {
             this.uploading = true;
             this.error = false;
             this.sessionExpired = false;
-            this.uploadComplete = false;  // Reset state from previous uploads
 
             const formData = new FormData();
             formData.append('file', this.selectedFile);
@@ -330,13 +327,6 @@ window.uploadForm = function uploadForm() {
                 this.uploadId = result.upload_id;
                 this.bottles = result.bottles || [];
 
-                console.log('Upload response:', JSON.stringify(result));
-                console.log('upload_id:', result.upload_id);
-                console.log('bottles array:', result.bottles);
-                console.log('Bottles extracted:', this.bottles.length);
-                console.log('bottleEditor exists:', !!this.bottleEditor);
-                console.log('bottleEditor.openUpload exists:', !!this.bottleEditor?.openUpload);
-
                 if (this.bottles.length === 0) {
                     throw new Error('No bottles extracted from image');
                 }
@@ -348,7 +338,6 @@ window.uploadForm = function uploadForm() {
                 if (this.bottles.length === 1) {
                     // Single bottle - open modal directly (unchanged flow)
                     this.bottleEditor.openUpload(this.bottles[0], this.uploadId, null);
-                    // Don't show uploadComplete - modal is handling everything
                     this.clearFile();
                     this.uploadType = null;
                 } else if (this.uploadType === 'manifest') {
@@ -368,7 +357,6 @@ window.uploadForm = function uploadForm() {
                         this.uploadId,
                         { bottles: this.bottles, currentIndex: 0 }
                     );
-                    // Don't show uploadComplete - modal is handling everything
                     this.clearFile();
                     this.uploadType = null;
                 }

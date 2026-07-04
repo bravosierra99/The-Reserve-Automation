@@ -151,11 +151,10 @@ window.tastingReview = function() {
                     // Only auto-fill if user is in exactly one event
                     const eventIds = Object.keys(allSessions);
                     if (eventIds.length === 1) {
-                        const eventId = eventIds[0];
+                        // Only participant_name is consumed (taster auto-fill);
+                        // approve reads event context server-side, not from us.
                         return {
-                            event_id: eventId,
-                            participant_id: allSessions[eventId].participant_id,
-                            participant_name: allSessions[eventId].participant_name
+                            participant_name: allSessions[eventIds[0]].participant_name
                         };
                     }
                     // Multiple events - can't determine which to use
