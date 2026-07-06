@@ -141,17 +141,19 @@ async def upload_bottle(
         file_path = await upload_service.save_upload(file, upload_id)
         logger.info(f"Saved upload to: {file_path}")
 
-        # Copy uploaded image to labels/label.jpg for display in modal
-        import shutil
-        from pathlib import Path
-        upload_dir = Path(file_path).parent
-        labels_dir = upload_dir / "labels"
-        labels_dir.mkdir(exist_ok=True)
+        # Copy uploaded image to labels/label.jpg for display in modal.
+        # Manifest uploads are documents (often PDFs), not label photos — copying
+        # one here made save.py attach the whole invoice as every bottle's label.
+        if upload_type == "bottle_image":
+            import shutil
+            from pathlib import Path
+            upload_dir = Path(file_path).parent
+            labels_dir = upload_dir / "labels"
+            labels_dir.mkdir(exist_ok=True)
 
-        # Copy the uploaded file as label.jpg
-        label_path = labels_dir / "label.jpg"
-        shutil.copy(file_path, label_path)
-        logger.info(f"Copied label to: {label_path}")
+            label_path = labels_dir / "label.jpg"
+            shutil.copy(file_path, label_path)
+            logger.info(f"Copied label to: {label_path}")
 
         # Extract data based on upload type
         extraction_service = ExtractionService(core_config)
@@ -266,10 +268,12 @@ async def upload_bottle_stream(
             with open(file_path, "wb") as f:
                 f.write(file_content)
 
-            # Copy to labels subdirectory (used by the review modal)
-            labels_dir = session_dir / "labels"
-            labels_dir.mkdir(exist_ok=True)
-            shutil.copy(file_path, labels_dir / "label.jpg")
+            # Copy to labels subdirectory (used by the review modal).
+            # Not for manifests: the document would become every bottle's label.
+            if upload_type == "bottle_image":
+                labels_dir = session_dir / "labels"
+                labels_dir.mkdir(exist_ok=True)
+                shutil.copy(file_path, labels_dir / "label.jpg")
 
             # ── Stage 2: Check / wait for model ──────────────────────────────
             await on_status(

@@ -57,17 +57,25 @@ see fact #1).
 - **Enforced by:** `tests/test_bottle_stateless_upload.py::test_poll_for_model_sends_bearer_token`
   and `…_no_token_sends_no_auth_header`.
 
-## 4. Many stored bottle "label.jpg" files are not readable label photos.
+## 4. Many stored bottle "label.jpg" files were not readable label photos.
 
-As of 2026-07, 39 of 122 prod bottles' `data/media/bottles/{id}/label.jpg` files are
-not usable for vision extraction: ~22 are **PDF documents** saved under a .jpg name
-(bottles imported from wine-record PDF manifests) and ~17 are **tiny web thumbnails**
-(56–320px, from the label-download flow). Only ~83 are real photos.
+As of 2026-07, ~37 of 124 prod bottles' `data/media/bottles/{id}/label.jpg` files were
+not usable for vision extraction: ~24 were **purchase-invoice PDFs** saved under a
+.jpg name — NOT label photos at all. The manifest upload flow staged the uploaded
+document as the temp label and `save.py` attached it to *every* bottle from that
+import, so multiple bottles share byte-identical invoice "labels". Another ~13 were
+**tiny web thumbnails** (56–320px) saved by the label-download flow with no size
+validation.
 
+- Both causes are fixed (v1.12.1): manifest uploads no longer stage a label, and
+  `utils/image_validation.py` gates both `save.py` and the download endpoint
+  (reject non-images everywhere; reject <400px on download).
+  **Enforced by:** `tests/unit/test_image_validation.py` and
+  `tests/integration/routes/test_label_hygiene.py`.
 - Don't benchmark or re-run extraction against stored labels without filtering by
   actual file type and pixel size first — the tiny ones produce garbage/hallucinated
   reads that look like model failures but aren't.
-- The media endpoint happily serves these PDFs with a .jpg path.
+- The media endpoint happily serves any bytes at a .jpg path.
 
 ---
 

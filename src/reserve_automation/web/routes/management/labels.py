@@ -270,6 +270,18 @@ async def download_label_image(
             response.raise_for_status()
             image_bytes = response.content
 
+        # Reject non-images and tiny web thumbnails before anything is saved —
+        # historically this endpoint stored 56-320px thumbnails as labels
+        # (GROUND_TRUTH.md #4) that vision extraction can't read.
+        from ....utils.image_validation import validate_label_image
+        image_ok, image_detail = validate_label_image(image_bytes)
+        if not image_ok:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Rejected downloaded image: {image_detail}. Try a different candidate.",
+            )
+        logger.info(f"Downloaded label image validated: {image_detail}")
+
         # Save as downloaded image (NOT cropped) in /tmp
         download_path = temp_dir / "label_download.jpg"
         download_path.write_bytes(image_bytes)

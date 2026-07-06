@@ -162,14 +162,21 @@ async def save_bottle(
                 temp_label = temp_labels_dir / "label.jpg"
 
             if temp_label.exists():
-                label_dir = MEDIA_DIR / "bottles" / bottle_id
-                label_dir.mkdir(parents=True, exist_ok=True)
-                dest_label = label_dir / "label.jpg"
-                logger.info(f"Copying label: {temp_label} -> {dest_label}")
-                shutil.copy2(temp_label, dest_label)
+                # A bottle's label must be an actual image — manifest uploads used
+                # to leave the source invoice PDF here (GROUND_TRUTH.md #4).
+                from ....utils.image_validation import validate_label_image
+                label_ok, label_detail = validate_label_image(temp_label, min_long_side=0)
+                if not label_ok:
+                    logger.warning(f"Skipping label copy for bottle {bottle_id}: {label_detail}")
+                else:
+                    label_dir = MEDIA_DIR / "bottles" / bottle_id
+                    label_dir.mkdir(parents=True, exist_ok=True)
+                    dest_label = label_dir / "label.jpg"
+                    logger.info(f"Copying label: {temp_label} -> {dest_label}")
+                    shutil.copy2(temp_label, dest_label)
 
-                # Update label path in DB
-                bottle_repo.update_label_path(int(bottle_id), f"bottles/{bottle_id}/label.jpg")
+                    # Update label path in DB
+                    bottle_repo.update_label_path(int(bottle_id), f"bottles/{bottle_id}/label.jpg")
             else:
                 logger.warning(f"Temp label not found: {temp_label}")
                 if temp_upload_dir.exists():
