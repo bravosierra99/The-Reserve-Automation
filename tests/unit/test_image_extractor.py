@@ -269,3 +269,114 @@ class TestImageReencodedAsJpeg:
         roundtrip = Image.open(io.BytesIO(sent_bytes))
         assert roundtrip.format == "JPEG"
         assert roundtrip.mode == "RGB"
+
+
+class TestImagePrepOrientationAndSize:
+    """EXIF orientation must be applied and huge captures downscaled before the LLM call."""
+
+    @pytest.fixture
+    def extractor_with_captured_call(self):
+        captured = {}
+
+        async def fake_complete(*args, **kwargs):
+            captured.update(kwargs)
+            response = Mock()
+            response.content = '{"producer": "x", "name": "y", "beverage_type": "whiskey", "confidence": "high"}'
+            return response
+
+        mock_llm = Mock()
+        mock_llm.complete = AsyncMock(side_effect=fake_complete)
+        mock_llm.web_search = AsyncMock(return_value="whiskey")
+        return ImageMetadataExtractor(mock_llm), captured
+
+    @pytest.mark.asyncio
+    async def test_exif_rotated_image_is_transposed(self, extractor_with_captured_call, tmp_path):
+        """Phone photos carry rotation in EXIF; pixels must be rotated upright before sending."""
+        extractor, captured = extractor_with_captured_call
+        path = tmp_path / "rotated.jpg"
+        img = Image.new("RGB", (64, 32), (200, 100, 50))
+        exif = img.getexif()
+        exif[0x0112] = 6  # orientation: rotate 90° CW to display upright
+        img.save(path, format="JPEG", exif=exif)
+
+        with patch.object(extractor, "_infer_beverage_type", AsyncMock(return_value="whiskey")):
+            await extractor.extract_from_image(path)
+
+        sent = Image.open(io.BytesIO(captured["images"][0]))
+        assert sent.size == (32, 64), "EXIF orientation was not applied to pixels"
+
+    @pytest.mark.asyncio
+    async def test_oversized_image_downscaled(self, extractor_with_captured_call, tmp_path):
+        """Full-res captures (e.g. 4032x3024) must be capped at 1536px on the long side."""
+        extractor, captured = extractor_with_captured_call
+        path = tmp_path / "big.jpg"
+        Image.new("RGB", (4032, 3024), (10, 20, 30)).save(path, format="JPEG")
+
+        with patch.object(extractor, "_infer_beverage_type", AsyncMock(return_value="whiskey")):
+            await extractor.extract_from_image(path)
+
+        sent = Image.open(io.BytesIO(captured["images"][0]))
+        assert max(sent.size) == 1536
+        assert sent.size == (1536, 1152), "aspect ratio not preserved"
+
+    @pytest.mark.asyncio
+    async def test_small_image_not_upscaled(self, extractor_with_captured_call, tmp_path):
+        extractor, captured = extractor_with_captured_call
+        path = tmp_path / "small.jpg"
+        Image.new("RGB", (300, 200), (10, 20, 30)).save(path, format="JPEG")
+
+        with patch.object(extractor, "_infer_beverage_type", AsyncMock(return_value="whiskey")):
+            await extractor.extract_from_image(path)
+
+        sent = Image.open(io.BytesIO(captured["images"][0]))
+        assert sent.size == (300, 200)
+
+    @pytest.mark.asyncio
+    async def test_auto_beverage_type_injects_no_hint(self, extractor_with_captured_call, tmp_path):
+        """The upload form sends "auto" by default — it must not become 'The bottle is a auto.'"""
+        extractor, captured = extractor_with_captured_call
+        path = tmp_path / "label.jpg"
+        Image.new("RGB", (32, 32)).save(path, format="JPEG")
+
+        with patch.object(extractor, "_infer_beverage_type", AsyncMock(return_value="whiskey")):
+            await extractor.extract_from_image(path, beverage_type="auto")
+
+        assert "The bottle is a" not in captured["prompt"]
+
+    @pytest.mark.asyncio
+    async def test_explicit_beverage_type_injects_hint(self, extractor_with_captured_call, tmp_path):
+        extractor, captured = extractor_with_captured_call
+        path = tmp_path / "label.jpg"
+        Image.new("RGB", (32, 32)).save(path, format="JPEG")
+
+        with patch.object(extractor, "_infer_beverage_type", AsyncMock(return_value="wine")):
+            await extractor.extract_from_image(path, beverage_type="wine")
+
+        assert "The bottle is a wine." in captured["prompt"]
+
+
+class TestEnrichmentSearchQuery:
+    """_build_search_query must not include extraction's 'Unknown Producer' placeholder."""
+
+    def _enricher(self):
+        from reserve_automation.enrichment.metadata_enricher import MetadataEnricher
+        return MetadataEnricher(Mock())
+
+    def _bottle(self, **kw):
+        from reserve_automation.core.models import BottleMetadata
+        defaults = dict(producer="P", name="N", type="whiskey", source="test")
+        defaults.update(kw)
+        return BottleMetadata(**defaults)
+
+    def test_unknown_producer_excluded(self):
+        q = self._enricher()._build_search_query(
+            self._bottle(producer="Unknown Producer", name="George T. Stagg", beverage_type="Bourbon")
+        )
+        assert "Unknown" not in q
+        assert "George T. Stagg" in q
+
+    def test_real_producer_included(self):
+        q = self._enricher()._build_search_query(
+            self._bottle(producer="Buffalo Trace", name="Eagle Rare", beverage_type="Bourbon")
+        )
+        assert q.startswith("Buffalo Trace Eagle Rare")

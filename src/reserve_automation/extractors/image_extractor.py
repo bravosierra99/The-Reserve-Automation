@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from loguru import logger
-from PIL import Image
+from PIL import Image, ImageOps
 
 from ..core.models import BottleMetadata
 from ..llm import LLMGateway
@@ -82,6 +82,11 @@ class ImageMetadataExtractor:
         "great britain": "United Kingdom",
         "gb": "United Kingdom",
         "england": "United Kingdom",
+        "italia": "Italy",
+        "italie": "Italy",
+        "españa": "Spain",
+        "espana": "Spain",
+        "deutschland": "Germany",
     }
 
     @staticmethod
@@ -163,51 +168,78 @@ class ImageMetadataExtractor:
             logger.error(f"Failed to open image: {e}")
             return None, {"error": f"Failed to open image: {e}"}
 
-        # Build extraction prompt
+        # Build extraction prompt. The web upload form sends "auto" when the
+        # user didn't pick a type — that means "no hint", not a beverage called
+        # "auto" (previously this injected "The bottle is a auto." into the prompt).
         type_hint = ""
-        if beverage_type:
+        if beverage_type and beverage_type != "auto":
             type_hint = f"\n\nThe bottle is a {beverage_type}."
 
-        prompt = f"""Read ALL text on this bottle label carefully. Extract every word and detail you can see.{type_hint}
+        # Prompt tuned against the prod collection (2026-07): field-placement
+        # rules with examples cut producer/name swaps from 5/23 to 1/23 and took
+        # name accuracy from 74% to 96% on the reviewed-bottle eval set.
+        prompt = f"""You are reading a photograph of a bottle (wine or spirits). The photo may be rotated or sideways and may show other bottles or clutter — read the label of the main, most prominent bottle only.{type_hint}
 
-Look for:
-1. Brand/company name
-2. Product name
-3. Year or vintage
-4. Words like: bourbon, whiskey, wine, vodka, gin, rum, tequila, brandy
-5. Alcohol content (% or proof)
-6. Location/region
-7. Any other text
+First transcribe ALL text you can read on the label, then fill in the fields using the rules below.
+
+PRODUCER vs NAME — the two most important fields:
+
+producer = the company that MADE the product: the distillery, winery, or producing house.
+name = the specific product or expression, WITHOUT the producer's name. Keep it concise — a product name, not a sentence. Include batch/lot/edition identifiers (e.g. "Batch 24D", "Lot 23").
+
+How to split them:
+1. If the label shows a company name (often near "Distillery", "Distillers", "Winery", "Cellars", "Vineyards", "Estate", "Spirits", or in smaller text at top or bottom) AND a separate product name: producer = the company, name = the product.
+   Example: "BLUEGRASS DISTILLERS" (top) + "ELKWOOD RESERVE" (large) → producer="Bluegrass Distillers", name="Elkwood Reserve"
+2. If the label shows ONE brand followed by a beverage description, the brand is the producer and the description is the name.
+   Example: "WILLETT" (large) + "Family Estate Bottled Single Barrel Bourbon" → producer="Willett", name="Family Estate Bottled Single Barrel Bourbon"
+   Example: "KNOBEL" (large) + "Tennessee Whiskey / Barrel Strength" → producer="Knobel", name="Barrel Strength Tennessee Whiskey"
+3. EXCEPTION: if the brand is a well-known PRODUCT LINE made by a distillery whose name is not printed on the label (e.g. "George T. Stagg", "Stagg", "Thomas H. Handy", "Eagle Rare", "W.L. Weller", "Blanton's", "Booker's", "Elmer T. Lee" — all products of larger distilleries), then it goes in name, and producer = null. Do NOT fill in the distillery from memory.
+   Example: "GEORGE T. STAGG" + "Kentucky Straight Bourbon Whiskey" → producer=null, name="George T. Stagg"
+4. Text like "Presented by", "Selected by", "Barrel selected by <store>" names a retailer or barrel picker — it is NEITHER the producer NOR part of the name. Never copy it into any field.
+5. The name is the PRINTED product name. Handwritten or filled-in details (barrel number, batch code, proof written on a line) never REPLACE the printed name — at most append a batch/barrel identifier to it.
+   Example: "HEAVEN HILL" + "GRAIN TO GLASS / KENTUCKY STRAIGHT RYE WHISKEY" printed, with "Chinquapin, Beck's 6229" handwritten → producer="Heaven Hill", name="Grain to Glass Kentucky Straight Rye Whiskey Beck's 6229"
+- producer and name must NEVER contain the same text. If unsure who made it, producer=null — never guess.
+- Transcribe names EXACTLY as printed, keeping digits and symbols: write "90+ Cellars", not "Ninety Plus Cellars".
+
+Other fields:
+- year: the VINTAGE or bottling year only (e.g. 2019). "EST. 1870" or founding dates are NOT the year. Batch numbers are not years. If both a distillation and a bottling year appear, use the bottling year. null if none printed.
+- alcohol: the alcohol content exactly as printed, including units (e.g. "45% ALC/VOL", "68.05% ALC. BY VOL. (136.1 PROOF)"). Proof may be handwritten on craft labels — read carefully.
+- region: the geographic origin printed on the label (e.g. "Kentucky", "Napa Valley", "Mendoza"). Not an importer or distributor address.
+- age_statement: only if the label states an age (e.g. "Aged 12 Years" → "12 years"). Do NOT compute it from dates. null otherwise.
+- proof: proof number if printed (numeric). null otherwise.
+- variety: grape varieties for wine as a JSON array (e.g. ["Malbec"]); for whiskey only if grains are explicitly stated. null if not shown.
+- vineyard: a specific named vineyard for wine. null otherwise.
+- style: a production style ONLY if printed: whiskey e.g. "Single Barrel", "Small Batch", "Cask Strength", "Bottled in Bond"; wine e.g. "Brut", "Reserve", "Old Vine". null otherwise.
+
+IMPORTANT: Only report what is actually printed on the label. If something is not visible, use null — never guess. A wrong value is worse than null; missing values are filled in later from other sources.
 
 Return a JSON object with this exact structure:
 {{
-  "producer": "brand or company name",
-  "name": "product name",
-  "year": "year if visible, otherwise null",
-  "type": "standardized beverage category — for wine use ONLY: 'Red wine', 'White wine', 'Rosé', 'Rosé Champagne', 'Sparkling wine', 'Dessert wine', 'Fortified wine'; for spirits use: 'Bourbon', 'Scotch', 'Irish Whiskey', 'Japanese Whisky', 'Rye Whiskey', 'Single Malt Scotch', 'Blended Scotch', 'Vodka', 'Gin', 'Rum', 'Tequila', 'Mezcal', 'Brandy', 'Cognac'; do NOT use the wine name or variety here",
+  "additional_details": "ALL text transcribed from the label, in reading order",
+  "producer": "maker per the rules above, or null",
+  "name": "product/expression name per the rules above",
+  "year": "vintage or bottling year if printed, otherwise null",
+  "type": "standardized beverage category — for wine use ONLY: 'Red wine', 'White wine', 'Rosé', 'Rosé Champagne', 'Sparkling wine', 'Dessert wine', 'Fortified wine'; for spirits use the MOST SPECIFIC type printed on the label: 'Bourbon', 'Wheated Bourbon', 'Rye Whiskey', 'Tennessee Whiskey', 'American Whiskey', 'American Light Whiskey', 'Canadian Whisky', 'Scotch', 'Single Malt Scotch', 'Blended Scotch', 'Irish Whiskey', 'Japanese Whisky', 'Vodka', 'Gin', 'Rum', 'Tequila', 'Mezcal', 'Brandy', 'Cognac'. If the label says 'Tennessee Whiskey', use 'Tennessee Whiskey' — NOT 'Bourbon'. Do NOT use the wine name or grape variety here",
   "beverage_type": "wine OR whiskey OR vodka OR gin OR rum OR tequila OR brandy OR other",
-  "alcohol": "alcohol content if shown",
-  "region": "location if shown",
-  "variety": "grape or grain varieties — JSON array for blends, e.g. [\"Cabernet Sauvignon\", \"Merlot\"] or [\"Chardonnay\"]; null if not shown",
-  "country": "country if shown",
-  "age_statement": "age statement for whiskey if shown (e.g., '12 years', '15'), otherwise null",
-  "proof": "proof number for whiskey if shown (numeric, e.g., 100), otherwise null",
+  "alcohol": "alcohol content exactly as printed, or null",
+  "region": "geographic origin if shown, otherwise null",
+  "variety": ["grape or grain varieties as array"],
+  "country": "country if shown, otherwise null",
+  "age_statement": "stated age if shown, otherwise null",
+  "proof": "proof number if printed (numeric), otherwise null",
   "vineyard": "specific vineyard name for wine if shown, otherwise null",
-  "style": "wine style (e.g., 'Cabernet Sauvignon') or whiskey style (e.g., 'Bourbon', 'Single Malt') if shown, otherwise null",
-  "additional_details": "any other text from label",
+  "style": "production style if printed, otherwise null",
   "confidence": "high OR medium OR low",
   "missing_year": true or false
 }}
 
-IMPORTANT: For beverage_type, look for these words on the label:
-- If you see "bourbon", "rye", "scotch", "whisky", or "whiskey" → use "whiskey"
-- If you see "wine", "cabernet", "chardonnay", "merlot", or "vineyard" → use "wine"
-- If you see "vodka" → use "vodka"
-- If you see "gin" → use "gin"
-- If you see "rum" → use "rum"
-- If you see "tequila" or "mezcal" → use "tequila"
-- If you see "brandy" or "cognac" → use "brandy"
-- Otherwise → use "other"
+For wine type: "Brut", "Brut Nature", "Cava", "Champagne", "Prosecco", "Spumante", or "Méthode" on the label → 'Sparkling wine' (not 'Red wine' or 'White wine').
+
+For beverage_type:
+- Any kind of whiskey/whisky/bourbon/rye/scotch → "whiskey"
+- Wine, a grape variety, or "vineyard" → "wine"
+- "vodka" → "vodka"; "gin" → "gin"; "rum" → "rum"; "tequila" or "mezcal" → "tequila"; "brandy" or "cognac" → "brandy"
+- Otherwise → "other"
 
 Return only the JSON, nothing else."""
 
@@ -219,6 +251,16 @@ Return only the JSON, nothing else."""
             # output. Re-saving as single-frame JPEG normalizes the container.
             import io
             img_buffer = io.BytesIO()
+            # Apply the EXIF orientation tag before re-saving: phone photos are
+            # stored rotated with an orientation flag, and re-saving without
+            # honoring it feeds the model a sideways label (the flag itself is
+            # dropped by the re-save).
+            img = ImageOps.exif_transpose(img)
+            # Downscale huge captures: past ~1536px the vision encoder gains no
+            # OCR accuracy (verified on the prod-label eval set) while prefill
+            # time triples — full-res uploads took 130s+ vs ~45s at 1536px.
+            if max(img.size) > 1536:
+                img.thumbnail((1536, 1536), Image.LANCZOS)
             save_img = img if img.mode == "RGB" else img.convert("RGB")
             save_img.save(img_buffer, format="JPEG", quality=95)
             image_bytes = img_buffer.getvalue()

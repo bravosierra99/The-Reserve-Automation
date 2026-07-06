@@ -492,7 +492,11 @@ Only include fields that were requested. Use web search to find real data - don'
 
     def _build_search_query(self, bottle: BottleMetadata) -> str:
         """Build a targeted search query from bottle data."""
-        parts = [bottle.producer, bottle.name]
+        # Extraction leaves producer as "Unknown Producer" when the label
+        # doesn't show one — that placeholder poisons the web query.
+        producer = bottle.producer if bottle.producer not in ("Unknown Producer", "Unknown") else None
+        name = bottle.name if bottle.name != "Unknown" else None
+        parts = [producer, name]
         if bottle.year:
             parts.append(str(bottle.year))
         parts.append(bottle.beverage_type or bottle.type)

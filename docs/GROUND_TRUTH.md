@@ -57,6 +57,18 @@ see fact #1).
 - **Enforced by:** `tests/test_bottle_stateless_upload.py::test_poll_for_model_sends_bearer_token`
   and `…_no_token_sends_no_auth_header`.
 
+## 4. Many stored bottle "label.jpg" files are not readable label photos.
+
+As of 2026-07, 39 of 122 prod bottles' `data/media/bottles/{id}/label.jpg` files are
+not usable for vision extraction: ~22 are **PDF documents** saved under a .jpg name
+(bottles imported from wine-record PDF manifests) and ~17 are **tiny web thumbnails**
+(56–320px, from the label-download flow). Only ~83 are real photos.
+
+- Don't benchmark or re-run extraction against stored labels without filtering by
+  actual file type and pixel size first — the tiny ones produce garbage/hallucinated
+  reads that look like model failures but aren't.
+- The media endpoint happily serves these PDFs with a .jpg path.
+
 ---
 
 *Add to this file when you learn a fact about the deployed system that the code doesn't
