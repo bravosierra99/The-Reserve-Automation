@@ -104,7 +104,7 @@ async def auto_crop_temp_label(request: AutoCropTempRequest):
         processor = LabelImageProcessor(LLMGateway(core_config.llm))
         # crop_to_label normalizes EXIF, auto-detects the label bounds, and
         # overwrites source_label with the crop (or returns None on failure).
-        result = processor.crop_to_label(source_label)
+        result = await processor.crop_to_label(source_label)
         if not result:
             raise HTTPException(status_code=500, detail="Auto-crop failed to detect a label")
 

@@ -245,8 +245,8 @@ Answer with only "full_bottle" or "just_label".
             # Copy original to temp location
             copyfile(original_path, improved_path)
 
-            # Apply improved cropping (with EXIF + text detection)
-            result = self.processor.crop_to_label(improved_path)
+            # Apply improved cropping (EXIF + LLM label detection)
+            result = await self.processor.crop_to_label(improved_path)
 
             if not result:
                 logger.warning("Crop processing failed")

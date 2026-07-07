@@ -140,7 +140,7 @@ async def crop_current_label(
         llm = LLMGateway(core_config.llm)
         processor = LabelImageProcessor(llm)
 
-        result = processor.crop_to_label(preview_path)
+        result = await processor.crop_to_label(preview_path)
 
         if not result:
             raise HTTPException(status_code=500, detail="Cropping failed")
@@ -337,7 +337,7 @@ async def crop_downloaded_image(
         # Crop it
         llm = LLMGateway(core_config.llm)
         processor = LabelImageProcessor(llm)
-        processor.crop_to_label(cropped_path)
+        await processor.crop_to_label(cropped_path)
 
         return {
             "status": "success",

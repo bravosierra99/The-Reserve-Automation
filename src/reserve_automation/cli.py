@@ -1098,25 +1098,21 @@ def find_labels(ctx, beverage, missing_only, limit, dry_run, yes):
                     if bottle.year:
                         bottle_name += f" - {bottle.year}"
 
-                    # Detect label bounds using computer vision first, LLM as fallback
-                    console.print("  [dim]Detecting label bounds (computer vision)...[/dim]")
+                    # Detect label bounds using the vision LLM
+                    console.print("  [dim]Detecting label bounds (vision LLM)...[/dim]")
 
                     image_bytes = label_path.read_bytes()
-                    bounds = label_processor.detect_label_bounds_cv(image_bytes)
 
-                    # If CV detection fails, try LLM as fallback
-                    if not bounds:
-                        console.print("  [dim]CV detection failed, trying LLM fallback...[/dim]")
+                    async def detect_bounds_async():
+                        normalized = label_processor.normalize_image_orientation(image_bytes)
+                        return await label_processor.detect_label_bounds(normalized)
 
-                        async def detect_bounds_async():
-                            return await label_processor.detect_label_bounds(image_bytes, bottle)
-
-                        bounds = asyncio.run(detect_bounds_async())
+                    bounds = asyncio.run(detect_bounds_async())
 
                     if bounds:
                         console.print("  [dim]Cropping to label...[/dim]")
 
-                        cropped_path = label_processor.crop_to_label(label_path, bounds)
+                        cropped_path = asyncio.run(label_processor.crop_to_label(label_path, bounds))
 
                         if cropped_path:
                             # Validate crop quality

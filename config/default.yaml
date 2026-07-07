@@ -71,6 +71,13 @@ llm:
 
   routing:
     ocr: lm_studio_vision
+    # Optional: route auto-crop label detection to a separate provider.
+    # When absent, label detection uses the "ocr" provider. On the July 2026
+    # bottle-photo eval qwen3-vl-8b boxed labels best (17/17 vs 14/17 for
+    # qwen3.5-9b), but pointing this at a model other than the extraction
+    # model makes LM Studio swap models per upload (~60-80s load — exceeds
+    # the nginx proxy timeout), so it is off by default.
+    # label_detection: lm_studio_grounding
     extraction: lm_studio_text
     structured_extraction: lm_studio_vision
     type_detection: lm_studio_text
