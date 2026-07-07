@@ -869,10 +869,16 @@ async def save_manual_tasting(
             if request_data.participant_id not in event["participants"]:
                 raise HTTPException(status_code=404, detail="Participant not found in event")
 
-            # The selected_bottle_id IS the DB bottle ID now
-            bottle_id = request_data.selected_bottle_id
+            # The selected_bottle_id IS the DB bottle ID now. The search API
+            # returns that ID in the candidate's bottle_path field, and the
+            # wizard sends it as selected_bottle_path — accept either.
+            bottle_id = request_data.selected_bottle_id or selected_bottle_path
             if not bottle_id:
                 raise HTTPException(status_code=400, detail="Bottle ID required for event mode")
+            try:
+                int(bottle_id)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid bottle ID for event mode: {bottle_id}")
 
             # Check if tasting already exists for this participant + bottle (for editing)
             existing_tasting = None

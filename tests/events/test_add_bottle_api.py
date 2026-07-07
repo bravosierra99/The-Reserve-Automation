@@ -253,6 +253,44 @@ class TestGuestParticipantFlow:
         )
         assert response.status_code == 200, response.text
 
+    def test_event_save_accepts_bottle_id_in_path_field(self, test_client, weller_bottle):
+        """Regression: the wizard sends the DB bottle ID as selected_bottle_path
+        (search candidates carry the ID in bottle_path). Event mode must accept
+        it there, not just in selected_bottle_id."""
+        event = _create_event(test_client, [weller_bottle])
+
+        join = test_client.post(
+            f"/api/v1/events/{event['event_id']}/join",
+            json={"participant_name": "Path Field Guest"},
+            cookies=GUEST,
+        )
+        assert join.status_code == 200, join.text
+        participant_id = join.json()["participant_id"]
+
+        response = test_client.post(
+            "/api/v1/manual-tasting/save",
+            json={
+                "mode": "event",
+                "beverage_type": "whiskey",
+                "taster_name": "Path Field Guest",
+                "tasting_date": "2026-07-07",
+                "selected_bottle_path": str(weller_bottle["id"]),
+                "event_id": event["event_id"],
+                "participant_id": participant_id,
+                "tasting_data": {"Nose": 5, "Taste": 6, "Finish": 5, "Balance": 6},
+            },
+            cookies=GUEST,
+        )
+        assert response.status_code == 200, response.text
+
+        event_after = test_client.get(f"/api/v1/events/{event['event_id']}").json()
+        participant = next(
+            p for p in event_after["participants"].values()
+            if p["participant_id"] == participant_id
+        ) if isinstance(event_after["participants"], dict) else None
+        tastings = (participant or {}).get("tastings", [])
+        assert any(str(t.get("bottle_id")) == str(weller_bottle["id"]) for t in tastings), event_after
+
     def test_guest_cannot_save_obsidian_tasting(self, test_client, weller_bottle):
         """Personal (non-event) tastings stay admin/family only."""
         response = test_client.post(

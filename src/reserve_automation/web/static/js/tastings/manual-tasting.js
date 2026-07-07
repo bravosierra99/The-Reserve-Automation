@@ -22,7 +22,9 @@
 // `isWine`, computed*Score, and the tastingFormMixin note methods/inputs).
 // #CLAUDE_REQ: The save payload shape MUST match /api/v1/manual-tasting/save
 // (web/routes/tastings.py) — mode, beverage_type, taster_name, tasting_date,
-// selected_bottle_path, tasting_data (+ event_id/participant_id in event mode).
+// selected_bottle_id + selected_bottle_path (both carry the DB bottle ID),
+// tasting_data (+ event_id/participant_id in event mode). Event mode on the
+// server requires the bottle ID (it accepts either field).
 
 window.manualTastingWizard = function() {
     // Merge in the tasting form mixin for shared note management
@@ -399,6 +401,9 @@ window.manualTastingWizard = function() {
                     beverage_type: this.beverageType,
                     taster_name: this.tasterName,
                     tasting_date: this.tastingDate,
+                    // Search candidates carry the DB bottle ID in bottle_path;
+                    // send it in both fields (event mode requires the ID).
+                    selected_bottle_id: this.selectedBottle.bottle_path,
                     selected_bottle_path: this.selectedBottle.bottle_path,
                     tasting_data: this.tastingData
                 };
