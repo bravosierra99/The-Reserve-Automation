@@ -114,7 +114,7 @@
                         <tr class="border-b-2 border-gray-300">
                             <th class="text-left p-3 font-bold text-gray-800">Bottle</th>
                             <template x-for="participantId in Object.keys(event?.participants || {})" :key="participantId">
-                                <th class="text-center p-3 font-bold text-gray-800" x-text="event.participants[participantId].name"></th>
+                                <th class="text-center p-3 font-bold text-gray-800" x-text="participantName(event.participants[participantId])"></th>
                             </template>
                         </tr>
                     </thead>

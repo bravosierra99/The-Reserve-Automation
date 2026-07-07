@@ -5,7 +5,9 @@
  * Alpine itself is not loaded; the factory's return value is used directly.
  * Fixtures mirror GET /api/v1/events/{id} (web/routes/events.py): bottles are
  * [{bottle_id, bottle_name, bottle_path, blind_number}] and participants a
- * dict of {name, tastings: [{bottle_path, tasting_data}]}.
+ * dict of {participant_id, participant_name, tastings: [{bottle_id,
+ * tasting_data}]}. Legacy tastings carried bottle_path and participants
+ * carried name — covered by the dedicated legacy-shape tests.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -62,17 +64,17 @@ function makeWhiskeyEvent(overrides = {}) {
         participants: {
             'p-ben': {
                 participant_id: 'p-ben',
-                name: 'Ben',
+                participant_name: 'Ben',
                 tastings: [
-                    { bottle_path: '1', tasting_data: whiskeyData(3, 3, 2, 1) },   // 9
-                    { bottle_path: '2', tasting_data: whiskeyData(1, 1, 1, 0) },   // 3
+                    { bottle_id: '1', tasting_data: whiskeyData(3, 3, 2, 1) },   // 9
+                    { bottle_id: '2', tasting_data: whiskeyData(1, 1, 1, 0) },   // 3
                 ],
             },
             'p-sarah': {
                 participant_id: 'p-sarah',
-                name: 'Sarah',
+                participant_name: 'Sarah',
                 tastings: [
-                    { bottle_path: '1', tasting_data: whiskeyData(2, 2, 2, 1) },   // 7
+                    { bottle_id: '1', tasting_data: whiskeyData(2, 2, 2, 1) },   // 7
                 ],
             },
         },
@@ -80,13 +82,15 @@ function makeWhiskeyEvent(overrides = {}) {
     };
 }
 
+// The manual-tasting wizard stores wine aroma/taste/aftertaste notes under
+// nose_notes/palate_notes/finish_notes (same keys as whiskey).
 const WINE_DATA = {
     wine_appearance: 2, wine_aroma: 5, wine_taste: 4,
     wine_aftertaste: 2, wine_overall: 1.5,
     appearance_notes: ['ruby', 'clear'],
-    aroma_notes: ['cherry', 'oak'],
-    taste_notes: ['plum'],
-    aftertaste_notes: ['long'],
+    nose_notes: ['cherry', 'oak'],
+    palate_notes: ['plum'],
+    finish_notes: ['long'],
     overall_notes: 'lovely & <bold>',
 };
 
@@ -97,8 +101,8 @@ function makeWineEvent() {
         participants: {
             'p-ben': {
                 participant_id: 'p-ben',
-                name: 'Ben',
-                tastings: [{ bottle_path: '1', tasting_data: WINE_DATA }],
+                participant_name: 'Ben',
+                tastings: [{ bottle_id: '1', tasting_data: WINE_DATA }],
             },
         },
     });
@@ -276,11 +280,11 @@ describe('calculateOverallRankings', () => {
         ]);
     });
 
-    it('falls back to the bottle path when the bottle is not in the event list', () => {
+    it('falls back to the bottle key when the bottle is not in the event list', () => {
         const app = freshApp();
         const event = makeWhiskeyEvent();
         event.participants['p-ben'].tastings.push(
-            { bottle_path: 'ghost-99', tasting_data: whiskeyData(1, 1, 1, 1) },
+            { bottle_id: 'ghost-99', tasting_data: whiskeyData(1, 1, 1, 1) },
         );
         app.event = event;
         app.calculateOverallRankings();
@@ -293,10 +297,62 @@ describe('calculateOverallRankings', () => {
     it('produces no rankings when nobody has tasted anything', () => {
         const app = freshApp();
         app.event = makeWhiskeyEvent({
-            participants: { 'p-ben': { participant_id: 'p-ben', name: 'Ben', tastings: [] } },
+            participants: { 'p-ben': { participant_id: 'p-ben', participant_name: 'Ben', tastings: [] } },
         });
         app.calculateOverallRankings();
         expect(app.overallRankings).toEqual([]);
+    });
+
+    it('handles integer bottle_id tastings against string bottle ids (regression)', () => {
+        const app = freshApp();
+        const event = makeWhiskeyEvent();
+        event.participants['p-sarah'].tastings = [
+            { bottle_id: 1, tasting_data: whiskeyData(2, 2, 2, 1) },
+        ];
+        app.event = event;
+        app.calculateOverallRankings();
+        const weller = app.overallRankings.find(r => r.bottle_path === '1');
+        expect(weller.bottle_name).toBe('Weller 12');
+        expect(weller.tasting_count).toBe(2);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Legacy event shape (pre-SQLite tastings: bottle_path + participant name)
+// ---------------------------------------------------------------------------
+
+describe('legacy event shape', () => {
+    function makeLegacyEvent() {
+        const event = makeWhiskeyEvent();
+        event.participants = {
+            'p-old': {
+                participant_id: 'p-old',
+                name: 'Old Timer',
+                tastings: [{ bottle_path: '2', tasting_data: whiskeyData(3, 3, 3, 1) }],
+            },
+        };
+        return event;
+    }
+
+    it('still ranks tastings keyed by bottle_path and reads participant name', () => {
+        const app = freshApp();
+        app.event = makeLegacyEvent();
+        app.calculateOverallRankings();
+        app.calculateParticipantRankings();
+
+        expect(app.overallRankings).toEqual([
+            { bottle_path: '2', bottle_name: 'Eagle Rare', avg_score: 10, tasting_count: 1 },
+        ]);
+        expect(app.participantRankings[0].name).toBe('Old Timer');
+    });
+
+    it('opens the modal for legacy tastings', () => {
+        const app = freshApp();
+        app.event = makeLegacyEvent();
+        app.openTastingModal('p-old', '2');
+        expect(app.showModal).toBe(true);
+        expect(app.modalData.participantName).toBe('Old Timer');
+        expect(app.modalData.bottleName).toBe('Eagle Rare');
     });
 });
 
@@ -324,11 +380,11 @@ describe('calculateParticipantRankings', () => {
         ]);
     });
 
-    it('falls back to the bottle path for unknown bottles', () => {
+    it('falls back to the bottle key for unknown bottles', () => {
         const app = freshApp();
         const event = makeWhiskeyEvent();
         event.participants['p-sarah'].tastings = [
-            { bottle_path: 'gone', tasting_data: whiskeyData(1, 0, 0, 0) },
+            { bottle_id: 'gone', tasting_data: whiskeyData(1, 0, 0, 0) },
         ];
         app.event = event;
         app.calculateParticipantRankings();
@@ -346,7 +402,7 @@ describe('getTastingForBottle', () => {
         const app = freshApp();
         app.event = makeWhiskeyEvent();
         const tasting = app.getTastingForBottle('p-sarah', '1');
-        expect(tasting.bottle_path).toBe('1');
+        expect(app.tastingBottleKey(tasting)).toBe('1');
     });
 
     it('returns null for an unknown participant', () => {

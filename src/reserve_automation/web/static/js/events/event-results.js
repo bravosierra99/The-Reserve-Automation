@@ -19,8 +19,11 @@
 // #CLAUDE_REQ: Fetches GET /api/v1/events/{event_id} (web/routes/events.py).
 //              Response shape: { name, beverage_type, status, bottles:
 //              [{bottle_id, bottle_name, bottle_path, blind_number}],
-//              participants: {id: {name, tastings: [{bottle_path,
-//              tasting_data}]}} }. Blind events pre-reveal are redacted
+//              participants: {id: {participant_id, participant_name,
+//              tastings: [{bottle_id, tasting_data}]}} }. Tastings carry
+//              bottle_id (the DB id, saved by /api/v1/manual-tasting/save);
+//              legacy tastings may carry bottle_path instead — read via
+//              tastingBottleKey(). Blind events pre-reveal are redacted
 //              server-side (_redact_blind_bottles); results require status
 //              'revealed' or 'closed'.
 // #CLAUDE_REQ: Score formulas must match the wine AWS (out of 20) and whiskey
@@ -81,6 +84,24 @@ window.eventResultsApp = function eventResultsApp(eventId) {
             }
         },
 
+        // Tastings saved via /api/v1/manual-tasting/save carry bottle_id;
+        // legacy event tastings carried bottle_path. Normalize to one string key.
+        tastingBottleKey(tasting) {
+            const key = tasting.bottle_id ?? tasting.bottle_path;
+            return key == null ? '' : String(key);
+        },
+
+        findBottle(bottleKey) {
+            const key = String(bottleKey);
+            return this.event.bottles.find(
+                b => String(b.bottle_id) === key || String(b.bottle_path) === key
+            );
+        },
+
+        participantName(participant) {
+            return participant.participant_name ?? participant.name ?? '';
+        },
+
         calculateOverallRankings() {
             const bottleScores = {};
 
@@ -89,17 +110,18 @@ window.eventResultsApp = function eventResultsApp(eventId) {
                 const participant = this.event.participants[participantId];
 
                 for (const tasting of participant.tastings) {
-                    if (!bottleScores[tasting.bottle_path]) {
-                        bottleScores[tasting.bottle_path] = {
-                            bottle_path: tasting.bottle_path,
+                    const key = this.tastingBottleKey(tasting);
+                    if (!bottleScores[key]) {
+                        bottleScores[key] = {
+                            bottle_path: key,
                             scores: [],
                             total: 0
                         };
                     }
 
                     const score = this.calculateTastingScore(tasting.tasting_data, this.event.beverage_type);
-                    bottleScores[tasting.bottle_path].scores.push(score);
-                    bottleScores[tasting.bottle_path].total += score;
+                    bottleScores[key].scores.push(score);
+                    bottleScores[key].total += score;
                 }
             }
 
@@ -107,7 +129,7 @@ window.eventResultsApp = function eventResultsApp(eventId) {
             const rankings = [];
             for (const bottlePath in bottleScores) {
                 const bottleData = bottleScores[bottlePath];
-                const bottle = this.event.bottles.find(b => b.bottle_path === bottlePath);
+                const bottle = this.findBottle(bottlePath);
 
                 rankings.push({
                     bottle_path: bottlePath,
@@ -131,12 +153,13 @@ window.eventResultsApp = function eventResultsApp(eventId) {
 
                 const bottleRankings = [];
                 for (const tasting of participant.tastings) {
-                    const bottle = this.event.bottles.find(b => b.bottle_path === tasting.bottle_path);
+                    const key = this.tastingBottleKey(tasting);
+                    const bottle = this.findBottle(key);
                     const score = this.calculateTastingScore(tasting.tasting_data, this.event.beverage_type);
 
                     bottleRankings.push({
-                        bottle_path: tasting.bottle_path,
-                        bottle_name: bottle ? bottle.bottle_name : tasting.bottle_path,
+                        bottle_path: key,
+                        bottle_name: bottle ? bottle.bottle_name : key,
                         score: score
                     });
                 }
@@ -146,7 +169,7 @@ window.eventResultsApp = function eventResultsApp(eventId) {
 
                 rankings.push({
                     participant_id: participantId,
-                    name: participant.name,
+                    name: this.participantName(participant),
                     rankings: bottleRankings
                 });
             }
@@ -182,7 +205,8 @@ window.eventResultsApp = function eventResultsApp(eventId) {
             const participant = this.event.participants[participantId];
             if (!participant) return null;
 
-            return participant.tastings.find(t => t.bottle_path === bottlePath);
+            const key = String(bottlePath);
+            return participant.tastings.find(t => this.tastingBottleKey(t) === key);
         },
 
         formatTastingNotes(tasting) {
@@ -216,8 +240,10 @@ window.eventResultsApp = function eventResultsApp(eventId) {
                 html += '<span class="font-semibold text-gray-800">Aroma</span>';
                 html += `<span class="text-blue-600 font-bold">${(data.wine_aroma ?? 0).toFixed(1)}/6</span>`;
                 html += '</div>';
-                if (data.aroma_notes && data.aroma_notes.length > 0) {
-                    html += `<div class="text-sm text-gray-600">${this.formatNotesAsHashtags(data.aroma_notes)}</div>`;
+                // The wizard stores wine aroma notes under nose_notes
+                const aromaNotes = data.aroma_notes?.length ? data.aroma_notes : data.nose_notes;
+                if (aromaNotes && aromaNotes.length > 0) {
+                    html += `<div class="text-sm text-gray-600">${this.formatNotesAsHashtags(aromaNotes)}</div>`;
                 }
                 html += '</div>';
 
@@ -227,8 +253,10 @@ window.eventResultsApp = function eventResultsApp(eventId) {
                 html += '<span class="font-semibold text-gray-800">Taste</span>';
                 html += `<span class="text-blue-600 font-bold">${(data.wine_taste ?? 0).toFixed(1)}/6</span>`;
                 html += '</div>';
-                if (data.taste_notes && data.taste_notes.length > 0) {
-                    html += `<div class="text-sm text-gray-600">${this.formatNotesAsHashtags(data.taste_notes)}</div>`;
+                // The wizard stores wine taste notes under palate_notes
+                const tasteNotes = data.taste_notes?.length ? data.taste_notes : data.palate_notes;
+                if (tasteNotes && tasteNotes.length > 0) {
+                    html += `<div class="text-sm text-gray-600">${this.formatNotesAsHashtags(tasteNotes)}</div>`;
                 }
                 html += '</div>';
 
@@ -238,8 +266,10 @@ window.eventResultsApp = function eventResultsApp(eventId) {
                 html += '<span class="font-semibold text-gray-800">Aftertaste</span>';
                 html += `<span class="text-blue-600 font-bold">${(data.wine_aftertaste ?? 0).toFixed(1)}/3</span>`;
                 html += '</div>';
-                if (data.aftertaste_notes && data.aftertaste_notes.length > 0) {
-                    html += `<div class="text-sm text-gray-600">${this.formatNotesAsHashtags(data.aftertaste_notes)}</div>`;
+                // The wizard stores wine aftertaste notes under finish_notes
+                const aftertasteNotes = data.aftertaste_notes?.length ? data.aftertaste_notes : data.finish_notes;
+                if (aftertasteNotes && aftertasteNotes.length > 0) {
+                    html += `<div class="text-sm text-gray-600">${this.formatNotesAsHashtags(aftertasteNotes)}</div>`;
                 }
                 html += '</div>';
 
@@ -333,12 +363,12 @@ window.eventResultsApp = function eventResultsApp(eventId) {
         openTastingModal(participantId, bottlePath) {
             const participant = this.event.participants[participantId];
             const tasting = this.getTastingForBottle(participantId, bottlePath);
-            const bottle = this.event.bottles.find(b => b.bottle_path === bottlePath);
+            const bottle = this.findBottle(bottlePath);
 
             if (!participant || !tasting || !bottle) return;
 
             this.modalData = {
-                participantName: participant.name,
+                participantName: this.participantName(participant),
                 bottleName: bottle.bottle_name,
                 formattedNotes: this.formatTastingNotes(tasting)
             };
