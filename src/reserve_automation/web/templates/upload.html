@@ -9,11 +9,11 @@
 
 <!-- Include modal dependencies -->
 {% set cache_bust = range(1, 100000000) | random %}
-<script src="{{ url_for('static', path='/js/components/cropper-manager.js') }}?t={{ cache_bust }}"></script>
-<script src="{{ url_for('static', path='/js/components/bottle-editor-modal.js') }}?t={{ cache_bust }}"></script>
+<script src="{{ url_for('static', path='/js/components/cropper-manager.js') }}?v={{ static_v }}"></script>
+<script src="{{ url_for('static', path='/js/components/bottle-editor-modal.js') }}?v={{ static_v }}"></script>
 <!-- Page component (window.uploadForm) — must load AFTER bottle-editor-modal.js.
      Extracted to static/js/upload/upload-page.js; unit tests: tests/js/upload-page.test.js -->
-<script src="{{ url_for('static', path='/js/upload/upload-page.js') }}?t={{ cache_bust }}"></script>
+<script src="{{ url_for('static', path='/js/upload/upload-page.js') }}?v={{ static_v }}"></script>
 
 <style>
     /* Prevent iOS scroll jump on dynamic content load */

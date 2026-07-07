@@ -15,7 +15,6 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import BaseModel
 
@@ -31,6 +30,7 @@ from ..schemas.tasting import (
 from ..services.extraction_service import ExtractionService
 from ..services.tasting_service import TastingService
 from ..sessions import SessionManager  # Still used for extraction workflow
+from ..templating import make_templates
 
 # ACCEPTED RISK: No rate limiting on this router.
 # LLM-touching endpoints (upload-card) require "tastings.submit" which is
@@ -46,7 +46,7 @@ participant_router = APIRouter(dependencies=[Depends(require("events.participate
 
 # Templates
 templates_dir = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=templates_dir)
+templates = make_templates(templates_dir)
 
 
 def _get_tasting_service():

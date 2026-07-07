@@ -11,11 +11,11 @@
     window.RESERVE_CONFIG = {};
 </script>
 <!-- Bottle editor modal -->
-<script src="{{ url_for('static', path='/js/components/cropper-manager.js') }}"></script>
-<script src="{{ url_for('static', path='/js/components/bottle-editor-modal.js') }}"></script>
+<script src="{{ url_for('static', path='/js/components/cropper-manager.js') }}?v={{ static_v }}"></script>
+<script src="{{ url_for('static', path='/js/components/bottle-editor-modal.js') }}?v={{ static_v }}"></script>
 <!-- Page component (window.bottlesApp) — must load after bottle-editor-modal.js;
      logic lives in a static module for vitest coverage (tests/js/bottles-page.test.js) -->
-<script src="{{ url_for('static', path='/js/bottles/bottles-page.js') }}"></script>
+<script src="{{ url_for('static', path='/js/bottles/bottles-page.js') }}?v={{ static_v }}"></script>
 {% endblock %}
 
 {% block content %}

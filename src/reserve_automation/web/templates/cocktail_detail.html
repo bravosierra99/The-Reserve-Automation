@@ -5,7 +5,7 @@
 {% block head %}
 <!-- Page component (window.cocktailDetailApp) — logic lives in a static module
      so it gets vitest unit coverage; see tests/js/cocktail-detail.test.js -->
-<script src="{{ url_for('static', path='/js/cocktails/cocktail-detail.js') }}"></script>
+<script src="{{ url_for('static', path='/js/cocktails/cocktail-detail.js') }}?v={{ static_v }}"></script>
 {% endblock %}
 
 {% block content %}

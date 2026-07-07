@@ -5,7 +5,7 @@
 {% block head %}
 <!-- Review component (window.reviewForm) — logic lives in a static module
      so it gets vitest unit coverage; see tests/js/review-page.test.js -->
-<script src="{{ url_for('static', path='/js/review/review-page.js') }}"></script>
+<script src="{{ url_for('static', path='/js/review/review-page.js') }}?v={{ static_v }}"></script>
 {% endblock %}
 
 {% block content %}

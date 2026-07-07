@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -23,11 +22,12 @@ from ...db.engine import get_db
 from ...db.repositories import get_cocktail_repo
 from ...db.repositories.cocktail_repo import SQLiteCocktailRepository
 from ..auth.dependencies import require
+from ..templating import make_templates
 
 router = APIRouter()
 
 templates_dir = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=templates_dir)
+templates = make_templates(templates_dir)
 
 
 def _cocktail_to_dict(c: CocktailRecipe, avg_score: float | None = None) -> dict:

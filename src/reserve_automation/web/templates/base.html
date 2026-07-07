@@ -90,7 +90,7 @@
     <!-- authNav() / backupBanner() / formatApiError() live in
          /static/js/components/base-page.js
          (extracted July 2026 for vitest coverage — tests/js/base-page.test.js) -->
-    <script src="/static/js/components/base-page.js"></script>
+    <script src="/static/js/components/base-page.js?v={{ static_v }}"></script>
 
     <main class="container mx-auto px-4 py-6 max-w-4xl">
         {% block content %}{% endblock %}

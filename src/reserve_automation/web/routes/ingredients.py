@@ -9,7 +9,6 @@ import re
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from ...core.ingredient import (
@@ -23,12 +22,13 @@ from ...core.ingredient import (
 from ...db.repositories import get_ingredient_repo
 from ...db.repositories.ingredient_repo import SQLiteIngredientRepository
 from ..auth.dependencies import require
+from ..templating import make_templates
 
 router = APIRouter()
 
 # Set up templates
 templates_dir = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=templates_dir)
+templates = make_templates(templates_dir)
 
 
 def _ingredient_to_dict(ing: Ingredient) -> dict:

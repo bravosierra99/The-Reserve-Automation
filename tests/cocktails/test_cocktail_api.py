@@ -29,7 +29,7 @@ class TestCocktailPagesRender:
         # (extracted July 2026); the page must load it and the module must
         # define the Alpine factory. Behavior is unit-tested in
         # tests/js/cocktails-page.test.js.
-        assert '/static/js/cocktails/cocktails-page.js"></script>' in response.text, (
+        assert "/static/js/cocktails/cocktails-page.js?v=" in response.text, (
             "cocktails page no longer loads its component module — the page "
             "would render but the Alpine component would be undefined"
         )
@@ -48,7 +48,7 @@ class TestCocktailPagesRender:
         # static/js/cocktails/cocktail-detail.js (extracted July 2026); the
         # page must load it. Behavior is unit-tested in
         # tests/js/cocktail-detail.test.js.
-        assert '/static/js/cocktails/cocktail-detail.js"></script>' in response.text, (
+        assert "/static/js/cocktails/cocktail-detail.js?v=" in response.text, (
             "cocktail detail page no longer loads its component module — the "
             "page would render but the Alpine component would be undefined"
         )

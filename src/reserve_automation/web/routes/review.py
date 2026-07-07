@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
-from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import BaseModel
 
@@ -12,6 +11,7 @@ from ..auth.dependencies import require
 from ..services.extraction_service import ExtractionService
 from ..services.review_service import ReviewService
 from ..sessions import SessionManager
+from ..templating import make_templates
 
 router = APIRouter(dependencies=[Depends(require("upload.access"))])
 
@@ -25,7 +25,7 @@ def _get_review_service():
 
 # Templates
 templates_dir = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=templates_dir)
+templates = make_templates(templates_dir)
 
 
 @router.get("/review/{extraction_id}", include_in_schema=False)

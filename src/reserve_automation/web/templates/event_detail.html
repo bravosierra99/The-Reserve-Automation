@@ -196,5 +196,5 @@
 
 <!-- eventDetailApp() lives in /static/js/events/event-detail.js
      (extracted July 2026 for vitest coverage — tests/js/event-detail.test.js) -->
-<script src="{{ url_for('static', path='/js/events/event-detail.js') }}"></script>
+<script src="{{ url_for('static', path='/js/events/event-detail.js') }}?v={{ static_v }}"></script>
 {% endblock %}

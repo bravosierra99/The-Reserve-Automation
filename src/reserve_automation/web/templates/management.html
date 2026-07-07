@@ -11,12 +11,12 @@
     window.RESERVE_CONFIG = {};
 </script>
 <!-- Management modules (loaded before Alpine) -->
-<script src="{{ url_for('static', path='/js/components/cropper-manager.js') }}"></script>
-<script src="{{ url_for('static', path='/js/components/bottle-editor-modal.js') }}"></script>
-<script src="{{ url_for('static', path='/js/management/tasting-review.js') }}"></script>
-<script src="{{ url_for('static', path='/js/management/event-create.js') }}"></script>
+<script src="{{ url_for('static', path='/js/components/cropper-manager.js') }}?v={{ static_v }}"></script>
+<script src="{{ url_for('static', path='/js/components/bottle-editor-modal.js') }}?v={{ static_v }}"></script>
+<script src="{{ url_for('static', path='/js/management/tasting-review.js') }}?v={{ static_v }}"></script>
+<script src="{{ url_for('static', path='/js/management/event-create.js') }}?v={{ static_v }}"></script>
 <!-- Root component — must load AFTER the modules above (it composes them) -->
-<script src="{{ url_for('static', path='/js/management/management-app.js') }}"></script>
+<script src="{{ url_for('static', path='/js/management/management-app.js') }}?v={{ static_v }}"></script>
 {% endblock %}
 
 {% block content %}

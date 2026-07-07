@@ -6,7 +6,6 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from loguru import logger
 from PIL import Image
 
@@ -26,6 +25,7 @@ from .routes import (
     upload,
 )
 from .services.upload_service import UploadService
+from .templating import make_templates
 
 # Cap the per-image pixel count so a maliciously-crafted decompression bomb
 # (small file, huge pixel grid) can't OOM the container. 50 MP = ~150 MB at
@@ -131,7 +131,7 @@ app.mount("/static", StaticFiles(directory=static_path), name="static")
 # Set up templates
 templates_dir = Path(__file__).parent / "templates"
 templates_dir.mkdir(exist_ok=True)
-templates = Jinja2Templates(directory=templates_dir)
+templates = make_templates(templates_dir)
 # Disable template caching in development
 templates.env.auto_reload = True
 templates.env.cache = None

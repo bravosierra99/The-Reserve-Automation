@@ -7,7 +7,6 @@ from pathlib import Path
 from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from ...db.repositories import get_bottle_repo, get_event_repo
@@ -30,12 +29,13 @@ from ..schemas.events import (
     JoinEventRequest,
     SubmitCocktailRatingRequest,
 )
+from ..templating import make_templates
 
 router = APIRouter()
 
 # Set up templates
 templates_dir = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=templates_dir)
+templates = make_templates(templates_dir)
 
 
 def _can_manage_events(request: Request, user: AuthenticatedUser) -> bool:

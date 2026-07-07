@@ -11,11 +11,11 @@ from typing import Optional
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from ...auth.dependencies import require
 from ...services.extraction_service import ExtractionService
+from ...templating import make_templates
 
 
 def _sse(data: dict) -> str:
@@ -93,7 +93,7 @@ router = APIRouter()
 
 # Templates
 templates_dir = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=templates_dir)
+templates = make_templates(templates_dir)
 
 
 @router.post("/api/v1/bottles/upload", dependencies=[Depends(require("bottles.create"))])

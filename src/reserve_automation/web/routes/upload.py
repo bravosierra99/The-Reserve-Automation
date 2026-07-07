@@ -15,12 +15,12 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from ..auth.dependencies import require
 from ..services.extraction_service import ExtractionService
 from ..sessions import SessionManager
+from ..templating import make_templates
 
 # ACCEPTED RISK: No rate limiting on this router.
 # All LLM extraction calls originate here, but the router requires "upload.access"
@@ -30,7 +30,7 @@ router = APIRouter(dependencies=[Depends(require("upload.access"))])
 
 # Templates
 templates_dir = Path(__file__).parent.parent / "templates"
-templates = Jinja2Templates(directory=templates_dir)
+templates = make_templates(templates_dir)
 
 
 @router.get("/upload", include_in_schema=False)
