@@ -39,6 +39,8 @@ LABEL_BBOX_PROMPT = (
     "and any text printed, etched, or handwritten directly on the glass. "
     "Return ONE bounding box that covers ALL of these text regions together (ignore other "
     "bottles in the background). "
+    "The box must NEVER pass through printed text: if you are unsure about an edge, move it "
+    "OUTWARD. It is always better to include extra background than to cut off any text. "
     "Use a coordinate system where the top-left of the image is (0,0) and the bottom-right is "
     '(1000,1000). Return ONLY JSON: {"bbox_2d": [x1, y1, x2, y2]} with all values 0-1000.'
 )
