@@ -1,0 +1,7 @@
+{
+  "status": "error",
+  "last_success": "2026-07-07T19:00:00",
+  "last_attempt": "2026-07-07T19:00:00",
+  "age_minutes": 200,
+  "error": "rsync failed: disk full"
+}

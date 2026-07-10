@@ -1,0 +1,9 @@
+{
+  "message": "Bottle added",
+  "bottle": {
+    "bottle_id": "2",
+    "bottle_name": "Buffalo Trace - Weller Special Reserve",
+    "bottle_path": "2",
+    "blind_number": null
+  }
+}

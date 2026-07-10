@@ -6,15 +6,31 @@
  * so tests call window.manualTastingWizard() directly — no initState spread.
  * The tasting-form-mixin must be imported first, exactly like the template's
  * script order.
+ *
+ * API fixtures are CONTRACT fixtures — real responses captured and
+ * snapshot-verified by tests/contract/test_tastings_contract.py (and
+ * test_events_contract.py for the event fixtures). July 2026 lesson: this
+ * wizard broke prod during a live event because its tests posted
+ * server-preferred payloads against invented candidate shapes; the real
+ * bottle-search candidates carry the DB bottle id in `bottle_path`, which is
+ * exactly what the contract fixtures pin. The only hand-written response
+ * left is the upload-card one (the real endpoint runs an LM Studio
+ * extraction) — labelled below.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadContract } from './helpers/contract.js';
 import '../../src/reserve_automation/web/static/js/components/tasting-form-mixin.js';
 import '../../src/reserve_automation/web/static/js/tastings/manual-tasting.js';
 
-const BOTTLE_A = { bottle_path: 'whiskeys/weller', bottle_name: 'Weller', producer: 'Buffalo Trace', beverage_type: 'whiskey' };
-const BOTTLE_B = { bottle_path: 'wines/caymus', bottle_name: 'Caymus Cab', producer: 'Caymus', beverage_type: 'wine' };
+// Real search candidates: bottle_path is the DB id as a string ('1', '3').
+const BOTTLE_A = loadContract('tastings_bottle_search').results[0];        // whiskey
+const BOTTLE_B = loadContract('tastings_bottle_search_wine').results[0];   // wine
+
+// Normalized ids assigned by the event contract snapshots.
+const EVENT_ID = '00000000-0000-4000-8000-000000000001';
+const ALICE = '00000000-0000-4000-8000-000000000002';
 
 function freshWizard() {
     const w = window.manualTastingWizard();
@@ -190,8 +206,25 @@ describe('bottle search', () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('builds the search URL with encoded query and beverage type', async () => {
-        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ results: [BOTTLE_A] }) });
+    it('builds the search URL and adopts the real candidate shape (bottle_path = DB id)', async () => {
+        const search = loadContract('tastings_bottle_search');
+        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => search });
+        vi.stubGlobal('fetch', fetchMock);
+        wizard.searchQuery = 'weller';
+        wizard.beverageType = 'whiskey';
+
+        await wizard.searchBottles();
+
+        expect(fetchMock).toHaveBeenCalledWith(
+            '/api/v1/bottles/search?q=weller&beverage_type=whiskey');
+        expect(wizard.searchResults).toEqual(search.results);
+        // The prod-outage shape: candidates carry the DB id in bottle_path.
+        expect(wizard.searchResults[0].bottle_path).toBe('1');
+        expect(wizard.searching).toBe(false);
+    });
+
+    it('URL-encodes multi-word queries', async () => {
+        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ results: [] }) });
         vi.stubGlobal('fetch', fetchMock);
         wizard.searchQuery = 'wheated bourbon';
         wizard.beverageType = 'whiskey';
@@ -200,21 +233,22 @@ describe('bottle search', () => {
 
         expect(fetchMock).toHaveBeenCalledWith(
             '/api/v1/bottles/search?q=wheated%20bourbon&beverage_type=whiskey');
-        expect(wizard.searchResults).toEqual([BOTTLE_A]);
-        expect(wizard.searching).toBe(false);
     });
 
-    it('appends event_id when in event mode', async () => {
-        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ results: [] }) });
+    it('appends event_id in event mode and accepts redacted blind candidates', async () => {
+        const search = loadContract('tastings_bottle_search_event');
+        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => search });
         vi.stubGlobal('fetch', fetchMock);
-        wizard.participantSession = { event_id: 'evt1', participant_id: 'p1', participant_name: 'Ben' };
-        wizard.searchQuery = 'weller';
+        wizard.participantSession = { event_id: EVENT_ID, participant_id: ALICE, participant_name: 'Alice' };
+        wizard.searchQuery = 'special';
         wizard.beverageType = 'whiskey';
 
         await wizard.searchBottles();
 
         expect(fetchMock).toHaveBeenCalledWith(
-            '/api/v1/bottles/search?q=weller&beverage_type=whiskey&event_id=evt1');
+            `/api/v1/bottles/search?q=special&beverage_type=whiskey&event_id=${EVENT_ID}`);
+        // Blind open events return redacted names with the bottle id.
+        expect(wizard.searchResults[0]).toMatchObject({ bottle_path: '1', bottle_name: 'Bottle #1' });
     });
 });
 
@@ -259,7 +293,23 @@ describe('bottle selection', () => {
 });
 
 describe('event mode: tasted bottles', () => {
-    function eventWizard() {
+    // Contract event (event_detail): tastings saved through the wizard's own
+    // POST /api/v1/manual-tasting/save carry `bottle_id` — captured from the
+    // real event lifecycle by test_events_contract.py.
+    function contractEventWizard() {
+        const w = freshWizard();
+        const event = loadContract('event_detail');
+        w.participantSession = { event_id: EVENT_ID, participant_id: ALICE, participant_name: 'Alice' };
+        w.eventData = event;
+        w.eventBottles = event.bottles.map(b => ({ bottle_path: b.bottle_path, bottle_name: b.bottle_name }));
+        return w;
+    }
+
+    // Legacy shape: the older event write path (tasting_service._save_to_event,
+    // card-upload approvals into an event) stored `bottle_path` instead.
+    // Hand-written because the wizard flow can no longer produce it, but old
+    // events still hold it.
+    function legacyEventWizard() {
         const w = freshWizard();
         w.participantSession = { event_id: 'evt1', participant_id: 'p1', participant_name: 'Ben' };
         w.eventData = {
@@ -270,8 +320,29 @@ describe('event mode: tasted bottles', () => {
         return w;
     }
 
-    it('hasBottleBeenTasted matches on bottle_path for the current participant', () => {
-        const w = eventWizard();
+    it('hasBottleBeenTasted matches wizard-saved (bottle_id) tastings — regression', () => {
+        const w = contractEventWizard();
+        const willett = w.eventBottles[0]; // bottle_path '1' — Alice DID taste it
+        expect(w.eventData.participants[ALICE].tastings[0].bottle_id).toBe('1');
+        // Real contract shape: tastings carry bottle_id, not bottle_path.
+        // Before the fix this returned false, so the "already tasted / edit"
+        // affordance never appeared for the wizard's own saves.
+        expect(w.hasBottleBeenTasted(willett)).toBe(true);
+        expect(w.hasBottleBeenTasted(w.eventBottles[2])).toBe(false); // Alice never tasted Blantons
+    });
+
+    it('editBottleTasting finds wizard-saved (bottle_id) tastings and loads them — regression', async () => {
+        const w = contractEventWizard();
+        await w.editBottleTasting(w.eventBottles[0]);
+        expect(w.currentStep).toBe('tasting_form');
+        expect(w.selectedBottle).toEqual(w.eventBottles[0]);
+        // Alice's contract tasting on bottle 1 (whiskey 3/3/2/1, caramel+oak nose)
+        expect(w.tastingData.whiskey_nose).toBe(3);
+        expect(w.tastingData.nose_notes).toEqual(['caramel', 'oak']);
+    });
+
+    it('hasBottleBeenTasted matches on bottle_path for the current participant (legacy shape)', () => {
+        const w = legacyEventWizard();
         expect(w.hasBottleBeenTasted(BOTTLE_A)).toBe(true);
         expect(w.hasBottleBeenTasted(BOTTLE_B)).toBe(false);
     });
@@ -280,8 +351,8 @@ describe('event mode: tasted bottles', () => {
         expect(wizard.hasBottleBeenTasted(BOTTLE_A)).toBe(false);
     });
 
-    it('editBottleTasting loads the existing data and jumps to the form', async () => {
-        const w = eventWizard();
+    it('editBottleTasting loads the existing data and jumps to the form (legacy shape)', async () => {
+        const w = legacyEventWizard();
         await w.editBottleTasting(BOTTLE_A);
         expect(w.currentStep).toBe('tasting_form');
         expect(w.selectedBottle).toEqual(BOTTLE_A);
@@ -292,7 +363,7 @@ describe('event mode: tasted bottles', () => {
     });
 
     it('editBottleTasting unwraps double-nested tasting_data (legacy bug migration)', async () => {
-        const w = eventWizard();
+        const w = legacyEventWizard();
         w.eventData.participants.p1.tastings = [{
             bottle_path: BOTTLE_A.bottle_path,
             tasting_data: { tasting_data: { whiskey_nose: 1.5, nose_notes: null } },
@@ -329,9 +400,11 @@ describe('saveTasting', () => {
         w.noseNotesInput = 'caramel, oak,  vanilla ';
         w.palateNotesInput = 'cherry';
         w.finishNotesInput = '';
-        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ file_path: 'x.md' }) });
+        const saved = loadContract('tastings_manual_save_obsidian');
+        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => saved });
         vi.stubGlobal('fetch', fetchMock);
-        vi.stubGlobal('alert', vi.fn());
+        const alertMock = vi.fn();
+        vi.stubGlobal('alert', alertMock);
 
         await w.saveTasting();
 
@@ -341,10 +414,17 @@ describe('saveTasting', () => {
         expect(body.mode).toBe('obsidian');
         expect(body.beverage_type).toBe('whiskey');
         expect(body.taster_name).toBe('Ben');
-        expect(body.selected_bottle_path).toBe(BOTTLE_A.bottle_path);
+        // BOTH bottle fields carry the DB id from the candidate's bottle_path
+        // — the exact payload/candidate pairing the prod outage was about.
+        expect(body.selected_bottle_id).toBe('1');
+        expect(body.selected_bottle_path).toBe('1');
         expect(body.tasting_data.nose_notes).toEqual(['caramel', 'oak', 'vanilla']);
         expect(body.tasting_data.palate_notes).toEqual(['cherry']);
         expect(body.tasting_data.finish_notes).toEqual([]);
+        // Real non-event response: file_path is the new tasting's DB id ('1'),
+        // not a vault path — the success alert shows it verbatim.
+        expect(alertMock).toHaveBeenCalledWith('Tasting saved successfully to 1');
+        expect(location.href).toBe('/bottles');
         expect(w.saving).toBe(false);
     });
 
@@ -354,7 +434,7 @@ describe('saveTasting', () => {
         w.aromaNotesInput = 'blackberry, cassis';
         w.tasteNotesInput = 'tannic';
         w.aftertasteNotesInput = 'long';
-        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ file_path: 'x.md' }) });
+        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => loadContract('tastings_manual_save_obsidian') });
         vi.stubGlobal('fetch', fetchMock);
         vi.stubGlobal('alert', vi.fn());
 
@@ -367,11 +447,12 @@ describe('saveTasting', () => {
         expect(body.tasting_data.finish_notes).toEqual(['long']);
     });
 
-    it('includes event_id and participant_id in event mode', async () => {
+    it('includes event_id and participant_id in event mode and redirects to the event page', async () => {
+        const saved = loadContract('manual_tasting_save_response'); // {status, event_id}
         const w = readyToSave({
-            participantSession: { event_id: 'evt1', participant_id: 'p1', participant_name: 'Ben' },
+            participantSession: { event_id: saved.event_id, participant_id: ALICE, participant_name: 'Alice' },
         });
-        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ event_id: 'evt1' }) });
+        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => saved });
         vi.stubGlobal('fetch', fetchMock);
         vi.stubGlobal('alert', vi.fn());
 
@@ -379,14 +460,16 @@ describe('saveTasting', () => {
 
         const body = JSON.parse(fetchMock.mock.calls[0][1].body);
         expect(body.mode).toBe('event');
-        expect(body.event_id).toBe('evt1');
-        expect(body.participant_id).toBe('p1');
+        expect(body.event_id).toBe(saved.event_id);
+        expect(body.participant_id).toBe(ALICE);
+        // The response's event_id (not local state) drives the redirect.
+        expect(location.href).toBe(`/events/${saved.event_id}`);
     });
 
     it('caches taster preferences in localStorage after a successful save', async () => {
         const w = readyToSave();
         w.tastingData.place = 'Home';
-        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ file_path: 'x.md' }) }));
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => loadContract('tastings_manual_save_obsidian') }));
         vi.stubGlobal('alert', vi.fn());
 
         await w.saveTasting();
@@ -413,11 +496,19 @@ describe('saveTasting', () => {
 });
 
 describe('upload tasting card', () => {
+    // HAND-WRITTEN fixture (not contract-testable): POST
+    // /api/v1/tastings/upload-card runs a real LM Studio vision extraction,
+    // so its response can't be captured deterministically. Shape mirrors
+    // routes/tastings.py upload_tasting_card's return.
+    const UPLOAD_CARD_RESPONSE = {
+        status: 'completed', extraction_id: 'ex1', tastings_count: 2, template_type: 'bourbon',
+    };
+
     it('uploadCardFile posts the file and records the extraction result', async () => {
         wizard.cardSelectedFile = new File(['x'], 'card.jpg', { type: 'image/jpeg' });
         wizard.uploadExpectedCount = 2;
         const fetchMock = vi.fn().mockResolvedValue({
-            ok: true, json: async () => ({ extraction_id: 'ex1', tastings_count: 2 }),
+            ok: true, json: async () => UPLOAD_CARD_RESPONSE,
         });
         vi.stubGlobal('fetch', fetchMock);
 
@@ -494,60 +585,83 @@ describe('init', () => {
     });
 
     it('loads autocomplete suggestions', async () => {
-        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ['Ben', 'Sarah'] });
+        const tasters = loadContract('tastings_autocomplete_taster_name');
+        const fetchMock = vi.fn(async (url) => {
+            if (String(url).endsWith('/taster_name')) return { ok: true, json: async () => tasters };
+            if (String(url).endsWith('/place')) return { ok: true, json: async () => loadContract('tastings_autocomplete_place') };
+            if (String(url).endsWith('/theme')) return { ok: true, json: async () => loadContract('tastings_autocomplete_theme') };
+            return { ok: true, json: async () => [] };
+        });
         vi.stubGlobal('fetch', fetchMock);
 
         await wizard.init();
 
-        expect(wizard.acTasterNames).toEqual(['Ben', 'Sarah']);
+        expect(wizard.acTasterNames).toEqual(tasters);
+        expect(wizard.acPlaces).toEqual(loadContract('tastings_autocomplete_place'));
+        expect(wizard.acThemes).toEqual(loadContract('tastings_autocomplete_theme'));
         expect(fetchMock).toHaveBeenCalledWith('/api/v1/autocomplete/tastings/taster_name');
     });
 
-    describe('event mode', () => {
-        const EVENT_DATA = {
-            beverage_type: 'whiskey',
-            is_blind: true,
-            status: 'open',
-            participants: {},
-            bottles: [
-                { bottle_path: 'b/two', bottle_name: 'Second Bottle', blind_number: 2 },
-                { bottle_path: 'b/one', bottle_name: 'First Bottle', blind_number: 1 },
-            ],
-        };
+    it('guests get 403 from the autocomplete endpoints and end up with empty suggestions', async () => {
+        // tastings_autocomplete_forbidden is the real 403 body guests receive
+        // (the endpoints require tastings.view = admin+family, but the wizard
+        // itself is guest-facing in event mode).
+        const forbidden = loadContract('tastings_autocomplete_forbidden');
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: false, status: 403, json: async () => forbidden,
+        }));
 
-        function joinEvent() {
-            const sessions = { evt1: { participant_id: 'p1', participant_name: 'Ben' } };
+        await wizard.init();
+
+        expect(wizard.acTasterNames).toEqual([]);
+        expect(wizard.acPlaces).toEqual([]);
+        expect(wizard.acThemes).toEqual([]);
+    });
+
+    describe('event mode', () => {
+        function joinEvent(participantName = 'Alice') {
+            const sessions = { [EVENT_ID]: { participant_id: ALICE, participant_name: participantName } };
             document.cookie = `participant_sessions=${encodeURIComponent(JSON.stringify(sessions))}`;
-            window.history.pushState({}, '', '/tastings?event_mode=true&event_id=evt1');
+            window.history.pushState({}, '', `/tastings?event_mode=true&event_id=${EVENT_ID}`);
         }
 
         afterEach(() => {
             window.history.pushState({}, '', '/');
         });
 
-        it('locks the taster name, hides real names for open blind events, and sorts by blind number', async () => {
+        it('locks the taster name, keeps blind names hidden while open, and sorts by blind number', async () => {
             joinEvent();
-            vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => EVENT_DATA }));
+            // Contract GET /api/v1/events/{id} for a blind, still-open event —
+            // the server already redacts names to "Bottle #N".
+            const event = loadContract('event_detail_blind_open');
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => event }));
 
             await wizard.init();
 
             expect(wizard.isEventMode).toBe(true);
-            expect(wizard.tasterName).toBe('Ben');
+            expect(wizard.tasterName).toBe('Alice');
             expect(wizard.beverageType).toBe('whiskey');
             expect(wizard.currentStep).toBe('bottle_selection');  // step 1 skipped
-            expect(wizard.eventBottles.map(b => b.bottle_name)).toEqual(['Bottle #1', 'Bottle #2']);
+            expect(wizard.eventBottles.map(b => b.bottle_name)).toEqual(['Bottle #1', 'Bottle #2', 'Bottle #3']);
+            // Candidates keep the DB id in bottle_path for the save payload.
+            expect(wizard.eventBottles.map(b => b.bottle_path)).toEqual(['1', '2', '3']);
         });
 
         it('shows real bottle names once the event is revealed', async () => {
             joinEvent();
-            vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-                ok: true, json: async () => ({ ...EVENT_DATA, status: 'revealed' }),
-            }));
+            // event_detail carries the revealed names; status is mutated to the
+            // 'revealed' (not-yet-closed) window the wizard is used in.
+            const event = { ...loadContract('event_detail'), status: 'revealed' };
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => event }));
 
             await wizard.init();
 
             expect(wizard.eventRevealed).toBe(true);
-            expect(wizard.eventBottles.map(b => b.bottle_name)).toEqual(['First Bottle', 'Second Bottle']);
+            expect(wizard.eventBottles.map(b => b.bottle_name)).toEqual([
+                'Willett - Family Estate Single Barrel',
+                'Buffalo Trace - Weller Special Reserve',
+                'Blantons - Original Single Barrel',
+            ]);
         });
 
         it('falls back to standalone mode when the participant cookie is missing', async () => {

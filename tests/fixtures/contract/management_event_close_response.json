@@ -1,0 +1,30 @@
+{
+  "message": "Event closed",
+  "event": {
+    "event_id": "00000000-0000-4000-8000-000000000001",
+    "name": "Contract Management Night",
+    "beverage_type": "whiskey",
+    "is_blind": true,
+    "status": "closed",
+    "host_name": "Ben",
+    "event_type": "bottle",
+    "event_mode": "standard",
+    "created_at": "2026-07-07T19:00:00",
+    "bottles": [
+      {
+        "bottle_id": "1",
+        "bottle_name": "Buffalo Trace - Weller 12 Year",
+        "bottle_path": "1",
+        "blind_number": 1
+      },
+      {
+        "bottle_id": "2",
+        "bottle_name": "Buffalo Trace - Weller Special Reserve",
+        "bottle_path": "2",
+        "blind_number": 2
+      }
+    ],
+    "cocktails": [],
+    "participants": {}
+  }
+}

@@ -3,20 +3,23 @@
  * (src/reserve_automation/web/static/js/review/review-page.js).
  *
  * Alpine itself is not loaded; the factory's return value is used directly.
- * Fixtures mirror the real API shapes in web/routes/review.py:
- * GET /api/v1/extractions/{id} → {extraction_id, extraction_type,
- * upload_filename, template_type, data, match_previews}, PUT the same path
- * with {extraction_data}, POST /api/v1/review/{id}/approve →
- * {status, files_created, unmatched, ...}, POST /api/v1/review/{id}/reject.
  *
- * Per-type note keys are pinned here: the *_str round-trip touches ONLY the
- * whiskey note keys (nose_notes/palate_notes/finish_notes). Wine tastings keep
- * their appearance/aroma/taste/aftertaste fields untouched (July 2026
- * note-wiping regression guard).
+ * Fixtures are CONTRACT fixtures — real API responses captured and
+ * snapshot-verified by tests/contract/test_tastings_contract.py:
+ * GET /api/v1/extractions/{id} (review_extraction / review_extraction_wine)
+ * and POST /api/v1/review/{id}/approve (review_approve_response). Per-test
+ * variants are explicit mutations of a loaded fixture.
+ *
+ * Contract truths the old hand-written fixtures got wrong: every tasting dict
+ * carries ALL TastingNote keys (a wine tasting has nose_notes — null or, for
+ * real wine cards, the aroma notes, because TastingNote has no wine-specific
+ * note fields), and files_created entries are "db:{id}" strings, not vault
+ * paths.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadContract } from './helpers/contract.js';
 import '../../src/reserve_automation/web/static/js/review/review-page.js';
 
 function jsonResponse(data, { ok = true, status = 200 } = {}) {
@@ -39,70 +42,25 @@ function routeFetch(routes) {
     });
 }
 
-const EXTRACTION_ID = 'ext-42';
+// Normalized extraction id assigned by the contract snapshots.
+const EXTRACTION_ID = '00000000-0000-4000-8000-000000000001';
 
-// Mirrors GET /api/v1/extractions/{extraction_id} (routes/review.py
-// get_extraction) for a bourbon tasting card. Note the whiskey note keys.
+// Contract bourbon extraction — data.tastings:
+//   [0] 'Weller Special Reserve' (Ben), nose ['caramel','oak'],
+//       palate ['cherry'], finish [] — matched preview (confidence ~0.73)
+//   [1] 'Mystery Bourbon' ('' taster), all note arrays null — unmatched
 function bourbonExtraction() {
-    return {
-        extraction_id: EXTRACTION_ID,
-        extraction_type: 'tasting',
-        upload_filename: 'card.jpg',
-        template_type: 'bourbon',
-        data: {
-            template_type: 'bourbon',
-            tastings: [
-                {
-                    bottle_name: 'Weller 12',
-                    taster_name: 'Ben',
-                    tasting_date: '2026-07-01',
-                    days_from_crack: 30,
-                    fill_level: 80,
-                    whiskey_nose: 2.5,
-                    whiskey_palate: 2.5,
-                    whiskey_finish: 2,
-                    whiskey_overall: 0.8,
-                    nose_notes: ['caramel', 'oak'],
-                    palate_notes: ['cherry'],
-                    finish_notes: [],
-                    overall_notes: 'Great pour',
-                },
-            ],
-        },
-        match_previews: [
-            { matched: true, matched_to: 'Weller 12', confidence: 0.91 },
-        ],
-    };
+    return loadContract('review_extraction');
 }
 
-// A wine (aws_wine) extraction: scores use the WINE keys and there are no
-// whiskey note arrays at all.
+// Contract wine (aws_wine) extraction. TastingNote has no wine-specific note
+// fields, so real wine cards store aroma/taste/aftertaste notes under
+// nose/palate/finish_notes:
+//   [0] 'Cabernet Sauvignon': wine scores 3/5/4/1.5/1.5, appearance ['ruby'],
+//       nose ['cassis'], palate ['plum'], finish ['long']
+//   [1] 'Mystery Red': wine scores, all note arrays null
 function wineExtraction() {
-    return {
-        extraction_id: EXTRACTION_ID,
-        extraction_type: 'tasting',
-        upload_filename: 'card.jpg',
-        template_type: 'aws_wine',
-        data: {
-            template_type: 'aws_wine',
-            tastings: [
-                {
-                    bottle_name: 'Grand Cru',
-                    taster_name: 'Sarah',
-                    tasting_date: '2026-07-01',
-                    wine_appearance: 3,
-                    wine_aroma: 5,
-                    wine_taste: 4,
-                    wine_aftertaste: 1.5,
-                    wine_overall: 1.5,
-                    overall_notes: 'Lovely',
-                },
-            ],
-        },
-        match_previews: [
-            { matched: false },
-        ],
-    };
+    return loadContract('review_extraction_wine');
 }
 
 function freshForm() {
@@ -163,13 +121,16 @@ describe('initial state', () => {
 
 describe('loadExtraction', () => {
     it('fetches the extraction and exposes match previews', async () => {
-        const form = await loadedForm();
+        const extraction = bourbonExtraction();
+        const form = await loadedForm(extraction);
 
         expect(fetch).toHaveBeenCalledWith(`/api/v1/extractions/${EXTRACTION_ID}`);
         expect(form.extraction.template_type).toBe('bourbon');
-        expect(form.matchPreviews).toEqual([
-            { matched: true, matched_to: 'Weller 12', confidence: 0.91 },
-        ]);
+        expect(form.matchPreviews).toEqual(extraction.match_previews);
+        expect(form.matchPreviews[0]).toMatchObject({
+            matched: true, matched_to: 'Buffalo Trace - Weller Special Reserve',
+        });
+        expect(form.matchPreviews[1]).toMatchObject({ matched: false, matched_to: null });
         expect(form.loading).toBe(false);
         expect(form.error).toBe(false);
     });
@@ -185,23 +146,28 @@ describe('loadExtraction', () => {
         expect(t.nose_notes).toEqual(['caramel', 'oak']);
     });
 
-    it('leaves wine tastings alone apart from empty *_str placeholders', async () => {
+    it('keeps wine scores intact and builds *_str from the shared note keys', async () => {
         const form = await loadedForm(wineExtraction());
-        const t = form.extraction.data.tastings[0];
+        const [t0, t1] = form.extraction.data.tastings;
 
         // Wine scores keep their wine keys, untouched.
-        expect(t.wine_appearance).toBe(3);
-        expect(t.wine_aroma).toBe(5);
-        expect(t.wine_taste).toBe(4);
-        expect(t.wine_aftertaste).toBe(1.5);
-        // No whiskey note arrays are invented on wine tastings...
-        expect(t.nose_notes).toBeUndefined();
-        expect(t.palate_notes).toBeUndefined();
-        expect(t.finish_notes).toBeUndefined();
-        // ...only the (empty) editing strings.
-        expect(t.nose_notes_str).toBe('');
-        expect(t.palate_notes_str).toBe('');
-        expect(t.finish_notes_str).toBe('');
+        expect(t0.wine_appearance).toBe(3);
+        expect(t0.wine_aroma).toBe(5);
+        expect(t0.wine_taste).toBe(4);
+        expect(t0.wine_aftertaste).toBe(1.5);
+        // Contract truth: real wine cards store aroma/taste/aftertaste notes
+        // under nose/palate/finish_notes (TastingNote has no wine note keys),
+        // so the editing strings are built from them.
+        expect(t0.nose_notes_str).toBe('cassis');
+        expect(t0.palate_notes_str).toBe('plum');
+        expect(t0.finish_notes_str).toBe('long');
+        expect(t0.nose_notes).toEqual(['cassis']);
+        // A tasting with null note arrays gets empty editing strings and its
+        // arrays are NOT invented.
+        expect(t1.nose_notes).toBeNull();
+        expect(t1.nose_notes_str).toBe('');
+        expect(t1.palate_notes_str).toBe('');
+        expect(t1.finish_notes_str).toBe('');
     });
 
     it('defaults matchPreviews to [] when the payload omits them', async () => {
@@ -253,11 +219,9 @@ describe('approveExtraction', () => {
     });
 
     it('converts *_str back to arrays, PUTs the data, then POSTs approve', async () => {
-        const approval = {
-            status: 'approved',
-            files_created: ['Cellar/Tastings/a.md'],
-            unmatched: [],
-        };
+        // Contract approval: files_created are "db:{id}" strings; the response
+        // also carries bottles_matched and the unmatched tastings.
+        const approval = loadContract('review_approve_response');
         const form = await loadedForm(bourbonExtraction(), [
             [`/api/v1/review/${EXTRACTION_ID}/approve`, jsonResponse(approval)],
         ]);
@@ -288,9 +252,10 @@ describe('approveExtraction', () => {
         expect(form.approving).toBe(false);
     });
 
-    it('does not fabricate whiskey note arrays on wine tastings when approving', async () => {
+    it('never invents note arrays from empty *_str fields (wine, null-note tasting)', async () => {
+        const approval = loadContract('review_approve_response');
         const form = await loadedForm(wineExtraction(), [
-            [`/api/v1/review/${EXTRACTION_ID}/approve`, jsonResponse({ status: 'approved', files_created: [], unmatched: [] })],
+            [`/api/v1/review/${EXTRACTION_ID}/approve`, jsonResponse(approval)],
         ]);
 
         await form.approveExtraction();
@@ -298,13 +263,18 @@ describe('approveExtraction', () => {
         const sent = JSON.parse(
             fetch.mock.calls.find(([, opts]) => opts?.method === 'PUT')[1].body,
         );
-        const t = sent.extraction_data.tastings[0];
-        // Wine fields survive intact; empty *_str never became note arrays.
-        expect(t.wine_appearance).toBe(3);
-        expect(t.wine_aftertaste).toBe(1.5);
-        expect(t.nose_notes).toBeUndefined();
-        expect(t.palate_notes).toBeUndefined();
-        expect(t.finish_notes).toBeUndefined();
+        const [t0, t1] = sent.extraction_data.tastings;
+        // Wine fields survive intact on both tastings.
+        expect(t0.wine_appearance).toBe(3);
+        expect(t0.wine_aftertaste).toBe(1.5);
+        expect(t1.wine_appearance).toBe(2);
+        // t0's populated notes round-trip through the *_str fields...
+        expect(t0.nose_notes).toEqual(['cassis']);
+        // ...while t1's empty *_str strings never become arrays: the null
+        // note arrays are preserved (July 2026 note-wiping regression guard).
+        expect(t1.nose_notes).toBeNull();
+        expect(t1.palate_notes).toBeNull();
+        expect(t1.finish_notes).toBeNull();
         expect(form.approved).toBe(true);
     });
 

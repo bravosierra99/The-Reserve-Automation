@@ -10,10 +10,19 @@
  * EventSource), so the stream is faked with a stub reader that hands back
  * encoded `data: {json}\n\n` chunks — the exact wire format of
  * POST /api/v1/bottles/upload/stream (web/routes/bottles/extraction.py).
+ *
+ * Fixtures: the purchase_source autocomplete and the verify-queue response
+ * are CONTRACT fixtures (captured + snapshot-verified by
+ * tests/contract/test_tastings_contract.py). The SSE events and the task
+ * /status terminal payloads remain HAND-WRITTEN: both are produced by a real
+ * LM Studio extraction/enrichment run and cannot be captured
+ * deterministically — their shapes mirror extraction.py's stream events and
+ * management/core.py verify_single_bottle_background's task_results entries.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadContract } from './helpers/contract.js';
 import '../../src/reserve_automation/web/static/js/components/bottle-editor-modal.js';
 import '../../src/reserve_automation/web/static/js/upload/upload-page.js';
 
@@ -132,14 +141,15 @@ describe('init', () => {
         expect(urls.some((u) => u.startsWith('/api/v1/autocomplete/bottles/'))).toBe(true);
     });
 
-    it('loads purchase_source autocomplete suggestions', async () => {
+    it('loads purchase_source autocomplete suggestions (contract data)', async () => {
+        const sources = loadContract('upload_purchase_source_autocomplete');
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/autocomplete/bottles/purchase_source', jsonResponse(['Total Wine', 'K&L'])],
+            ['/api/v1/autocomplete/bottles/purchase_source', jsonResponse(sources)],
             ['/api/v1/autocomplete/bottles/', jsonResponse([])],
         ]));
         const app = freshApp();
         await app.init();
-        expect(app.acPurchaseSources).toEqual(['Total Wine', 'K&L']);
+        expect(app.acPurchaseSources).toEqual(["Seelbach's", 'Total Wine']);
     });
 
     it('leaves suggestions empty when the autocomplete response is not ok', async () => {
@@ -366,6 +376,11 @@ describe('uploadFile guards and payload', () => {
 
 // ---------------------------------------------------------------------------
 // uploadFile — SSE stream handling
+//
+// HAND-WRITTEN events (not contract-testable): the stream is produced by a
+// real LM Studio extraction. Event shapes mirror extraction.py's
+// {status, message, ...} frames; "complete" carries
+// {upload_id, bottles, is_manifest}.
 // ---------------------------------------------------------------------------
 
 describe('uploadFile stream handling', () => {
@@ -511,10 +526,27 @@ describe('uploadFile stream handling', () => {
 // ---------------------------------------------------------------------------
 
 describe('enrichManifestBottle', () => {
+    // Contract fixture: the verify POST's queued {task_id, status} response.
+    // The task's terminal payload is HAND-WRITTEN (the real one is built by
+    // the LLM enrichment background task); its shape mirrors
+    // verify_single_bottle_background's task_results entry.
+    const VERIFY_RESPONSE = loadContract('upload_verify_response');
+    const TASK_ID = VERIFY_RESPONSE.task_id;
+    const COMPLETE_TASK = {
+        task_id: TASK_ID,
+        original: { producer: 'Weller', name: '12' },
+        updated: { producer: 'Weller', name: '12', region: 'Kentucky' },
+        changes: { region: 'Kentucky' },
+        metadata: { verified: true, changes: { region: 'Kentucky' } },
+        status: 'complete',
+        has_changes: true,
+        completed_at: 1780000000.0,
+    };
+
     it('POSTs the bottle with _fields stripped and numeric empties nulled', async () => {
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/management/bottles/verify', jsonResponse({ task_id: 't-1', status: 'processing' })],
-            ['/api/v1/management/tasks/t-1/status', jsonResponse({ status: 'complete', changes: { region: 'Kentucky' } })],
+            ['/api/v1/management/bottles/verify', jsonResponse(VERIFY_RESPONSE)],
+            [`/api/v1/management/tasks/${TASK_ID}/status`, jsonResponse(COMPLETE_TASK)],
         ]));
         const app = freshApp();
         app.manifestBottles = [{
@@ -536,9 +568,9 @@ describe('enrichManifestBottle', () => {
             },
         });
 
-        expect(app.manifestBottles[0]._taskId).toBe('t-1');
+        expect(app.manifestBottles[0]._taskId).toBe(TASK_ID);
         expect(app.manifestBottles[0]._enrichStatus).toBe('ready');
-        expect(app.manifestBottles[0]._enrichResult).toEqual({ status: 'complete', changes: { region: 'Kentucky' } });
+        expect(app.manifestBottles[0]._enrichResult).toEqual(COMPLETE_TASK);
     });
 
     it('marks the bottle failed when the verify request fails', async () => {
@@ -555,9 +587,11 @@ describe('enrichManifestBottle', () => {
     });
 
     it('marks the bottle failed when the task reports failure', async () => {
+        // Failed terminal payload is also hand-written (error strings are
+        // environment-dependent LLM/enrichment failures).
         vi.stubGlobal('fetch', routeFetch([
-            ['/bottles/verify', jsonResponse({ task_id: 't-2' })],
-            ['/tasks/t-2/status', jsonResponse({ status: 'failed', error: 'LLM timeout' })],
+            ['/bottles/verify', jsonResponse({ ...VERIFY_RESPONSE, task_id: 't-2' })],
+            ['/tasks/t-2/status', jsonResponse({ task_id: 't-2', status: 'failed', error: 'LLM timeout', completed_at: 1780000000.0 })],
         ]));
         const app = freshApp();
         app.manifestBottles = [{ producer: 'X', _enrichStatus: 'enriching' }];

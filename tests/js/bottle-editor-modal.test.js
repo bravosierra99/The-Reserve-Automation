@@ -7,6 +7,18 @@
  * upload page — the ONE-PATH mandate lives here, so mode-dependent behavior
  * (endpoints, payloads, navigation) is what these tests pin down.
  *
+ * API fixtures are NOT hand-written: they are contract fixtures — real
+ * responses captured and snapshot-verified by
+ * tests/contract/test_bottles_contract.py (see tests/contract/contract.py).
+ * Bottles handed to openManagement come from the real
+ * GET /api/v1/bottles/collection payload (that is exactly what the grid
+ * passes in), so real nulls, list-typed variety and numeric age_statement
+ * flow through the component. Hand-written fixtures remain ONLY for:
+ *   - extraction-shaped upload bottles (extraction requires LM Studio),
+ *   - enrichment/verify + task-status responses (background LLM tasks),
+ *   - label search/crop responses (LLM web search + image ops),
+ *   - error responses.
+ *
  * window.cropperManager is mocked wholesale: Cropper.js lifecycle is
  * unit-tested in tests/js/cropper-manager.test.js; here we only assert the
  * modal drives it with the right endpoints and payloads.
@@ -14,32 +26,36 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadContract } from './helpers/contract.js';
 // base-page.js provides window.modalScrollLock (shared body-scroll lock)
 import '../../src/reserve_automation/web/static/js/components/base-page.js';
 import '../../src/reserve_automation/web/static/js/components/bottle-editor-modal.js';
 
-const WINE_BOTTLE = {
-    id: 'b42',
-    type: 'wine',
-    producer: 'Chateau Test',
-    name: 'Grand Cru',
-    year: 2019,
-    beverage_type: 'red wine',
-    country: 'France',
-    region: 'Bordeaux',
-    variety: 'Merlot',
-    price: 45,
-};
+// Fresh clones of real collection bottles (management mode receives exactly
+// these objects from the grid).
+function collectionBottle(id) {
+    return loadContract('bottles_collection').bottles.find(b => b.id === id);
+}
+const whiskeyBottle = () => collectionBottle('1'); // Buffalo Trace - Eagle Rare 10 Year (has notes)
+const wineBottle = () => collectionBottle('3');    // Caymus - Special Selection Cabernet
 
-const WHISKEY_BOTTLE = {
-    id: 'b7',
+const WHISKEY_NOTES = 'Great in an Old Fashioned; decant 10 min';
+
+// HAND-WRITTEN (labeled): what the upload page hands the modal — extraction
+// output, which cannot be contract-captured without LM Studio. Field set
+// mirrors tests/contract/test_bottles_contract.py NEAR_DUPLICATE_BOTTLE,
+// which is also the payload that produced the duplicate fixtures below.
+const UPLOAD_BOTTLE = {
     type: 'whiskey',
-    producer: 'Test Distillery',
-    name: 'Single Barrel',
-    year: 2015,
-    beverage_type: 'bourbon',
-    proof: 110,
-    age_statement: '8 years',
+    producer: 'Buffalo Trace',
+    name: 'Eagle Rare 10',
+    year: 2018,
+    beverage_type: 'Bourbon',
+    region: 'Kentucky',
+    proof: null,
+    price: null,
+    source: 'image',
+    confidence: 0.85,
 };
 
 /** Build a fetch Response-like object. */
@@ -96,29 +112,36 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('openManagement', () => {
-    it('enters management mode with a copy of the bottle and loads the tasting summary', async () => {
+    it('enters management mode with a copy of the bottle and loads the tasting summary (contract data)', async () => {
         const m = freshModal();
+        const bottle = whiskeyBottle();
         global.fetch = routeFetch([
-            ['/api/v1/bottles/tastings-summary', jsonResponse({ tasting_count: 3, avg_score: 8.1 })],
+            ['/api/v1/bottles/tastings-summary', jsonResponse(loadContract('bottles_tastings_summary'))],
         ]);
 
-        await m.openManagement(WINE_BOTTLE);
+        await m.openManagement(bottle);
 
         expect(m.mode).toBe('management');
         expect(m.readOnly).toBe(false);
         expect(m.isOpen).toBe(true);
-        expect(m.bottleId).toBe('b42');
+        expect(m.bottleId).toBe('1');
         expect(m.uploadId).toBeNull();
         expect(m.manifestContext).toBeNull();
-        expect(m.tastingSummary).toEqual({ tasting_count: 3, avg_score: 8.1 });
+        expect(m.tastingSummary).toEqual({
+            tasting_count: 2,
+            avg_score: 7.5,
+            latest_date: '2026-07-04',
+            tasters: ['Ben', 'Sarah'],
+            max_score: 10,
+        });
         // Copy, not a reference — edits must not mutate the grid's object
-        expect(m.bottle).not.toBe(WINE_BOTTLE);
-        expect(m.bottle).toEqual(WINE_BOTTLE);
+        expect(m.bottle).not.toBe(bottle);
+        expect(m.bottle).toEqual(bottle);
     });
 
     it('honors readOnly for non-admin users', async () => {
         const m = freshModal();
-        await m.openManagement(WINE_BOTTLE, true);
+        await m.openManagement(wineBottle(), true);
         expect(m.readOnly).toBe(true);
     });
 });
@@ -126,11 +149,14 @@ describe('openManagement', () => {
 describe('openUpload', () => {
     it('enters upload mode and auto-checks duplicates without blocking open', async () => {
         const m = freshModal();
+        const noDupes = loadContract('bottles_check_duplicates_response');
+        noDupes.duplicates = [];
+        noDupes.count = 0;
         global.fetch = routeFetch([
-            ['/api/v1/bottles/check-duplicates', jsonResponse({ duplicates: [] })],
+            ['/api/v1/bottles/check-duplicates', jsonResponse(noDupes)],
         ]);
 
-        await m.openUpload(WHISKEY_BOTTLE, 'up-123');
+        await m.openUpload(UPLOAD_BOTTLE, 'up-123');
         // Let the fire-and-forget duplicate check settle
         await vi.waitFor(() => expect(m.saving).toBe(false));
 
@@ -149,52 +175,75 @@ describe('openUpload', () => {
         global.fetch = routeFetch([
             ['/api/v1/bottles/check-duplicates', jsonResponse({ duplicates: [] })],
         ]);
+        // HAND-WRITTEN (labeled): enrichment results come from the LLM
+        // verify task, which cannot run without LM Studio.
         const enrich = { changes: { region: { old: '', new: 'Kentucky' } } };
 
-        await m.openUpload(WHISKEY_BOTTLE, 'up-123', null, enrich);
+        await m.openUpload(UPLOAD_BOTTLE, 'up-123', null, enrich);
         await vi.waitFor(() => expect(m.saving).toBe(false));
 
         expect(m.searchResult).toBe(enrich);
         expect(m.hasChanges).toBe(true);
     });
 
-    it('pre-selects save_new when the auto duplicate check finds matches', async () => {
+    it('pre-selects save_new when the auto duplicate check finds matches (contract data)', async () => {
         const m = freshModal();
         global.fetch = routeFetch([
-            ['/api/v1/bottles/check-duplicates', jsonResponse({ duplicates: [{ id: 'b1', score: 0.9 }] })],
+            ['/api/v1/bottles/check-duplicates',
+                jsonResponse(loadContract('bottles_check_duplicates_response'))],
         ]);
 
-        await m.openUpload(WHISKEY_BOTTLE, 'up-123');
+        await m.openUpload(UPLOAD_BOTTLE, 'up-123');
         await vi.waitFor(() => expect(m.duplicates.length).toBe(1));
 
         expect(m.duplicateAction).toBe('save_new');
+        // The duplicate card renders these fields (id, confidence, reason)
+        expect(m.duplicates[0].id).toBe('1');
+        expect(m.duplicates[0].confidence).toBe(0.93);
+        expect(m.duplicates[0].reason).toContain('Same producer');
     });
 });
 
 describe('initializeEditableBottle', () => {
-    it('exposes wine-specific fields for wine bottles', () => {
+    it('exposes wine-specific fields for wine bottles (contract data)', () => {
         const m = freshModal();
-        m.bottle = { ...WINE_BOTTLE };
+        m.bottle = wineBottle();
         m.initializeEditableBottle();
 
-        expect(m.editableBottle.country).toBe('France');
-        expect(m.editableBottle.variety).toBe('Merlot');
+        expect(m.editableBottle.country).toBe('USA');
+        // The real API sends variety as a LIST — it flows into the editable
+        // form state unchanged (the text input renders it comma-joined).
+        expect(m.editableBottle.variety).toEqual(['Cabernet Sauvignon', 'Merlot']);
         expect(m.editableBottle).not.toHaveProperty('proof');
         expect(m.editableBottle).not.toHaveProperty('mash_bill');
     });
 
-    it('exposes whiskey-specific fields for non-wine bottles', () => {
+    it('exposes whiskey-specific fields for non-wine bottles (contract data)', () => {
         const m = freshModal();
-        m.bottle = { ...WHISKEY_BOTTLE };
+        m.bottle = whiskeyBottle();
         m.initializeEditableBottle();
 
-        expect(m.editableBottle.proof).toBe(110);
-        expect(m.editableBottle.age_statement).toBe('8 years');
+        expect(m.editableBottle.proof).toBe(90.0);
+        // age_statement is numeric in the real API (years), not a string
+        expect(m.editableBottle.age_statement).toBe(10);
+        expect(m.editableBottle.barrel_type).toBe('New Charred Oak');
         expect(m.editableBottle).not.toHaveProperty('country');
         expect(m.editableBottle).not.toHaveProperty('vineyard');
     });
 
+    it('maps real API nulls to empty strings so inputs bind cleanly (contract minimal bottle)', () => {
+        const m = freshModal();
+        m.bottle = collectionBottle('2'); // Willett — every optional field null
+        m.initializeEditableBottle();
+
+        expect(m.editableBottle.year).toBe('');
+        expect(m.editableBottle.price).toBe('');
+        expect(m.editableBottle.proof).toBe('');
+        expect(m.editableBottle.region).toBe('');
+    });
+
     it('defaults missing fields to empty strings so inputs bind cleanly', () => {
+        // Synthetic edge case: a bottle object with no fields at all.
         const m = freshModal();
         m.bottle = { type: 'whiskey' };
         m.initializeEditableBottle();
@@ -209,8 +258,8 @@ describe('close', () => {
     it('closes immediately and clears bottle state after the animation delay', async () => {
         vi.useFakeTimers();
         const m = freshModal();
-        m.bottle = { ...WINE_BOTTLE };
-        m.bottleId = 'b42';
+        m.bottle = wineBottle();
+        m.bottleId = '3';
         m.isOpen = true;
         m.mode = 'management';
 
@@ -241,10 +290,10 @@ describe('body scroll lock', () => {
     it('locks page scroll on openManagement and releases it on close', async () => {
         const m = freshModal();
         global.fetch = routeFetch([
-            ['/api/v1/bottles/tastings-summary', jsonResponse({ tasting_count: 0 })],
+            ['/api/v1/bottles/tastings-summary', jsonResponse(loadContract('bottles_tastings_summary'))],
         ]);
 
-        await m.openManagement(WINE_BOTTLE);
+        await m.openManagement(wineBottle());
         expect(document.body.style.overflow).toBe('hidden');
 
         m.close();
@@ -257,7 +306,7 @@ describe('body scroll lock', () => {
             ['/api/v1/bottles/check-duplicates', jsonResponse({ duplicates: [] })],
         ]);
 
-        await m.openUpload(WHISKEY_BOTTLE, 'up-123');
+        await m.openUpload(UPLOAD_BOTTLE, 'up-123');
         expect(document.body.style.overflow).toBe('hidden');
 
         m.close();
@@ -268,21 +317,21 @@ describe('body scroll lock', () => {
 describe('startTasting', () => {
     it('stashes a preselect payload and navigates to the manual tasting page', () => {
         const m = freshModal();
-        m.bottle = { ...WINE_BOTTLE };
-        m.savedBottleId = 'b99';
+        m.bottle = wineBottle();
+        m.savedBottleId = loadContract('bottles_save_response').id;
 
         m.startTasting();
 
         const preselect = JSON.parse(sessionStorage.getItem('preselect_bottle'));
-        expect(preselect.bottle_path).toBe('b99');
-        expect(preselect.bottle_name).toBe('Chateau Test - Grand Cru');
+        expect(preselect.bottle_path).toBe('5');
+        expect(preselect.bottle_name).toBe('Caymus Vineyards - Special Selection Cabernet');
         expect(preselect.beverage_type).toBe('wine');
         expect(location.href).toBe('/manual-tasting');
     });
 
     it('does nothing without a saved bottle id', () => {
         const m = freshModal();
-        m.bottle = { ...WINE_BOTTLE };
+        m.bottle = wineBottle();
         m.savedBottleId = null;
         m.startTasting();
         expect(sessionStorage.getItem('preselect_bottle')).toBeNull();
@@ -304,24 +353,26 @@ describe('saveManagement', () => {
         global.fetch = routeFetch([
             ['/api/v1/management/bottles/update-fields', (url, opts) => {
                 sentBody = JSON.parse(opts.body);
-                return jsonResponse({ status: 'ok' });
+                return jsonResponse(loadContract('bottles_update_fields_response'));
             }],
         ]);
         m.mode = 'management';
-        m.bottle = { ...WINE_BOTTLE };
+        m.bottle = whiskeyBottle();
         m.initializeEditableBottle();
         m.editableBottle.price = '';
         m.editableBottle.year = '';
-        m.editableBottle.region = 'Right Bank';
+        m.editableBottle.barrel_type = 'Toasted Oak';
 
         await m.save(); // dispatches to saveManagement
 
-        expect(sentBody.updates.region).toBe('Right Bank');
+        expect(sentBody.updates.barrel_type).toBe('Toasted Oak');
         expect(sentBody.updates.price).toBe('');   // server-side clean_bottle_data nulls these
-        expect(sentBody.bottle.id).toBe('b42');    // identity for the lookup
+        expect(sentBody.bottle.id).toBe('1');      // identity for the lookup
         expect(sentBody.bottle.price).toBeNull();
         expect(sentBody.bottle.year).toBeNull();
-        // Notes are owned by saveNotes(), never by the field editor
+        // Notes are owned by saveNotes(), never by the field editor —
+        // the contract bottle HAS notes, and they must not appear in updates
+        expect(sentBody.bottle.notes).toBe(WHISKEY_NOTES);
         expect(sentBody.updates.notes).toBeUndefined();
         expect(m.saveSuccess).toBe(true);
         expect(m.saving).toBe(false);
@@ -331,10 +382,11 @@ describe('saveManagement', () => {
         vi.useFakeTimers();
         const m = freshModal();
         global.fetch = routeFetch([
-            ['/api/v1/management/bottles/update-fields', jsonResponse({ status: 'ok' })],
+            ['/api/v1/management/bottles/update-fields',
+                jsonResponse(loadContract('bottles_update_fields_response'))],
         ]);
         m.mode = 'management';
-        m.bottle = { ...WINE_BOTTLE };
+        m.bottle = whiskeyBottle();
         m.initializeEditableBottle();
 
         await m.saveManagement();
@@ -350,7 +402,7 @@ describe('saveManagement', () => {
             ['/api/v1/management/bottles/update-fields', jsonResponse({}, { ok: false, status: 500 })],
         ]);
         m.mode = 'management';
-        m.bottle = { ...WINE_BOTTLE };
+        m.bottle = whiskeyBottle();
         m.isOpen = true;
         m.initializeEditableBottle();
 
@@ -370,44 +422,46 @@ describe('saveManagement', () => {
 // ---------------------------------------------------------------------------
 
 describe('bottle notes', () => {
-    it('initializes the draft from the bottle on openManagement and loads notes permission', async () => {
+    it('initializes the draft from the bottle on openManagement and loads notes permission (contract data)', async () => {
         const m = freshModal();
         global.fetch = routeFetch([
-            ['/api/v1/me', jsonResponse({ permissions: { bottles_notes_edit: true } })],
+            ['/api/v1/me', jsonResponse(loadContract('me'))],
         ]);
 
-        await m.openManagement({ ...WINE_BOTTLE, notes: 'decant a day' }, true);
+        // The contract whiskey bottle carries real shared notes
+        await m.openManagement(whiskeyBottle(), true);
         await vi.waitFor(() => expect(m.canEditNotes).toBe(true));
 
-        expect(m.notesDraft).toBe('decant a day');
+        expect(m.notesDraft).toBe(WHISKEY_NOTES);
     });
 
-    it('initializes an empty draft when the bottle has no notes', async () => {
+    it('initializes an empty draft when the bottle has no notes (contract null)', async () => {
         const m = freshModal();
-        await m.openManagement(WINE_BOTTLE);
+        await m.openManagement(wineBottle());
         expect(m.notesDraft).toBe('');
     });
 
-    it('saveNotes PUTs to the notes endpoint and syncs modal + grid copies', async () => {
+    it('saveNotes PUTs to the notes endpoint and syncs modal + grid copies (contract data)', async () => {
         const m = freshModal();
-        const gridBottle = { ...WINE_BOTTLE, notes: null };
+        const gridBottle = whiskeyBottle();
+        gridBottle.notes = null; // grid copy is stale — no notes yet
         let sentBody = null;
         global.fetch = routeFetch([
-            ['/api/v1/bottles/b42/notes', (url, opts) => {
+            ['/api/v1/bottles/1/notes', (url, opts) => {
                 expect(opts.method).toBe('PUT');
                 sentBody = JSON.parse(opts.body);
-                return jsonResponse({ status: 'success', notes: 'great in an Old Fashioned' });
+                return jsonResponse(loadContract('bottles_notes_response'));
             }],
         ]);
         await m.openManagement(gridBottle);
-        m.notesDraft = 'great in an Old Fashioned';
+        m.notesDraft = WHISKEY_NOTES;
 
         await m.saveNotes();
 
-        expect(sentBody).toEqual({ notes: 'great in an Old Fashioned' });
-        expect(m.bottle.notes).toBe('great in an Old Fashioned');
+        expect(sentBody).toEqual({ notes: WHISKEY_NOTES });
+        expect(m.bottle.notes).toBe(WHISKEY_NOTES);
         // Grid's object updated in place so reopening shows fresh notes
-        expect(gridBottle.notes).toBe('great in an Old Fashioned');
+        expect(gridBottle.notes).toBe(WHISKEY_NOTES);
         expect(m.notesSaving).toBe(false);
         expect(document.body.textContent).toContain('Notes saved');
     });
@@ -417,7 +471,7 @@ describe('bottle notes', () => {
         global.fetch = routeFetch([
             ['/notes', jsonResponse({}, { ok: false, status: 500 })],
         ]);
-        await m.openManagement({ ...WINE_BOTTLE });
+        await m.openManagement(whiskeyBottle());
         m.notesDraft = 'unsaved text';
 
         await m.saveNotes();
@@ -451,7 +505,7 @@ describe('bottle notes', () => {
 // ---------------------------------------------------------------------------
 
 describe('saveUpload', () => {
-    function uploadModal(bottle = WHISKEY_BOTTLE) {
+    function uploadModal(bottle = UPLOAD_BOTTLE) {
         const m = freshModal();
         m.mode = 'upload';
         m.bottle = { ...bottle };
@@ -460,13 +514,13 @@ describe('saveUpload', () => {
         return m;
     }
 
-    it('saves and exposes post-save actions for a single-bottle upload', async () => {
+    it('saves and exposes post-save actions for a single-bottle upload (contract response)', async () => {
         const m = uploadModal();
         let sentBody = null;
         global.fetch = routeFetch([
             ['/api/v1/bottles/save', (url, opts) => {
                 sentBody = JSON.parse(opts.body);
-                return jsonResponse({ status: 'saved', id: 'b-new' });
+                return jsonResponse(loadContract('bottles_save_response'));
             }],
         ]);
 
@@ -475,7 +529,8 @@ describe('saveUpload', () => {
         expect(sentBody.upload_id).toBe('up-1');
         expect(sentBody.force_save).toBe(false);
         expect(sentBody.replace_bottle_id).toBeNull();
-        expect(m.savedBottleId).toBe('b-new');
+        // Real API returns status "success" and a stringified integer id
+        expect(m.savedBottleId).toBe('5');
         expect(m.saving).toBe(false);
     });
 
@@ -485,7 +540,7 @@ describe('saveUpload', () => {
         global.fetch = routeFetch([
             ['/api/v1/bottles/save', (url, opts) => {
                 sentBody = JSON.parse(opts.body);
-                return jsonResponse({ status: 'saved', id: 'b-new' });
+                return jsonResponse(loadContract('bottles_save_response'));
             }],
         ]);
         m.notesDraft = '  drink on hot days  ';
@@ -498,19 +553,19 @@ describe('saveUpload', () => {
         expect(sentBody.bottle.notes).toBeNull();
     });
 
-    it('shows the duplicate dialog with save_new pre-selected when the backend flags duplicates', async () => {
+    it('shows the duplicate dialog with save_new pre-selected when the backend flags duplicates (contract response)', async () => {
         const m = uploadModal();
         global.fetch = routeFetch([
-            ['/api/v1/bottles/save', jsonResponse({
-                status: 'duplicate_found',
-                duplicates: [{ id: 'b1', score: 0.8 }],
-            })],
+            ['/api/v1/bottles/save', jsonResponse(loadContract('bottles_save_duplicate_response'))],
         ]);
 
         await m.saveUpload();
 
         expect(m.showDuplicateDialog).toBe(true);
         expect(m.duplicates).toHaveLength(1);
+        expect(m.duplicates[0]).toMatchObject({
+            id: '1', producer: 'Buffalo Trace', confidence: 0.93,
+        });
         expect(m.duplicateAction).toBe('save_new');
         expect(m.saving).toBe(false);
         expect(m.savedBottleId).toBeNull();
@@ -522,10 +577,10 @@ describe('saveUpload', () => {
         global.fetch = routeFetch([
             ['/api/v1/bottles/save', (url, opts) => {
                 sentBody = JSON.parse(opts.body);
-                return jsonResponse({ status: 'saved', id: 'b-new' });
+                return jsonResponse(loadContract('bottles_save_response'));
             }],
         ]);
-        m.duplicates = [{ id: 'b1' }];
+        m.duplicates = loadContract('bottles_save_duplicate_response').duplicates;
         m.duplicateAction = 'save_new';
 
         await m.saveUpload();
@@ -539,22 +594,22 @@ describe('saveUpload', () => {
         global.fetch = routeFetch([
             ['/api/v1/bottles/save', (url, opts) => {
                 sentBody = JSON.parse(opts.body);
-                return jsonResponse({ status: 'saved', id: 'b1' });
+                return jsonResponse({ ...loadContract('bottles_save_response'), id: '1' });
             }],
         ]);
-        m.duplicates = [{ id: 'b1' }];
+        m.duplicates = loadContract('bottles_save_duplicate_response').duplicates;
         m.duplicateAction = 'replace';
-        m.selectedDuplicate = 'b1';
+        m.selectedDuplicate = '1';
 
         await m.saveUpload();
         expect(sentBody.force_save).toBe(false);
-        expect(sentBody.replace_bottle_id).toBe('b1');
+        expect(sentBody.replace_bottle_id).toBe('1');
     });
 
     it('skip with duplicates closes without saving and fires the skip callback', async () => {
         const m = uploadModal();
         const onSkip = vi.fn();
-        m.duplicates = [{ id: 'b1' }];
+        m.duplicates = loadContract('bottles_save_duplicate_response').duplicates;
         m.duplicateAction = 'skip';
         m._onSkipCallback = onSkip;
         m.isOpen = true;
@@ -567,7 +622,7 @@ describe('saveUpload', () => {
     });
 
     it('refuses to save a bottle without a type field', async () => {
-        const m = uploadModal({ ...WHISKEY_BOTTLE, type: undefined });
+        const m = uploadModal({ ...UPLOAD_BOTTLE, type: undefined });
         await m.saveUpload();
         expect(document.body.textContent).toContain('Missing bottle type');
         expect(m.saving).toBe(false);
@@ -577,7 +632,7 @@ describe('saveUpload', () => {
         const m = uploadModal();
         const onSave = vi.fn();
         global.fetch = routeFetch([
-            ['/api/v1/bottles/save', jsonResponse({ status: 'saved', id: 'b-new' })],
+            ['/api/v1/bottles/save', jsonResponse(loadContract('bottles_save_response'))],
         ]);
         m._onSaveCallback = onSave;
 
@@ -590,12 +645,15 @@ describe('saveUpload', () => {
 
     it('advances to the next manifest bottle after saving in manifest mode', async () => {
         const m = uploadModal();
+        const noDupes = loadContract('bottles_check_duplicates_response');
+        noDupes.duplicates = [];
+        noDupes.count = 0;
         global.fetch = routeFetch([
-            ['/api/v1/bottles/save', jsonResponse({ status: 'saved', id: 'b-new' })],
-            ['/api/v1/bottles/check-duplicates', jsonResponse({ duplicates: [] })],
+            ['/api/v1/bottles/save', jsonResponse(loadContract('bottles_save_response'))],
+            ['/api/v1/bottles/check-duplicates', jsonResponse(noDupes)],
         ]);
-        const second = { ...WINE_BOTTLE, name: 'Second' };
-        m.manifestContext = { bottles: [{ ...WHISKEY_BOTTLE }, second], currentIndex: 0 };
+        const second = { ...UPLOAD_BOTTLE, name: 'Second' };
+        m.manifestContext = { bottles: [{ ...UPLOAD_BOTTLE }, second], currentIndex: 0 };
 
         await m.saveUpload();
 
@@ -620,10 +678,10 @@ describe('handleDuplicateResolution', () => {
     function dialogModal() {
         const m = freshModal();
         m.mode = 'upload';
-        m.bottle = { ...WHISKEY_BOTTLE };
+        m.bottle = { ...UPLOAD_BOTTLE };
         m.uploadId = 'up-1';
         m.initializeEditableBottle();
-        m.duplicates = [{ id: 'b1' }];
+        m.duplicates = loadContract('bottles_save_duplicate_response').duplicates;
         m.showDuplicateDialog = true;
         m.isOpen = true;
         return m;
@@ -643,7 +701,7 @@ describe('handleDuplicateResolution', () => {
         global.fetch = routeFetch([
             ['/api/v1/bottles/save', (url, opts) => {
                 sentBody = JSON.parse(opts.body);
-                return jsonResponse({ status: 'saved', id: 'b-new' });
+                return jsonResponse(loadContract('bottles_save_response'));
             }],
         ]);
 
@@ -661,14 +719,14 @@ describe('handleDuplicateResolution', () => {
         global.fetch = routeFetch([
             ['/api/v1/bottles/save', (url, opts) => {
                 sentBody = JSON.parse(opts.body);
-                return jsonResponse({ status: 'saved', id: 'b1' });
+                return jsonResponse({ ...loadContract('bottles_save_response'), id: '1' });
             }],
         ]);
 
-        await m.handleDuplicateResolution('replace', 'b1');
+        await m.handleDuplicateResolution('replace', '1');
 
         expect(sentBody.force_save).toBe(false);
-        expect(sentBody.replace_bottle_id).toBe('b1');
+        expect(sentBody.replace_bottle_id).toBe('1');
     });
 
     it('keeps the dialog open and alerts on save failure', async () => {
@@ -685,26 +743,27 @@ describe('handleDuplicateResolution', () => {
 });
 
 describe('manualCheckDuplicates', () => {
-    it('stores duplicates inline and pre-selects the safe default', async () => {
+    it('stores duplicates inline and pre-selects the safe default (contract data)', async () => {
         const m = freshModal();
-        m.bottle = { ...WHISKEY_BOTTLE };
+        m.bottle = { ...UPLOAD_BOTTLE };
         m.initializeEditableBottle();
         global.fetch = routeFetch([
-            ['/api/v1/bottles/check-duplicates', jsonResponse({ duplicates: [{ id: 'b1' }, { id: 'b2' }] })],
+            ['/api/v1/bottles/check-duplicates',
+                jsonResponse(loadContract('bottles_check_duplicates_response'))],
         ]);
 
         await m.manualCheckDuplicates();
 
-        expect(m.duplicates).toHaveLength(2);
+        expect(m.duplicates).toEqual(loadContract('bottles_check_duplicates_response').duplicates);
         expect(m.duplicateAction).toBe('save_new');
         expect(m.showDuplicateDialog).toBe(false); // inline panel, not dialog
     });
 
     it('clears duplicates when the check fails rather than showing stale results', async () => {
         const m = freshModal();
-        m.bottle = { ...WHISKEY_BOTTLE };
+        m.bottle = { ...UPLOAD_BOTTLE };
         m.initializeEditableBottle();
-        m.duplicates = [{ id: 'stale' }];
+        m.duplicates = loadContract('bottles_check_duplicates_response').duplicates;
         global.fetch = routeFetch([
             ['/api/v1/bottles/check-duplicates', jsonResponse({}, { ok: false, status: 500 })],
         ]);
@@ -715,24 +774,22 @@ describe('manualCheckDuplicates', () => {
 });
 
 describe('manualMatchSearch', () => {
-    it('searches the whole collection and surfaces same-type bottles first', async () => {
+    it('searches the whole collection and surfaces same-type bottles first (contract data)', async () => {
         const m = freshModal();
-        m.bottle = { ...WHISKEY_BOTTLE };
+        m.bottle = { ...UPLOAD_BOTTLE };   // whiskey
         global.fetch = routeFetch([
-            ['/api/v1/management/bottles/search', jsonResponse({
-                bottles: [
-                    { id: 'w1', type: 'wine' },
-                    { id: 'k1', type: 'whiskey' },
-                    { id: 'w2', type: 'wine' },
-                ],
-            })],
+            // Real response order is by producer: Cloudy Bay (wine) first,
+            // Willett (whiskey) second — the modal must re-sort by type.
+            ['/api/v1/management/bottles/search',
+                jsonResponse(loadContract('bottles_management_search'))],
         ]);
-        m.manualMatchQuery = 'single barrel';
+        m.manualMatchQuery = 'reserve';
 
         await m.manualMatchSearch();
 
         expect(m.manualMatchResults[0].type).toBe('whiskey');
-        expect(m.manualMatchResults).toHaveLength(3); // keeps all — explicit override
+        expect(m.manualMatchResults[0].producer).toBe('Willett');
+        expect(m.manualMatchResults).toHaveLength(2); // keeps all — explicit override
         expect(m.manualMatchSearching).toBe(false);
     });
 
@@ -749,7 +806,7 @@ describe('manualMatchSearch', () => {
 
     it('URL-encodes the query', async () => {
         const m = freshModal();
-        m.bottle = { ...WHISKEY_BOTTLE };
+        m.bottle = { ...UPLOAD_BOTTLE };
         global.fetch = routeFetch([
             ['/api/v1/management/bottles/search', jsonResponse({ bottles: [] })],
         ]);
@@ -764,7 +821,7 @@ describe('manualMatchSearch', () => {
 
     it('empties results on search failure', async () => {
         const m = freshModal();
-        m.bottle = { ...WHISKEY_BOTTLE };
+        m.bottle = { ...UPLOAD_BOTTLE };
         global.fetch = routeFetch([
             ['/api/v1/management/bottles/search', jsonResponse({}, { ok: false, status: 500 })],
         ]);
@@ -786,11 +843,11 @@ describe('manifest navigation', () => {
         const m = freshModal();
         m.mode = 'upload';
         m.uploadId = 'up-1';
-        m.bottle = { ...WHISKEY_BOTTLE };
+        m.bottle = { ...UPLOAD_BOTTLE };
         m.manifestContext = {
             bottles: [
-                { ...WHISKEY_BOTTLE, name: 'First' },
-                { ...WINE_BOTTLE, name: 'Second' },
+                { ...UPLOAD_BOTTLE, name: 'First' },
+                { ...UPLOAD_BOTTLE, type: 'wine', name: 'Second' },
             ],
             currentIndex: 0,
         };
@@ -838,19 +895,24 @@ describe('manifest navigation', () => {
 
 // ---------------------------------------------------------------------------
 // Enrichment / verification
+//
+// HAND-WRITTEN fixtures (labeled): /api/v1/management/bottles/verify runs a
+// background LLM web-search task and /api/v1/management/tasks/{id}/status
+// reports it — neither can be exercised without LM Studio, so these shapes
+// cannot be contract-captured (see tests/contract/test_bottles_contract.py).
 // ---------------------------------------------------------------------------
 
 describe('enrichMetadata', () => {
     it('starts the async task, polls, and exposes changes', async () => {
         const m = freshModal();
-        m.bottle = { ...WINE_BOTTLE };
+        m.bottle = wineBottle();
         m.initializeEditableBottle();
         global.fetch = routeFetch([
-            ['/api/v1/management/bottles/verify', jsonResponse({ task_id: 't-1' })],
+            ['/api/v1/management/bottles/verify', jsonResponse({ task_id: 't-1', status: 'queued' })],
         ]);
         m.pollTaskStatus = vi.fn(async () => ({
             status: 'complete',
-            changes: { region: { old: 'Bordeaux', new: 'Pomerol' } },
+            changes: { region: { old: 'Napa Valley', new: 'Rutherford' } },
             metadata: { verified: true },
         }));
 
@@ -858,17 +920,17 @@ describe('enrichMetadata', () => {
 
         expect(m.pollTaskStatus).toHaveBeenCalledWith('t-1');
         expect(m.hasChanges).toBe(true);
-        expect(m.searchResult.changes.region.new).toBe('Pomerol');
+        expect(m.searchResult.changes.region.new).toBe('Rutherford');
         expect(m.verifying).toBe(false);
         expect(m.verifyingTaskId).toBeNull();
     });
 
     it('treats verified:false results as failures', async () => {
         const m = freshModal();
-        m.bottle = { ...WINE_BOTTLE };
+        m.bottle = wineBottle();
         m.initializeEditableBottle();
         global.fetch = routeFetch([
-            ['/api/v1/management/bottles/verify', jsonResponse({ task_id: 't-1' })],
+            ['/api/v1/management/bottles/verify', jsonResponse({ task_id: 't-1', status: 'queued' })],
         ]);
         m.pollTaskStatus = vi.fn(async () => ({
             status: 'complete',
@@ -884,7 +946,7 @@ describe('enrichMetadata', () => {
 
     it('reports a failure to start verification', async () => {
         const m = freshModal();
-        m.bottle = { ...WINE_BOTTLE };
+        m.bottle = wineBottle();
         m.initializeEditableBottle();
         global.fetch = routeFetch([
             ['/api/v1/management/bottles/verify', jsonResponse({ error: 'LLM offline' }, { ok: false, status: 503 })],
@@ -966,13 +1028,15 @@ describe('pollTaskStatus', () => {
 });
 
 describe('applying enrichment changes', () => {
+    // HAND-WRITTEN searchResult (labeled): shape produced by the LLM verify
+    // task — not contract-capturable without LM Studio.
     function enrichedModal() {
         const m = freshModal();
-        m.bottle = { ...WINE_BOTTLE };
+        m.bottle = wineBottle();
         m.initializeEditableBottle();
         m.searchResult = {
             changes: {
-                region: { old: 'Bordeaux', new: 'Pomerol' },
+                region: { old: 'Napa Valley', new: 'Rutherford' },
                 abv: { old: '', new: '13.5' },
             },
         };
@@ -986,15 +1050,15 @@ describe('applying enrichment changes', () => {
 
         m.applySelectedChanges();
 
-        expect(m.editableBottle.region).toBe('Pomerol');
-        expect(m.editableBottle.abv).toBe(''); // not approved
+        expect(m.editableBottle.region).toBe('Rutherford');
+        expect(m.editableBottle.abv).toBe(14.8); // not approved — keeps contract value
         expect(m.searchResult).toBeNull();
     });
 
     it('applyAllChanges applies every suggested field', () => {
         const m = enrichedModal();
         m.applyAllChanges();
-        expect(m.editableBottle.region).toBe('Pomerol');
+        expect(m.editableBottle.region).toBe('Rutherford');
         expect(m.editableBottle.abv).toBe('13.5');
         expect(m.searchResult).toBeNull();
     });
@@ -1002,7 +1066,7 @@ describe('applying enrichment changes', () => {
     it('cancelChanges discards suggestions without touching the form', () => {
         const m = enrichedModal();
         m.cancelChanges();
-        expect(m.editableBottle.region).toBe('Bordeaux');
+        expect(m.editableBottle.region).toBe('Napa Valley');
         expect(m.searchResult).toBeNull();
         expect(m.hasChanges).toBe(false);
     });
@@ -1013,27 +1077,37 @@ describe('applying enrichment changes', () => {
 // ---------------------------------------------------------------------------
 
 describe('tastings panel', () => {
-    it('loadTastingsList populates the list', async () => {
+    it('loadTastingsList populates the list (contract data, newest first)', async () => {
         const m = freshModal();
-        m.bottleId = 'b42';
-        m.bottle = { ...WINE_BOTTLE };
+        m.bottleId = '1';
+        m.bottle = whiskeyBottle();
         global.fetch = routeFetch([
-            ['/api/v1/bottles/tastings-list', jsonResponse({ tastings: [{ id: 1 }, { id: 2 }] })],
+            ['/api/v1/bottles/tastings-list', jsonResponse(loadContract('bottles_tastings_list'))],
         ]);
 
         await m.loadTastingsList();
 
         expect(m.tastingsList).toHaveLength(2);
+        // Sorted by date descending — the panel renders these exact fields
+        expect(m.tastingsList[0]).toMatchObject({
+            date: '2026-07-04', taster: 'Sarah', total_score: 6.5, max_score: 10,
+        });
+        expect(m.tastingsList[1]).toMatchObject({
+            date: '2026-07-01', taster: 'Ben', total_score: 8.5,
+        });
+        expect(m.tastingsList[1].scores).toEqual({
+            nose: 2.5, palate: 3.0, finish: 2.0, overall: 1.0,
+        });
         expect(m.loadingTastings).toBe(false);
     });
 
     it('toggleTastingsList lazily loads tastings only when there are some to show', async () => {
         const m = freshModal();
-        m.bottleId = 'b42';
-        m.bottle = { ...WINE_BOTTLE };
-        m.tastingSummary = { tasting_count: 2 };
+        m.bottleId = '1';
+        m.bottle = whiskeyBottle();
+        m.tastingSummary = loadContract('bottles_tastings_summary'); // tasting_count 2
         global.fetch = routeFetch([
-            ['/api/v1/bottles/tastings-list', jsonResponse({ tastings: [{ id: 1 }, { id: 2 }] })],
+            ['/api/v1/bottles/tastings-list', jsonResponse(loadContract('bottles_tastings_list'))],
         ]);
 
         await m.toggleTastingsList();
@@ -1041,7 +1115,7 @@ describe('tastings panel', () => {
         expect(m.tastingsList).toHaveLength(2);
 
         // Collapsing clears the detail selection
-        m.selectedTasting = { id: 1 };
+        m.selectedTasting = m.tastingsList[0];
         await m.toggleTastingsList();
         expect(m.showTastingsList).toBe(false);
         expect(m.selectedTasting).toBeNull();
@@ -1049,8 +1123,10 @@ describe('tastings panel', () => {
 
     it('toggleTastingsList skips the fetch when the bottle has no tastings', async () => {
         const m = freshModal();
-        m.bottleId = 'b42';
-        m.tastingSummary = { tasting_count: 0 };
+        m.bottleId = '3';
+        const summary = loadContract('bottles_tastings_summary');
+        summary.tasting_count = 0;
+        m.tastingSummary = summary;
 
         await m.toggleTastingsList();
 
@@ -1060,15 +1136,17 @@ describe('tastings panel', () => {
 
     it('selectTasting / closeTastingDetail manage the detail view', () => {
         const m = freshModal();
-        m.selectTasting({ id: 5 });
-        expect(m.selectedTasting).toEqual({ id: 5 });
+        const tasting = loadContract('bottles_tastings_list').tastings[0];
+        m.selectTasting(tasting);
+        expect(m.selectedTasting).toEqual(tasting);
         m.closeTastingDetail();
         expect(m.selectedTasting).toBeNull();
     });
 
-    it('formatNotesAsHashtags formats arrays and tolerates junk', () => {
+    it('formatNotesAsHashtags formats real contract note arrays and tolerates junk', () => {
         const m = freshModal();
-        expect(m.formatNotesAsHashtags(['dark cherry', 'oak'])).toBe('#dark_cherry #oak');
+        const ben = loadContract('bottles_tastings_list').tastings[1];
+        expect(m.formatNotesAsHashtags(ben.notes.palate)).toBe('#oak #brown_sugar');
         expect(m.formatNotesAsHashtags([])).toBe('');
         expect(m.formatNotesAsHashtags(null)).toBe('');
         expect(m.formatNotesAsHashtags('not-an-array')).toBe('');
@@ -1077,6 +1155,11 @@ describe('tastings panel', () => {
 
 // ---------------------------------------------------------------------------
 // Label operations
+//
+// HAND-WRITTEN response fixtures (labeled): search-labels runs an LLM web
+// image search, and the crop/download/upload endpoints operate on real label
+// image files — none can be contract-captured (see
+// tests/contract/test_bottles_contract.py).
 // ---------------------------------------------------------------------------
 
 describe('label operations', () => {
@@ -1084,12 +1167,12 @@ describe('label operations', () => {
         vi.useFakeTimers();
         const m = freshModal();
         m.mode = 'management';
-        m.bottleId = 'b42';
+        m.bottleId = '1';
         document.body.innerHTML = '<img id="manualCropImage" src="x.jpg">';
 
         m.startManualCrop();
         expect(m.manualCropActive).toBe(true);
-        expect(m.manualCropImageSrc).toContain('/api/v1/labels/view?id=b42');
+        expect(m.manualCropImageSrc).toContain('/api/v1/labels/view?id=1');
 
         await vi.advanceTimersByTimeAsync(200);
         expect(window.cropperManager.initializeCropper).toHaveBeenCalled();
@@ -1107,8 +1190,8 @@ describe('label operations', () => {
     it('acceptManualCrop drives cropperManager with the mode-specific endpoint', async () => {
         const m = freshModal();
         m.mode = 'management';
-        m.bottleId = 'b42';
-        m.bottle = { ...WINE_BOTTLE };
+        m.bottleId = '1';
+        m.bottle = whiskeyBottle();
         m.cropperInstance = { mock: 'cropper' };
 
         await m.acceptManualCrop();
@@ -1116,7 +1199,7 @@ describe('label operations', () => {
         expect(window.cropperManager.completeCrop).toHaveBeenCalledWith(
             { mock: 'cropper' },
             '/api/v1/management/labels/manual-crop',
-            { bottle_id: 'b42' },
+            { bottle_id: '1' },
             expect.any(Function),
             expect.any(Function)
         );
@@ -1127,7 +1210,7 @@ describe('label operations', () => {
         const m = freshModal();
         m.mode = 'upload';
         m.uploadId = 'up-1';
-        m.bottle = { ...WHISKEY_BOTTLE };
+        m.bottle = { ...UPLOAD_BOTTLE };
         m.cropperInstance = { mock: 'cropper' };
 
         await m.acceptManualCrop();
@@ -1150,7 +1233,7 @@ describe('label operations', () => {
     it('cropExistingLabel in management mode exposes a preview for review', async () => {
         const m = freshModal();
         m.mode = 'management';
-        m.bottleId = 'b42';
+        m.bottleId = '1';
         global.fetch = routeFetch([
             ['/api/v1/management/labels/crop-current', jsonResponse({ status: 'ok' })],
         ]);
@@ -1184,7 +1267,7 @@ describe('label operations', () => {
 
     it('acceptCropPreview commits the preview and clears it', async () => {
         const m = freshModal();
-        m.bottleId = 'b42';
+        m.bottleId = '1';
         m.labelCropPreview = '/some/preview.jpg';
         global.fetch = routeFetch([
             ['/api/v1/management/labels/accept-crop', jsonResponse({ status: 'ok' })],
@@ -1205,8 +1288,9 @@ describe('label operations', () => {
 
     it('searchForLabelReplacement stores candidate images', async () => {
         const m = freshModal();
-        m.bottle = { ...WINE_BOTTLE };
+        m.bottle = whiskeyBottle();
         global.fetch = routeFetch([
+            // HAND-WRITTEN (labeled): LLM web image search response
             ['/api/v1/bottles/search-labels', jsonResponse({ images: [{ url: 'a.jpg' }, { url: 'b.jpg' }] })],
         ]);
 
@@ -1218,7 +1302,7 @@ describe('label operations', () => {
 
     it('searchForLabelReplacement alerts with the backend detail on failure', async () => {
         const m = freshModal();
-        m.bottle = { ...WINE_BOTTLE };
+        m.bottle = whiskeyBottle();
         global.fetch = routeFetch([
             ['/api/v1/bottles/search-labels', jsonResponse({ detail: 'search quota hit' }, { ok: false, status: 429 })],
         ]);
@@ -1233,7 +1317,7 @@ describe('label operations', () => {
         const m = freshModal();
         m.mode = 'upload';
         m.uploadId = 'up-1';
-        m.bottle = { ...WHISKEY_BOTTLE };
+        m.bottle = { ...UPLOAD_BOTTLE };
         let sentUrl = null;
         let sentForm = null;
         global.fetch = routeFetch([
@@ -1262,7 +1346,7 @@ describe('label operations', () => {
 
     it('useSelectedSearchImage downloads the image and clears search results', async () => {
         const m = freshModal();
-        m.bottleId = 'b42';
+        m.bottleId = '1';
         m.labelSearchResults = [{ url: 'a.jpg' }];
         global.fetch = routeFetch([
             ['/api/v1/management/labels/download-image', jsonResponse({ status: 'ok' })],
@@ -1276,7 +1360,7 @@ describe('label operations', () => {
 
     it('useDownloadedLabel commits and clears the downloaded state', async () => {
         const m = freshModal();
-        m.bottleId = 'b42';
+        m.bottleId = '1';
         m.labelDownloadedOriginal = '/x.jpg';
         let sentBody = null;
         global.fetch = routeFetch([
@@ -1288,7 +1372,7 @@ describe('label operations', () => {
 
         await m.useDownloadedLabel(true);
 
-        expect(sentBody).toEqual({ bottle_id: 'b42', use_cropped: true });
+        expect(sentBody).toEqual({ bottle_id: '1', use_cropped: true });
         expect(m.labelDownloadedOriginal).toBeNull();
     });
 });
@@ -1298,22 +1382,48 @@ describe('label operations', () => {
 // ---------------------------------------------------------------------------
 
 describe('loadAutocomplete', () => {
-    it('loads every field once and caches', async () => {
+    it('loads every field once and caches (contract data)', async () => {
         const m = freshModal();
         global.fetch = routeFetch([
-            ['/api/v1/autocomplete/bottles/', (url) => jsonResponse([url.split('/').pop()])],
+            ['/api/v1/autocomplete/bottles/producer',
+                jsonResponse(loadContract('autocomplete_bottles_producer'))],
+            ['/api/v1/autocomplete/bottles/variety',
+                // The API rejects `variety` (stored as a JSON list) — real 400
+                jsonResponse(loadContract('autocomplete_bottles_variety_error'),
+                    { ok: false, status: 400 })],
+            ['/api/v1/autocomplete/bottles/', jsonResponse([])],
         ]);
 
         await m.loadAutocomplete();
 
         expect(m._acLoaded).toBe(true);
-        expect(m.acData.producer).toEqual(['producer']);
-        expect(m.acData.purchase_source).toEqual(['purchase_source']);
+        expect(m.acData.producer).toEqual([
+            'Buffalo Trace', 'Caymus Vineyards', 'Cloudy Bay', 'Heaven Hill', 'Willett',
+        ]);
         const callCount = global.fetch.mock.calls.length;
         expect(callCount).toBe(Object.keys(m.acData).length);
 
         await m.loadAutocomplete(); // cached — no extra fetches
         expect(global.fetch.mock.calls.length).toBe(callCount);
+    });
+
+    it('degrades the API-rejected variety field to an empty list (contract 400)', async () => {
+        // The modal requests /autocomplete/bottles/variety but the endpoint
+        // supports only scalar columns — the real API answers 400 and the
+        // modal's r.ok guard turns it into []. (Also note: the modal never
+        // requests barrel_type, which the API DOES support.)
+        const m = freshModal();
+        global.fetch = routeFetch([
+            ['/api/v1/autocomplete/bottles/variety',
+                jsonResponse(loadContract('autocomplete_bottles_variety_error'),
+                    { ok: false, status: 400 })],
+            ['/api/v1/autocomplete/bottles/', jsonResponse([])],
+        ]);
+
+        await m.loadAutocomplete();
+
+        expect(m.acData.variety).toEqual([]);
+        expect(m._acLoaded).toBe(true);
     });
 
     it('degrades quietly when the autocomplete API fails', async () => {

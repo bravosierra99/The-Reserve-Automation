@@ -1,0 +1,49 @@
+{
+  "id": "2",
+  "name": "Wisconsin Old Fashioned",
+  "description": "Brandy old fashioned sweet, the supper club standard",
+  "ingredients": [
+    {
+      "ingredient": "Brandy",
+      "amount": 2.0,
+      "unit": "oz",
+      "notes": "",
+      "optional": false
+    },
+    {
+      "ingredient": "Angostura Bitters",
+      "amount": 3.0,
+      "unit": "dash",
+      "notes": "",
+      "optional": false
+    },
+    {
+      "ingredient": "Sugar",
+      "amount": 1.0,
+      "unit": "cube",
+      "notes": "muddled with the bitters",
+      "optional": false
+    },
+    {
+      "ingredient": "Lemon-Lime Soda",
+      "amount": 2.0,
+      "unit": "oz",
+      "notes": "to top",
+      "optional": true
+    }
+  ],
+  "instructions": [
+    "Muddle sugar, bitters and orange in the glass",
+    "Add brandy and ice",
+    "Top with lemon-lime soda"
+  ],
+  "garnish": "orange slice and brandied cherry",
+  "glassware": "rocks",
+  "method": "built",
+  "style": "classic",
+  "parent_cocktail": "Old Fashioned",
+  "serving_size": 1,
+  "stars": null,
+  "photo": null,
+  "avg_score": 8.5
+}

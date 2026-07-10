@@ -8,10 +8,24 @@
  * does. Alpine itself is not loaded; the factory's return value is used
  * directly, which exercises the live getters (filteredTastings,
  * trComputedAvg, dcFilteredValues) the same way Alpine would.
+ *
+ * API fixtures are NOT hand-written: they are contract fixtures — real
+ * responses captured and snapshot-verified by
+ * tests/contract/test_management_contract.py (management_*) and
+ * tests/contract/test_events_contract.py (events_list, me). Per-test variants
+ * are explicit mutations of a fresh contract clone. The only hand-written
+ * response shapes left are ones the contract flow cannot produce: FastAPI
+ * error envelopes, the LLM-dependent bulk-search response, and LLM-produced
+ * batch-verification result entries — each is labelled where it appears.
+ *
+ * Contract tasting rows (management_tastings, date desc): cocktail:1 (Ben,
+ * 2026-07-05, 8/10 = 80%), bottle:2 wine (Sarah, 2026-07-03, 92.5/100),
+ * bottle:1 whiskey (Ben, 2026-07-01, 8.5/10 = 85%).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadContract } from './helpers/contract.js';
 import '../../src/reserve_automation/web/static/js/components/bottle-editor-modal.js';
 import '../../src/reserve_automation/web/static/js/management/tasting-review.js';
 import '../../src/reserve_automation/web/static/js/management/event-create.js';
@@ -41,31 +55,24 @@ function freshApp() {
     return window.managementApp();
 }
 
-const TASTINGS = [
-    {
-        id: 1, tasting_kind: 'bottle', type: 'whiskey', taster: 'Ben',
-        bottle_name: 'Weller 12', date: '2026-06-01',
-        total_score: 8, max_score: 10, hidden: false,
-    },
-    {
-        id: 2, tasting_kind: 'bottle', type: 'wine', taster: 'Sarah',
-        bottle_name: 'Grand Cru', date: '2026-06-10',
-        total_score: 90, max_score: 100, hidden: false, variety: 'Merlot',
-    },
-    {
-        id: 3, tasting_kind: 'cocktail', type: 'cocktail', taster: 'Ben',
-        bottle_name: 'Old Fashioned', date: '2026-06-20',
-        total_score: null, max_score: 10, hidden: false,
-        bottles_used: [
-            { recipe_ingredient: 'bourbon', actual_product: 'Weller Special Reserve' },
-        ],
-    },
-    {
-        id: 4, tasting_kind: 'bottle', type: 'whiskey', taster: 'Ben',
-        bottle_name: 'Hidden Dram', date: '2026-05-01',
-        total_score: 5, max_score: 10, hidden: true,
-    },
-];
+// Kind-qualified row identity — the contract data really does contain a
+// bottle tasting and a cocktail tasting that share numeric id 1.
+function keys(tastings) {
+    return tastings.map(t => `${t.tasting_kind}:${t.id}`);
+}
+
+// Contract rows + one synthetic hidden variant (the API produces hidden rows,
+// but the contract flow doesn't save one — explicit mutation of the whiskey).
+function makeTastings() {
+    const rows = loadContract('management_tastings').tastings;
+    const whiskey = rows.find(t => t.type === 'whiskey');
+    const hidden = {
+        ...whiskey,
+        id: 4, bottle_name: 'Hidden Dram', date: '2026-05-01',
+        total_score: 5, hidden: true,
+    };
+    return [...rows, hidden];
+}
 
 beforeEach(() => {
     vi.stubGlobal('fetch', routeFetch([]));
@@ -108,7 +115,7 @@ describe('module composition', () => {
     it('keeps getters live (the reason this factory is never spread)', () => {
         const app = freshApp();
         expect(app.filteredTastings).toEqual([]);
-        app.trAllTastings = TASTINGS;
+        app.trAllTastings = makeTastings();
         expect(app.filteredTastings.length).toBeGreaterThan(0);
     });
 });
@@ -120,110 +127,124 @@ describe('module composition', () => {
 describe('filteredTastings', () => {
     function appWithTastings() {
         const app = freshApp();
-        app.trAllTastings = JSON.parse(JSON.stringify(TASTINGS));
+        app.trAllTastings = makeTastings();
         return app;
     }
 
     it('hides hidden tastings by default and shows them with the toggle', () => {
         const app = appWithTastings();
-        expect(app.filteredTastings.map(t => t.id)).not.toContain(4);
+        expect(keys(app.filteredTastings)).not.toContain('bottle:4');
         app.trShowHidden = true;
-        expect(app.filteredTastings.map(t => t.id)).toContain(4);
+        expect(keys(app.filteredTastings)).toContain('bottle:4');
     });
 
     it('filters by type', () => {
         const app = appWithTastings();
         app.trFilterType = 'wine';
-        expect(app.filteredTastings.map(t => t.id)).toEqual([2]);
+        expect(keys(app.filteredTastings)).toEqual(['bottle:2']);
     });
 
     it('filters by taster', () => {
         const app = appWithTastings();
         app.trFilterTaster = 'Sarah';
-        expect(app.filteredTastings.map(t => t.id)).toEqual([2]);
+        expect(keys(app.filteredTastings)).toEqual(['bottle:2']);
     });
 
     it('searches bottle names case-insensitively', () => {
         const app = appWithTastings();
-        app.trFilterSearch = 'grand';
-        expect(app.filteredTastings.map(t => t.id)).toEqual([2]);
+        app.trFilterSearch = 'cabernet';
+        expect(keys(app.filteredTastings)).toEqual(['bottle:2']);
     });
 
     it('searches cocktail component bottles too', () => {
+        // 'special reserve' only appears in the cocktail's bottles_used
+        // (actual_product 'Weller Special Reserve'), not in any bottle name.
         const app = appWithTastings();
         app.trFilterSearch = 'special reserve';
-        expect(app.filteredTastings.map(t => t.id)).toEqual([3]);
+        expect(keys(app.filteredTastings)).toEqual(['cocktail:1']);
     });
 
     it('applies exact type-specific dropdown filters', () => {
         const app = appWithTastings();
-        app.trTypeFilters = { variety: 'Merlot' };
-        expect(app.filteredTastings.map(t => t.id)).toEqual([2]);
-        app.trTypeFilters = { variety: 'Pinot' };
+        app.trTypeFilters = { variety: 'Cabernet Sauvignon' };
+        expect(keys(app.filteredTastings)).toEqual(['bottle:2']);
+        app.trTypeFilters = { variety: 'Pinot Noir' };
         expect(app.filteredTastings).toEqual([]);
     });
 
     it('applies partial type-specific search filters', () => {
         const app = appWithTastings();
-        app.trTypeFilterSearch = { variety: 'merl' };
-        expect(app.filteredTastings.map(t => t.id)).toEqual([2]);
+        app.trTypeFilterSearch = { variety: 'cabern' };
+        expect(keys(app.filteredTastings)).toEqual(['bottle:2']);
     });
 
     it('filters by normalized min/max score and drops unscored rows', () => {
         const app = appWithTastings();
-        app.trFilterMinScore = '85';
-        // whiskey 8/10 = 80 (out), wine 90/100 = 90 (in), cocktail null (out)
-        expect(app.filteredTastings.map(t => t.id)).toEqual([2]);
+        // Unscored variant: cocktail tastings CAN carry a null score — the
+        // contract one is scored, so null it explicitly.
+        app.trAllTastings.find(t => t.type === 'cocktail').total_score = null;
+
+        app.trFilterMinScore = '90';
+        // whiskey 85% (out), wine 92.5% (in), cocktail null (out)
+        expect(keys(app.filteredTastings)).toEqual(['bottle:2']);
+
+        app.trFilterMinScore = '0';
+        // everything scored passes; the null cocktail is still dropped
+        expect(keys(app.filteredTastings)).toEqual(['bottle:2', 'bottle:1']);
 
         app.trFilterMinScore = '';
-        app.trFilterMaxScore = '85';
-        expect(app.filteredTastings.map(t => t.id)).toEqual([1]);
+        app.trFilterMaxScore = '90';
+        expect(keys(app.filteredTastings)).toEqual(['bottle:1']);
     });
 
     it('filters by date range', () => {
         const app = appWithTastings();
-        app.trFilterDateFrom = '2026-06-05';
-        app.trFilterDateTo = '2026-06-15';
-        expect(app.filteredTastings.map(t => t.id)).toEqual([2]);
+        app.trFilterDateFrom = '2026-07-02';
+        app.trFilterDateTo = '2026-07-04';
+        expect(keys(app.filteredTastings)).toEqual(['bottle:2']);
     });
 
     it('sorts by date descending by default', () => {
         const app = appWithTastings();
-        expect(app.filteredTastings.map(t => t.id)).toEqual([3, 2, 1]);
+        expect(keys(app.filteredTastings)).toEqual(['cocktail:1', 'bottle:2', 'bottle:1']);
     });
 
     it('sorts normalized scores with nulls sinking to the bottom in either direction', () => {
         const app = appWithTastings();
+        app.trAllTastings.find(t => t.type === 'cocktail').total_score = null;
         app.trSortColumn = 'total_score';
         app.trSortDir = 'desc';
-        // wine 90% > whiskey 80% > cocktail null (sinks)
-        expect(app.filteredTastings.map(t => t.id)).toEqual([2, 1, 3]);
+        // wine 92.5% > whiskey 85% > cocktail null (sinks)
+        expect(keys(app.filteredTastings)).toEqual(['bottle:2', 'bottle:1', 'cocktail:1']);
 
         app.trSortDir = 'asc';
-        expect(app.filteredTastings.map(t => t.id)).toEqual([1, 2, 3]);
+        expect(keys(app.filteredTastings)).toEqual(['bottle:1', 'bottle:2', 'cocktail:1']);
     });
 
     it('sorts strings case-insensitively', () => {
         const app = appWithTastings();
         app.trSortColumn = 'bottle_name';
         app.trSortDir = 'asc';
-        expect(app.filteredTastings.map(t => t.bottle_name)).toEqual(
-            ['Grand Cru', 'Old Fashioned', 'Weller 12']
-        );
+        expect(app.filteredTastings.map(t => t.bottle_name)).toEqual([
+            'Buffalo Trace - Weller 12 Year',
+            'Caymus Vineyards - Cabernet Sauvignon',
+            'Contract Old Fashioned',
+        ]);
     });
 });
 
 describe('trComputedAvg', () => {
     it('averages normalized scores of the filtered set', () => {
         const app = freshApp();
-        app.trAllTastings = JSON.parse(JSON.stringify(TASTINGS));
-        // whiskey 80 + wine 90 → 85.0 (null cocktail excluded)
-        expect(app.trComputedAvg).toBe('85.0');
+        app.trAllTastings = makeTastings();
+        // cocktail 80 + wine 92.5 + whiskey 85 → 85.8 (hidden row excluded)
+        expect(app.trComputedAvg).toBe('85.8');
     });
 
     it('is null when nothing has a score', () => {
         const app = freshApp();
-        app.trAllTastings = [{ ...TASTINGS[2] }];
+        const cocktail = makeTastings().find(t => t.type === 'cocktail');
+        app.trAllTastings = [{ ...cocktail, total_score: null }];
         expect(app.trComputedAvg).toBeNull();
     });
 });
@@ -237,12 +258,12 @@ describe('init', () => {
         const app = freshApp();
         app.bottleEditor.loadAutocomplete = vi.fn();
         global.fetch = routeFetch([
-            ['/api/v1/me', jsonResponse({ display_name: 'Ben' })],
+            ['/api/v1/me', jsonResponse(loadContract('me'))],
         ]);
 
         await app.init();
 
-        expect(app.eventHostName).toBe('Ben');
+        expect(app.eventHostName).toBe('Admin');   // me.display_name
         expect(app.bottleEditor.loadAutocomplete).toHaveBeenCalled();
     });
 
@@ -282,20 +303,17 @@ describe('selectMode', () => {
 // ---------------------------------------------------------------------------
 
 describe('data cleanup', () => {
-    it('loadCleanupValues decorates rows with rename state', async () => {
+    it('loadCleanupValues decorates rows with rename state (contract data)', async () => {
         const app = freshApp();
         global.fetch = routeFetch([
-            ['/api/v1/management/field-values', jsonResponse([
-                { value: 'Ben', count: 10 },
-                { value: 'ben', count: 2 },
-            ])],
+            ['/api/v1/management/field-values', jsonResponse(loadContract('management_field_values'))],
         ]);
 
         await app.loadCleanupValues();
 
         expect(app.dcValues).toEqual([
-            { value: 'Ben', count: 10, renameInput: '', saving: false },
-            { value: 'ben', count: 2, renameInput: '', saving: false },
+            { value: 'Ben', count: 1, renameInput: '', saving: false },
+            { value: 'Sarah', count: 1, renameInput: '', saving: false },
         ]);
         expect(app.dcLoading).toBe(false);
         expect(global.fetch).toHaveBeenCalledWith(
@@ -330,24 +348,26 @@ describe('data cleanup', () => {
         expect(app.loadCleanupValues).toHaveBeenCalled();
     });
 
-    it('dcApplyRename posts the rename, toasts, and reloads values', async () => {
+    it('dcApplyRename posts the rename, toasts, and reloads values (contract data)', async () => {
         const app = freshApp();
         app.loadCleanupValues = vi.fn();
         let sentBody = null;
         global.fetch = routeFetch([
             ['/api/v1/management/bulk-rename', (url, opts) => {
                 sentBody = JSON.parse(opts.body);
-                return jsonResponse({ updated: 12 });
+                // Real response: {"updated": 1} — the contract flow renamed
+                // the single Sarah tasting.
+                return jsonResponse(loadContract('management_bulk_rename_response'));
             }],
         ]);
-        const item = { value: 'ben', count: 2, renameInput: 'Ben', saving: false };
+        const item = { value: 'Sarah', count: 1, renameInput: 'Sarah B', saving: false };
 
         await app.dcApplyRename(item);
 
         expect(sentBody).toEqual({
-            scope: 'tastings', field: 'taster_name', old_value: 'ben', new_value: 'Ben',
+            scope: 'tastings', field: 'taster_name', old_value: 'Sarah', new_value: 'Sarah B',
         });
-        expect(app.toasts[0].message).toContain('Renamed 12 records');
+        expect(app.toasts[0].message).toBe('Renamed 1 record: "Sarah" → "Sarah B"');
         expect(app.loadCleanupValues).toHaveBeenCalled();
         expect(item.saving).toBe(false);
     });
@@ -361,6 +381,8 @@ describe('data cleanup', () => {
 
     it('dcApplyRename surfaces backend errors as a toast', async () => {
         const app = freshApp();
+        // Hand-written: FastAPI {detail} error envelope (contract flow only
+        // captures success responses).
         global.fetch = routeFetch([
             ['/api/v1/management/bulk-rename', jsonResponse({ detail: 'name collision' }, { ok: false, status: 409 })],
         ]);
@@ -395,13 +417,24 @@ describe('bulk ingredient import', () => {
         expect(global.fetch).not.toHaveBeenCalled();
     });
 
+    // NOTE: bulk-search responses below are hand-written by necessity —
+    // POST /api/v1/ingredients/bulk-search performs a live web search plus an
+    // LLM completion (routes/ingredients.py), so no deterministic contract
+    // fixture can be captured for it. Shape mirrors BulkSearchResult.
     it('doBulkSearch posts query+parent and stores results', async () => {
         const app = freshApp();
         let sentBody = null;
         global.fetch = routeFetch([
             ['/api/v1/ingredients/bulk-search', (url, opts) => {
                 sentBody = JSON.parse(opts.body);
-                return jsonResponse({ results: [{ name: 'Angostura' }] });
+                return jsonResponse({
+                    results: [{
+                        name: 'Angostura Aromatic Bitters', cost: 12.99,
+                        volume_ml: 200, abv: 44.7,
+                        notes: 'Classic aromatic bitters', selected: true,
+                    }],
+                    query: 'bitters', parent: null,
+                });
             }],
         ]);
         app.bulkQuery = 'bitters';
@@ -418,7 +451,7 @@ describe('bulk ingredient import', () => {
     it('doBulkSearch reports empty results as a friendly error', async () => {
         const app = freshApp();
         global.fetch = routeFetch([
-            ['/api/v1/ingredients/bulk-search', jsonResponse({ results: [] })],
+            ['/api/v1/ingredients/bulk-search', jsonResponse({ results: [], query: 'unobtainium' })],
         ]);
         app.bulkQuery = 'unobtainium';
         await app.doBulkSearch();
@@ -444,13 +477,19 @@ describe('bulk ingredient import', () => {
         expect(global.fetch).not.toHaveBeenCalled();
     });
 
-    it('doBulkSave reports saved+skipped and refreshes autocomplete names', async () => {
+    it('doBulkSave reports saved+skipped and refreshes autocomplete names (contract data)', async () => {
         const app = freshApp();
+        // Real response: saved = 2 full ingredient objects, skipped = 1
+        // {name, reason} entry (the unselected row).
         global.fetch = routeFetch([
-            ['/api/v1/ingredients/bulk-save', jsonResponse({ saved: ['Gin', 'Rye'], skipped: ['Vodka'] })],
+            ['/api/v1/ingredients/bulk-save', jsonResponse(loadContract('management_bulk_save_response'))],
             ['/api/v1/ingredients?flat=true', jsonResponse([{ name: 'Gin' }, { name: 'Rye' }])],
         ]);
-        app.bulkResults = [{ name: 'Gin', selected: true }, { name: 'Vodka', selected: true }];
+        app.bulkResults = [
+            { name: 'Angostura Aromatic Bitters', selected: true },
+            { name: "Peychaud's Bitters", selected: true },
+            { name: "Regans' Orange Bitters", selected: false },
+        ];
 
         await app.doBulkSave();
 
@@ -485,9 +524,17 @@ describe('showToast', () => {
 
 // ---------------------------------------------------------------------------
 // Batch verification
+//
+// The contract fixtures (management_batch_verify_response,
+// management_batch_status) are captured against an empty bottle table: with
+// bottles present the batch's background tasks call the LLM, so only the
+// batch envelope (batch_id + status counters + results[]) is contract-backed.
+// Result ENTRIES with changes are hand-written below, labelled as such.
 // ---------------------------------------------------------------------------
 
 describe('batch verification', () => {
+    const BATCH_ID = '00000000-0000-4000-8000-000000000001'; // normalized snapshot UUID
+
     it('initBatchResult checks all change boxes and initializes card states once', () => {
         const app = freshApp();
         const result = { bottle_index: 3, changes: { region: {}, abv: {} } };
@@ -570,21 +617,20 @@ describe('batch verification', () => {
         expect(app.batchAppliedStates[1]).toBeUndefined();
     });
 
-    it('startBatchVerification stores the batch id and begins polling', async () => {
+    it('startBatchVerification stores the batch id and begins polling (contract data)', async () => {
         vi.useFakeTimers();
         const app = freshApp();
         global.fetch = routeFetch([
-            ['/api/v1/management/bottles/batch-verify', jsonResponse({
-                batch_id: 'batch-9',
-                status: { total: 5, completed: 0, with_changes: 0, errors: 0 },
-            })],
+            ['/api/v1/management/bottles/batch-verify',
+                jsonResponse(loadContract('management_batch_verify_response'))],
         ]);
         app.pollBatchStatus = vi.fn();
 
         await app.startBatchVerification();
 
-        expect(app.batchId).toBe('batch-9');
-        expect(app.batchStatus.total).toBe(5);
+        expect(app.batchId).toBe(BATCH_ID);
+        expect(app.batchStatus.total).toBe(0);
+        expect(app.batchStatus.status).toBe('processing');
         expect(app.batchStarting).toBe(false);
 
         vi.advanceTimersByTime(2000);
@@ -593,20 +639,23 @@ describe('batch verification', () => {
 
     it('pollBatchStatus surfaces pending reviews and seeds the first verification result', async () => {
         const app = freshApp();
-        app.batchId = 'batch-9';
+        app.batchId = BATCH_ID;
+        // Base envelope from the contract; the result entries are hand-written
+        // — real ones are produced by the LLM enrichment task and cannot be
+        // captured deterministically.
+        const running = loadContract('management_batch_status');
+        running.status = { ...running.status, status: 'running', total: 3, completed: 2, with_changes: 1 };
+        running.results = [
+            { bottle_index: 0, status: 'completed', has_changes: false },
+            {
+                bottle_index: 1, status: 'completed', has_changes: true,
+                original: { name: 'A' }, updated: { name: 'B' },
+                changes: { name: { new: 'B' } }, metadata: {},
+            },
+            { bottle_index: 2, status: 'processing' },
+        ];
         global.fetch = routeFetch([
-            ['/api/v1/management/batch/batch-9/status', jsonResponse({
-                status: { status: 'running', total: 3, completed: 2, with_changes: 1, errors: 0 },
-                results: [
-                    { bottle_index: 0, status: 'completed', has_changes: false },
-                    {
-                        bottle_index: 1, status: 'completed', has_changes: true,
-                        original: { name: 'A' }, updated: { name: 'B' },
-                        changes: { name: { new: 'B' } }, metadata: {},
-                    },
-                    { bottle_index: 2, status: 'processing' },
-                ],
-            })],
+            [`/api/v1/management/batch/${BATCH_ID}/status`, jsonResponse(running)],
         ]);
 
         await app.pollBatchStatus();
@@ -616,17 +665,15 @@ describe('batch verification', () => {
         expect(app.approvedFields).toEqual({ name: true });
     });
 
-    it('pollBatchStatus stops polling when the batch completes', async () => {
+    it('pollBatchStatus stops polling when the batch completes (contract data)', async () => {
         vi.useFakeTimers();
         const app = freshApp();
-        app.batchId = 'batch-9';
+        app.batchId = BATCH_ID;
         app.pollInterval = setInterval(() => {}, 2000);
         const clearSpy = vi.spyOn(globalThis, 'clearInterval');
+        // The contract batch-status fixture IS a completed batch.
         global.fetch = routeFetch([
-            ['/status', jsonResponse({
-                status: { status: 'complete', total: 3, completed: 3, with_changes: 0, errors: 0 },
-                results: [],
-            })],
+            ['/status', jsonResponse(loadContract('management_batch_status'))],
         ]);
 
         await app.pollBatchStatus();
@@ -642,7 +689,7 @@ describe('batch verification', () => {
 
     it('exitBatch clears polling and resets batch state', () => {
         const app = freshApp();
-        app.batchId = 'batch-9';
+        app.batchId = BATCH_ID;
         app.batchResults = [{}];
         app.pendingReviews = [{}];
         app.verificationResult = {};
@@ -664,13 +711,14 @@ describe('batch verification', () => {
 // ---------------------------------------------------------------------------
 
 describe('manage events', () => {
-    it('loadManagedEvents fills the list', async () => {
+    it('loadManagedEvents fills the list (contract data)', async () => {
         const app = freshApp();
         global.fetch = routeFetch([
-            ['/api/v1/events', jsonResponse([{ id: 'e1' }, { id: 'e2' }])],
+            ['/api/v1/events', jsonResponse(loadContract('events_list'))],
         ]);
         await app.loadManagedEvents();
         expect(app.managedEvents).toHaveLength(2);
+        expect(app.managedEvents[0].name).toBe('Contract Whiskey Night');
         expect(app.manageEventsLoading).toBe(false);
     });
 
@@ -684,12 +732,18 @@ describe('manage events', () => {
     });
 
     it.each([
-        ['revealEventBottles', '/api/v1/events/e1/reveal', 'PUT'],
-        ['closeEventFromManagement', '/api/v1/events/e1/close', 'PUT'],
-        ['deleteEventFromManagement', '/api/v1/events/e1', 'DELETE'],
-    ])('%s is confirm-gated and hits %s', async (method, url, verb) => {
+        // Responders are the real PUT /reveal and /close responses (contract
+        // fixtures); DELETE's body isn't read by the component.
+        ['revealEventBottles', '/api/v1/events/e1/reveal', 'PUT',
+            () => jsonResponse(loadContract('management_event_reveal_response'))],
+        ['closeEventFromManagement', '/api/v1/events/e1/close', 'PUT',
+            () => jsonResponse(loadContract('management_event_close_response'))],
+        ['deleteEventFromManagement', '/api/v1/events/e1', 'DELETE',
+            () => jsonResponse({})],
+    ])('%s is confirm-gated and hits %s', async (method, url, verb, responder) => {
         const app = freshApp();
         app.loadManagedEvents = vi.fn();
+        global.fetch = routeFetch([[url, responder()]]);
 
         // User cancels — nothing happens
         confirm.mockReturnValueOnce(false);

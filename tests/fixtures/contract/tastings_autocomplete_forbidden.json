@@ -1,0 +1,3 @@
+{
+  "detail": "Permission denied: tastings.view requires one of ['admin', 'family'], you are 'guest'"
+}

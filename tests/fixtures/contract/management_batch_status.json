@@ -1,0 +1,12 @@
+{
+  "batch_id": "00000000-0000-4000-8000-000000000001",
+  "status": {
+    "batch_id": "00000000-0000-4000-8000-000000000001",
+    "total": 0,
+    "completed": 0,
+    "with_changes": 0,
+    "errors": 0,
+    "status": "complete"
+  },
+  "results": []
+}

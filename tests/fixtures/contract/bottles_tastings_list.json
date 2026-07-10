@@ -1,0 +1,61 @@
+{
+  "tastings": [
+    {
+      "filename": "Tasting-2026-07-04-Sarah.md",
+      "date": "2026-07-04",
+      "taster": "Sarah",
+      "scores": {
+        "nose": 2.0,
+        "palate": 2.0,
+        "finish": 2.0,
+        "overall": 0.5
+      },
+      "total_score": 6.5,
+      "max_score": 10,
+      "notes": {
+        "nose": [
+          "vanilla"
+        ],
+        "palate": [
+          "baking spice"
+        ],
+        "finish": [
+          "medium"
+        ],
+        "overall": ""
+      },
+      "days_from_crack": null,
+      "fill_level": null
+    },
+    {
+      "filename": "Tasting-2026-07-01-Ben.md",
+      "date": "2026-07-01",
+      "taster": "Ben",
+      "scores": {
+        "nose": 2.5,
+        "palate": 3.0,
+        "finish": 2.0,
+        "overall": 1.0
+      },
+      "total_score": 8.5,
+      "max_score": 10,
+      "notes": {
+        "nose": [
+          "caramel",
+          "cherry"
+        ],
+        "palate": [
+          "oak",
+          "brown sugar"
+        ],
+        "finish": [
+          "long"
+        ],
+        "overall": "Outstanding pour"
+      },
+      "days_from_crack": 30,
+      "fill_level": 90
+    }
+  ],
+  "bottle_type": "whiskey"
+}

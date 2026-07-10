@@ -1,0 +1,14 @@
+{
+  "query": "blanton",
+  "results": [
+    {
+      "bottle_path": "3",
+      "bottle_name": "Blantons - Original Single Barrel",
+      "producer": "Blantons",
+      "vintage": null,
+      "confidence": 0.35,
+      "thumbnail_url": null,
+      "beverage_type": "whiskey"
+    }
+  ]
+}

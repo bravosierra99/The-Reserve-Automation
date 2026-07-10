@@ -1,0 +1,134 @@
+[
+  {
+    "id": "3",
+    "name": "Manhattan",
+    "description": null,
+    "ingredients": [
+      {
+        "ingredient": "Whiskey",
+        "amount": 2.0,
+        "unit": "oz",
+        "notes": "",
+        "optional": false
+      },
+      {
+        "ingredient": "Sweet Vermouth",
+        "amount": 1.0,
+        "unit": "oz",
+        "notes": "",
+        "optional": false
+      },
+      {
+        "ingredient": "Angostura Bitters",
+        "amount": 2.0,
+        "unit": "dash",
+        "notes": "",
+        "optional": false
+      }
+    ],
+    "instructions": [
+      "Stir with ice",
+      "Strain into a chilled coupe"
+    ],
+    "garnish": "brandied cherry",
+    "glassware": "coupe",
+    "method": "stirred",
+    "style": "classic",
+    "parent_cocktail": null,
+    "serving_size": 1,
+    "stars": null,
+    "photo": null,
+    "avg_score": null
+  },
+  {
+    "id": "1",
+    "name": "Old Fashioned",
+    "description": "The original whiskey cocktail",
+    "ingredients": [
+      {
+        "ingredient": "Bourbon",
+        "amount": 2.0,
+        "unit": "oz",
+        "notes": "",
+        "optional": false
+      },
+      {
+        "ingredient": "Angostura Bitters",
+        "amount": 2.0,
+        "unit": "dash",
+        "notes": "",
+        "optional": false
+      },
+      {
+        "ingredient": "Sugar",
+        "amount": 1.0,
+        "unit": "cube",
+        "notes": "demerara",
+        "optional": false
+      }
+    ],
+    "instructions": [
+      "Muddle the sugar with the bitters",
+      "Add bourbon and ice, stir until chilled",
+      "Garnish with an expressed orange peel"
+    ],
+    "garnish": "orange peel",
+    "glassware": "rocks",
+    "method": "stirred",
+    "style": "classic",
+    "parent_cocktail": null,
+    "serving_size": 1,
+    "stars": null,
+    "photo": null,
+    "avg_score": null
+  },
+  {
+    "id": "2",
+    "name": "Wisconsin Old Fashioned",
+    "description": "Brandy old fashioned sweet, the supper club standard",
+    "ingredients": [
+      {
+        "ingredient": "Brandy",
+        "amount": 2.0,
+        "unit": "oz",
+        "notes": "",
+        "optional": false
+      },
+      {
+        "ingredient": "Angostura Bitters",
+        "amount": 3.0,
+        "unit": "dash",
+        "notes": "",
+        "optional": false
+      },
+      {
+        "ingredient": "Sugar",
+        "amount": 1.0,
+        "unit": "cube",
+        "notes": "muddled with the bitters",
+        "optional": false
+      },
+      {
+        "ingredient": "Lemon-Lime Soda",
+        "amount": 2.0,
+        "unit": "oz",
+        "notes": "to top",
+        "optional": true
+      }
+    ],
+    "instructions": [
+      "Muddle sugar, bitters and orange in the glass",
+      "Add brandy and ice",
+      "Top with lemon-lime soda"
+    ],
+    "garnish": "orange slice and brandied cherry",
+    "glassware": "rocks",
+    "method": "built",
+    "style": "classic",
+    "parent_cocktail": "Old Fashioned",
+    "serving_size": 1,
+    "stars": null,
+    "photo": null,
+    "avg_score": 8.5
+  }
+]

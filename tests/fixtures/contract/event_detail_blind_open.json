@@ -1,0 +1,46 @@
+{
+  "event_id": "00000000-0000-4000-8000-000000000001",
+  "name": "Contract Whiskey Night",
+  "beverage_type": "whiskey",
+  "is_blind": true,
+  "status": "open",
+  "host_name": "Ben",
+  "event_type": "bottle",
+  "event_mode": "standard",
+  "created_at": "2026-07-07T19:00:00",
+  "bottles": [
+    {
+      "bottle_id": "1",
+      "bottle_name": "Bottle #1",
+      "bottle_path": "1",
+      "blind_number": 1
+    },
+    {
+      "bottle_id": "2",
+      "bottle_name": "Bottle #2",
+      "bottle_path": "2",
+      "blind_number": 2
+    },
+    {
+      "bottle_id": "3",
+      "bottle_name": "Bottle #3",
+      "bottle_path": "3",
+      "blind_number": 3
+    }
+  ],
+  "cocktails": [],
+  "participants": {
+    "00000000-0000-4000-8000-000000000002": {
+      "participant_id": "00000000-0000-4000-8000-000000000002",
+      "participant_name": "Alice",
+      "tastings": [],
+      "cocktail_ratings": []
+    },
+    "00000000-0000-4000-8000-000000000003": {
+      "participant_id": "00000000-0000-4000-8000-000000000003",
+      "participant_name": "Bob",
+      "tastings": [],
+      "cocktail_ratings": []
+    }
+  }
+}

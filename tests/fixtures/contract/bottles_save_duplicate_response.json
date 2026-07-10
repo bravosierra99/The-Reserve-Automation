@@ -1,0 +1,14 @@
+{
+  "status": "duplicate_found",
+  "duplicates": [
+    {
+      "id": "1",
+      "producer": "Buffalo Trace",
+      "name": "Eagle Rare 10 Year",
+      "year": 2018,
+      "type": "whiskey",
+      "confidence": 0.93,
+      "reason": "Same producer: Buffalo Trace; Similar name: Eagle Rare 10 Year; Same year: 2018"
+    }
+  ]
+}

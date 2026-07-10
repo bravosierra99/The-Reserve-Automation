@@ -1,0 +1,100 @@
+{
+  "extraction_id": "00000000-0000-4000-8000-000000000001",
+  "beverage_type": "wine",
+  "template_type": "aws_wine",
+  "expected_count": null,
+  "actual_count": 2,
+  "count_mismatch": false,
+  "current_index": 0,
+  "tastings": [
+    {
+      "index": 0,
+      "status": "extracted",
+      "tasting_data": {
+        "bottle_name": "Cabernet Sauvignon",
+        "taster_name": "",
+        "tasting_date": "2026-07-07",
+        "beverage_type": "wine",
+        "wine_appearance": 3.0,
+        "wine_aroma": 5.0,
+        "wine_taste": 4.0,
+        "wine_aftertaste": 1.5,
+        "wine_overall": 1.5,
+        "whiskey_nose": null,
+        "whiskey_palate": null,
+        "whiskey_finish": null,
+        "whiskey_overall": null,
+        "days_from_crack": null,
+        "fill_level": null,
+        "color": null,
+        "place": null,
+        "theme": null,
+        "appearance_notes": [
+          "ruby"
+        ],
+        "nose_notes": [
+          "cassis"
+        ],
+        "palate_notes": [
+          "plum"
+        ],
+        "finish_notes": [
+          "long"
+        ],
+        "overall_notes": "Lovely"
+      },
+      "match_candidates": [
+        {
+          "bottle_path": "3",
+          "bottle_name": "Caymus Vineyards - Cabernet Sauvignon",
+          "producer": "Caymus Vineyards",
+          "vintage": 2021,
+          "confidence": 0.6545454545454545,
+          "thumbnail_url": null,
+          "beverage_type": "wine"
+        }
+      ],
+      "selected_match": null,
+      "duplicate_warning": null
+    },
+    {
+      "index": 1,
+      "status": "extracted",
+      "tasting_data": {
+        "bottle_name": "Mystery Red",
+        "taster_name": "Sarah",
+        "tasting_date": "2026-07-07",
+        "beverage_type": "wine",
+        "wine_appearance": 2.0,
+        "wine_aroma": 3.0,
+        "wine_taste": 3.0,
+        "wine_aftertaste": 1.0,
+        "wine_overall": 1.0,
+        "whiskey_nose": null,
+        "whiskey_palate": null,
+        "whiskey_finish": null,
+        "whiskey_overall": null,
+        "days_from_crack": null,
+        "fill_level": null,
+        "color": null,
+        "place": null,
+        "theme": null,
+        "appearance_notes": [],
+        "nose_notes": [],
+        "palate_notes": [],
+        "finish_notes": [],
+        "overall_notes": null
+      },
+      "match_candidates": [],
+      "selected_match": null,
+      "duplicate_warning": null
+    }
+  ],
+  "stats": {
+    "total": 2,
+    "approved": 0,
+    "skipped": 0,
+    "remaining": 2,
+    "all_done": false
+  }
+}

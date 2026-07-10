@@ -10,6 +10,7 @@
 | Bottle extraction | `uv run pytest tests/test_bottle_extraction_*.py -v` | `tests/` |
 | ObsidianGenerator | Management + Bottle extraction tests | Multiple |
 | Frontend JS modules (`static/js/`) | `npm test` (vitest + jsdom) | `tests/js/` |
+| API response shapes (frontend↔backend contract) | `uv run pytest tests/contract/` (regen: `UPDATE_CONTRACT_FIXTURES=1 …`, then re-run `npm test`) | `tests/contract/` + `tests/fixtures/contract/` |
 | Browser flows (Alpine bindings + backend) | `uv run pytest -m e2e` (slow; also runs in CI) | `tests/e2e/` |
 
 **Frontend note:** inline template JS is invisible to every pytest layer — API tests
@@ -22,6 +23,12 @@ Keep it that way: new frontend logic goes in a `static/js/` module with a vitest
 suite, never inline in a template. A 0% coverage row is a regression.
 Page factories with `get foo()` getters must attach as WHOLE factories
 (`window.fooApp = function() {...}`) — spreading one freezes its getters.
+
+**Contract fixtures (July 2026):** the JSON files in `tests/fixtures/contract/`
+are real API responses captured by `tests/contract/` and loaded verbatim by the
+vitest suites (`tests/js/helpers/contract.js`). Never hand-write a "this is what
+the API returns" fixture — see `tests/contract/README.md` for the protocol and
+the postmortem that motivated it.
 
 ## Management Routes Tests ⭐ CRITICAL
 

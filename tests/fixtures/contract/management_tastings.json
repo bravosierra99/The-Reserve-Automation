@@ -1,0 +1,192 @@
+{
+  "tastings": [
+    {
+      "id": 1,
+      "tasting_kind": "cocktail",
+      "hidden": false,
+      "cocktail_id": 1,
+      "bottle_name": "Contract Old Fashioned",
+      "bottle_path": "cocktail/1",
+      "date": "2026-07-05",
+      "taster": "Ben",
+      "type": "cocktail",
+      "total_score": 8.0,
+      "max_score": 10,
+      "aws_score": null,
+      "days_from_crack": null,
+      "fill_level": null,
+      "bartender": "Ben",
+      "scores": {
+        "score": 8.0
+      },
+      "notes": {
+        "notes": "Well balanced"
+      },
+      "ingredients": [
+        "Bourbon"
+      ],
+      "bottles_used": [
+        {
+          "recipe_ingredient": "Bourbon",
+          "actual_product": "Weller Special Reserve"
+        }
+      ],
+      "producer": null,
+      "variety": null,
+      "country_region": null,
+      "style": "Spirit-forward",
+      "wine_type": null,
+      "vineyard": null,
+      "abv": null,
+      "price": null,
+      "purchase_source": null,
+      "vintage": null,
+      "whiskey_type": null,
+      "region_state": null,
+      "proof": null,
+      "age_statement": null,
+      "mash_bill": null,
+      "barrel_type": null
+    },
+    {
+      "id": 2,
+      "tasting_kind": "bottle",
+      "hidden": false,
+      "bottle_name": "Caymus Vineyards - Cabernet Sauvignon",
+      "bottle_path": "3",
+      "date": "2026-07-03",
+      "taster": "Sarah",
+      "type": "wine",
+      "total_score": 92.5,
+      "max_score": 100,
+      "aws_score": 17.0,
+      "days_from_crack": null,
+      "fill_level": null,
+      "bartender": null,
+      "scores": {
+        "appearance": 3.0,
+        "aroma": 5.0,
+        "taste": 5.0,
+        "aftertaste": 2.0,
+        "overall": 2.0
+      },
+      "notes": {
+        "appearance": [
+          "ruby"
+        ],
+        "aroma": [
+          "blackberry",
+          "cassis"
+        ],
+        "taste": [
+          "tannic"
+        ],
+        "aftertaste": [
+          "long"
+        ],
+        "overall": "Lovely"
+      },
+      "producer": "Caymus Vineyards",
+      "variety": "Cabernet Sauvignon",
+      "country_region": "USA - Napa Valley",
+      "style": "Bold",
+      "wine_type": "Red Wine",
+      "vineyard": "Caymus Estate",
+      "abv": 14.5,
+      "price": 89.99,
+      "purchase_source": "Total Wine",
+      "vintage": 2021,
+      "whiskey_type": null,
+      "region_state": null,
+      "proof": null,
+      "age_statement": null,
+      "mash_bill": null,
+      "barrel_type": null
+    },
+    {
+      "id": 1,
+      "tasting_kind": "bottle",
+      "hidden": false,
+      "bottle_name": "Buffalo Trace - Weller 12 Year",
+      "bottle_path": "1",
+      "date": "2026-07-01",
+      "taster": "Ben",
+      "type": "whiskey",
+      "total_score": 8.5,
+      "max_score": 10,
+      "aws_score": null,
+      "days_from_crack": 12,
+      "fill_level": 80,
+      "bartender": null,
+      "scores": {
+        "nose": 2.5,
+        "palate": 3.0,
+        "finish": 2.0,
+        "overall": 1.0
+      },
+      "notes": {
+        "nose": [
+          "caramel",
+          "oak"
+        ],
+        "palate": [
+          "cherry"
+        ],
+        "finish": [
+          "long"
+        ],
+        "overall": "Great pour"
+      },
+      "producer": "Buffalo Trace",
+      "variety": null,
+      "country_region": "USA - Kentucky",
+      "style": null,
+      "wine_type": null,
+      "vineyard": null,
+      "abv": null,
+      "price": 39.99,
+      "purchase_source": "Liquor Barn",
+      "vintage": null,
+      "whiskey_type": "Bourbon",
+      "region_state": "Kentucky",
+      "proof": 90.0,
+      "age_statement": 12,
+      "mash_bill": "Wheated",
+      "barrel_type": "New American Oak"
+    }
+  ],
+  "tasters": [
+    "Ben",
+    "Sarah"
+  ],
+  "types": [
+    "cocktail",
+    "whiskey",
+    "wine"
+  ],
+  "filter_options": {
+    "variety": [
+      "Cabernet Sauvignon"
+    ],
+    "country_region": [
+      "USA - Kentucky",
+      "USA - Napa Valley"
+    ],
+    "style": [
+      "Bold",
+      "Spirit-forward"
+    ],
+    "wine_type": [
+      "Red Wine"
+    ],
+    "whiskey_type": [
+      "Bourbon"
+    ],
+    "region_state": [
+      "Kentucky"
+    ],
+    "barrel_type": [
+      "New American Oak"
+    ]
+  }
+}

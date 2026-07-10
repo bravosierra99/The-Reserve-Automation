@@ -5,18 +5,30 @@
  * The module attaches itself to window (jsdom), same as in the browser.
  * Each test builds a fresh component object the way managementApp() does:
  * initState() spread for state + the module spread for methods.
+ *
+ * Bottle fixtures are NOT hand-written: they come from the contract fixture
+ * management_bottle_search — a real GET /api/v1/management/bottles/search
+ * response (full BottleMetadata.model_dump objects, id as a STRING, and no
+ * _index field — the July 2026 "_index" regression compared a field search
+ * results don't carry) captured by tests/contract/test_management_contract.py.
+ * The event-create response comes from the event_create_response contract
+ * fixture. Per-test variants are explicit mutations of the loaded objects.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadContract } from './helpers/contract.js';
 import '../../src/reserve_automation/web/static/js/management/event-create.js';
 
-// Search results come from /api/v1/management/bottles/search
-// (BottleMetadata.model_dump) — note: NO _index field. Shapes here must stay
-// search-result-shaped or the regression tests test the wrong thing.
-const WELLER = { id: '1', producer: 'Weller', name: 'Original Wheated Bourbon', type: 'whiskey' };
-const BUFFALO = { id: '2', producer: 'Buffalo Trace', name: 'Kentucky Straight Bourbon', type: 'whiskey' };
-const CAYMUS = { id: '3', producer: 'Caymus', name: 'Cabernet Sauvignon 2021', type: 'wine' };
+// Contract search data: two Buffalo Trace Wellers, ids '1' and '2'.
+function searchFixture() {
+    return loadContract('management_bottle_search');
+}
+
+let WELLER12;    // id '1'
+let WELLER_SR;   // id '2'
+let CAYMUS;      // synthetic wine variant — explicit mutation of a contract row
+let component;
 
 function freshComponent() {
     const mod = window.eventCreateModule();
@@ -25,9 +37,12 @@ function freshComponent() {
     return Object.assign({ mode: 'create-event' }, mod.initState(), mod);
 }
 
-let component;
-
 beforeEach(() => {
+    [WELLER12, WELLER_SR] = searchFixture().bottles;
+    CAYMUS = {
+        ...WELLER12,
+        id: '3', producer: 'Caymus Vineyards', name: 'Cabernet Sauvignon', type: 'wine',
+    };
     component = freshComponent();
 });
 
@@ -42,40 +57,40 @@ describe('isBottleInEvent', () => {
         // The shipped bug: comparison on a field absent from search results
         // (undefined === undefined) marked EVERY result "✓ Added" once any
         // bottle was selected — on a phone that means "can only add one bottle".
-        component.addBottleToEvent(WELLER);
+        component.addBottleToEvent(WELLER12);
 
-        expect(component.isBottleInEvent(BUFFALO)).toBe(false);
+        expect(component.isBottleInEvent(WELLER_SR)).toBe(false);
         expect(component.isBottleInEvent(CAYMUS)).toBe(false);
-        expect(component.isBottleInEvent(WELLER)).toBe(true);
+        expect(component.isBottleInEvent(WELLER12)).toBe(true);
     });
 
     it('matches on id, not object identity', () => {
-        component.addBottleToEvent(WELLER);
-        expect(component.isBottleInEvent({ ...WELLER })).toBe(true);
+        component.addBottleToEvent(WELLER12);
+        expect(component.isBottleInEvent({ ...WELLER12 })).toBe(true);
     });
 });
 
 describe('addBottleToEvent / removeBottleFromEvent', () => {
     it('adds bottles in order', () => {
-        component.addBottleToEvent(WELLER);
-        component.addBottleToEvent(BUFFALO);
-        expect(component.eventSelectedBottles).toEqual([WELLER, BUFFALO]);
+        component.addBottleToEvent(WELLER12);
+        component.addBottleToEvent(WELLER_SR);
+        expect(component.eventSelectedBottles).toEqual([WELLER12, WELLER_SR]);
     });
 
     it('ignores a duplicate add of the same bottle id', () => {
-        component.addBottleToEvent(WELLER);
-        component.addBottleToEvent({ ...WELLER });
+        component.addBottleToEvent(WELLER12);
+        component.addBottleToEvent({ ...WELLER12 });
         expect(component.eventSelectedBottles).toHaveLength(1);
     });
 
     it('removes by index and frees the bottle for re-adding', () => {
-        component.addBottleToEvent(WELLER);
-        component.addBottleToEvent(BUFFALO);
+        component.addBottleToEvent(WELLER12);
+        component.addBottleToEvent(WELLER_SR);
 
         component.removeBottleFromEvent(0);
 
-        expect(component.eventSelectedBottles).toEqual([BUFFALO]);
-        expect(component.isBottleInEvent(WELLER)).toBe(false);
+        expect(component.eventSelectedBottles).toEqual([WELLER_SR]);
+        expect(component.isBottleInEvent(WELLER12)).toBe(false);
     });
 });
 
@@ -87,7 +102,7 @@ describe('canCreateEvent', () => {
         component.eventHostName = 'Ben';
         expect(component.canCreateEvent()).toBe(false); // no bottles yet
 
-        component.addBottleToEvent(WELLER);
+        component.addBottleToEvent(WELLER12);
         expect(component.canCreateEvent()).toBe(true);
 
         component.eventHostName = '   ';
@@ -99,7 +114,7 @@ describe('searchBottlesForEvent', () => {
     it('clears results without fetching when the query is under 2 chars', async () => {
         const fetchMock = vi.fn();
         vi.stubGlobal('fetch', fetchMock);
-        component.eventBottleSearchResults = [WELLER];
+        component.eventBottleSearchResults = [WELLER12];
 
         component.eventBottleSearchQuery = 'a';
         await component.searchBottlesForEvent();
@@ -108,19 +123,21 @@ describe('searchBottlesForEvent', () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('fetches the management search endpoint with the encoded query', async () => {
+    it('fetches the management search endpoint and stores the contract bottles', async () => {
+        const contract = searchFixture();
         const fetchMock = vi.fn().mockResolvedValue({
-            json: async () => ({ bottles: [WELLER, BUFFALO] }),
+            json: async () => contract,
         });
         vi.stubGlobal('fetch', fetchMock);
 
-        component.eventBottleSearchQuery = 'wheated bourbon';
+        component.eventBottleSearchQuery = 'Weller 12';
         await component.searchBottlesForEvent();
 
         expect(fetchMock).toHaveBeenCalledWith(
-            '/api/v1/management/bottles/search?q=wheated%20bourbon'
+            '/api/v1/management/bottles/search?q=Weller%2012'
         );
-        expect(component.eventBottleSearchResults).toEqual([WELLER, BUFFALO]);
+        expect(component.eventBottleSearchResults).toEqual(contract.bottles);
+        expect(component.eventBottleSearchResults).toHaveLength(2);
         expect(component.eventBottleSearching).toBe(false);
     });
 
@@ -140,18 +157,22 @@ describe('searchBottlesForEvent', () => {
 });
 
 describe('createEvent', () => {
+    // Real POST /api/v1/events response (event_create_response contract
+    // fixture): event_id is the snapshot's normalized UUID placeholder.
+    const EVENT_ID = '00000000-0000-4000-8000-000000000001';
+
     function stubCreateResponse(fetchMock) {
         fetchMock.mockResolvedValue({
             ok: true,
-            json: async () => ({ event_id: 'evt-123' }),
+            json: async () => loadContract('event_create_response'),
         });
     }
 
     function fillValidEvent() {
         component.eventName = 'Bourbon Night';
         component.eventHostName = 'Ben';
-        component.addBottleToEvent(WELLER);
-        component.addBottleToEvent(BUFFALO);
+        component.addBottleToEvent(WELLER12);
+        component.addBottleToEvent(WELLER_SR);
     }
 
     it('does nothing when the form is incomplete', async () => {
@@ -174,12 +195,12 @@ describe('createEvent', () => {
         const [url, options] = fetchMock.mock.calls[0];
         expect(url).toBe('/api/v1/events');
         const body = JSON.parse(options.body);
-        expect(body.bottle_ids).toEqual(['1', '2']);
+        expect(body.bottle_ids).toEqual(['1', '2']);   // contract ids are strings
         expect(body.blind_numbers).toBeNull();
         expect(body.is_blind).toBe(false);
 
         expect(component.eventCreated).toBe(true);
-        expect(component.eventCreatedUrl).toBe('/events/evt-123');
+        expect(component.eventCreatedUrl).toBe(`/events/${EVENT_ID}`);
         expect(component.eventCreating).toBe(false);
     });
 
@@ -199,6 +220,8 @@ describe('createEvent', () => {
     });
 
     it('surfaces the server error and does not mark the event created', async () => {
+        // Error shape is hand-written: FastAPI's {detail} error envelope —
+        // the contract flow only captures success responses.
         const fetchMock = vi.fn().mockResolvedValue({
             ok: false,
             json: async () => ({ detail: 'Bottle not found' }),
@@ -247,8 +270,8 @@ function fillEverything(c) {
     c.eventHostName = 'Ben';
     c.eventIsBlind = true;
     c.eventBottleSearchQuery = 'well';
-    c.eventBottleSearchResults = [WELLER];
-    c.eventSelectedBottles = [WELLER, BUFFALO];
+    c.eventBottleSearchResults = [WELLER12];
+    c.eventSelectedBottles = [WELLER12, WELLER_SR];
     c.eventCreated = true;
-    c.eventCreatedUrl = '/events/evt-123';
+    c.eventCreatedUrl = '/events/00000000-0000-4000-8000-000000000001';
 }

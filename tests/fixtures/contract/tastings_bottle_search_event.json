@@ -1,0 +1,14 @@
+{
+  "query": "special",
+  "results": [
+    {
+      "bottle_path": "1",
+      "bottle_name": "Bottle #1",
+      "producer": "",
+      "vintage": null,
+      "confidence": 0.8,
+      "thumbnail_url": null,
+      "beverage_type": "whiskey"
+    }
+  ]
+}

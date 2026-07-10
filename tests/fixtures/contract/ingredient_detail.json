@@ -1,0 +1,42 @@
+{
+  "id": "2",
+  "name": "Bourbon",
+  "parent": "Whiskey",
+  "cost": null,
+  "volume_ml": null,
+  "abv": null,
+  "notes": null,
+  "label_image": null,
+  "is_product": false,
+  "ancestors": [
+    "Whiskey"
+  ],
+  "children": [
+    {
+      "id": "3",
+      "name": "Buffalo Trace Bourbon",
+      "parent": "Bourbon",
+      "cost": 29.99,
+      "volume_ml": 750,
+      "abv": 45.0,
+      "notes": "Shelf staple",
+      "label_image": null,
+      "is_product": true,
+      "ancestors": [],
+      "children": []
+    },
+    {
+      "id": "4",
+      "name": "Eagle Rare 10 Year",
+      "parent": "Bourbon",
+      "cost": 39.99,
+      "volume_ml": 750,
+      "abv": 45.0,
+      "notes": null,
+      "label_image": null,
+      "is_product": true,
+      "ancestors": [],
+      "children": []
+    }
+  ]
+}

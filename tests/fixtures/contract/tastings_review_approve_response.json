@@ -1,0 +1,11 @@
+{
+  "status": "approved",
+  "file_created": "3",
+  "stats": {
+    "total": 2,
+    "approved": 1,
+    "skipped": 0,
+    "remaining": 1,
+    "all_done": false
+  }
+}

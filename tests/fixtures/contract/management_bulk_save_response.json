@@ -1,0 +1,34 @@
+{
+  "saved": [
+    {
+      "id": "1",
+      "name": "Angostura Aromatic Bitters",
+      "parent": null,
+      "cost": 12.99,
+      "volume_ml": 200,
+      "abv": 44.7,
+      "notes": "Classic aromatic bitters",
+      "label_image": null,
+      "is_product": true,
+      "ancestors": []
+    },
+    {
+      "id": "2",
+      "name": "Peychaud's Bitters",
+      "parent": null,
+      "cost": 11.49,
+      "volume_ml": 148,
+      "abv": 35.0,
+      "notes": "New Orleans style bitters",
+      "label_image": null,
+      "is_product": true,
+      "ancestors": []
+    }
+  ],
+  "skipped": [
+    {
+      "name": "Regans' Orange Bitters",
+      "reason": "not selected"
+    }
+  ]
+}

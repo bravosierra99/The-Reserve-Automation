@@ -1,0 +1,14 @@
+{
+  "query": "weller",
+  "results": [
+    {
+      "bottle_path": "1",
+      "bottle_name": "Buffalo Trace - Weller Special Reserve",
+      "producer": "Buffalo Trace",
+      "vintage": null,
+      "confidence": 0.2727272727272727,
+      "thumbnail_url": null,
+      "beverage_type": "whiskey"
+    }
+  ]
+}

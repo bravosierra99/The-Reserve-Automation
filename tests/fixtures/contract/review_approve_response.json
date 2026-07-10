@@ -1,0 +1,19 @@
+{
+  "status": "approved",
+  "files_created": [
+    "db:4"
+  ],
+  "bottles_matched": [
+    {
+      "bottle_name": "Weller Special Reserve",
+      "matched_to": "Buffalo Trace - Weller Special Reserve",
+      "confidence": 0.7333333333333333
+    }
+  ],
+  "unmatched": [
+    {
+      "bottle_name": "Mystery Bourbon",
+      "taster_name": ""
+    }
+  ]
+}

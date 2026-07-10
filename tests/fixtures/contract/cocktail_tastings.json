@@ -1,0 +1,31 @@
+[
+  {
+    "id": "1",
+    "recipe_name": "Wisconsin Old Fashioned",
+    "taster_name": "Ben",
+    "tasting_date": "2026-07-07",
+    "score": 9.0,
+    "notes": "Nailed the supper club vibe",
+    "bartender": "Sarah",
+    "bottles_used": [
+      {
+        "recipe_ingredient": "Angostura Bitters",
+        "actual_product": "Angostura Bitters"
+      },
+      {
+        "recipe_ingredient": "Brandy",
+        "actual_product": "Korbel Brandy"
+      }
+    ]
+  },
+  {
+    "id": "2",
+    "recipe_name": "Wisconsin Old Fashioned",
+    "taster_name": "Sarah",
+    "tasting_date": "2026-07-06",
+    "score": 8.0,
+    "notes": "",
+    "bartender": "",
+    "bottles_used": []
+  }
+]

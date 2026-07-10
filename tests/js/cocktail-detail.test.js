@@ -6,13 +6,26 @@
  * production implementation. Alpine itself is not loaded; the factory's
  * return value is used directly, the same way Alpine would.
  *
- * Fixtures mirror the API response shapes in web/routes/cocktails.py
- * (_cocktail_to_dict / _tasting_to_dict) and web/routes/ingredients.py
- * (_ingredient_to_dict).
+ * API-response fixtures are NOT hand-written: they are contract fixtures —
+ * real responses captured and snapshot-verified by
+ * tests/contract/test_cocktails_contract.py and
+ * tests/contract/test_ingredients_contract.py (see tests/contract/contract.py
+ * for the rationale). Per-test variants mutate a fresh clone of the loaded
+ * contract object.
+ *
+ * Contract flow data: the detail cocktail is the Wisconsin Old Fashioned
+ * (id "2", parent_cocktail "Old Fashioned" — the field whose omission caused
+ * the July 2026 edit-wipe bug) with ingredients [Brandy, Angostura Bitters,
+ * Sugar, Lemon-Lime Soda]. Tastings: Ben 9 (2026-07-07, Korbel Brandy +
+ * Angostura selected), Sarah 8 (2026-07-06) -> avg 8.5. NOTE: the real API
+ * returns ids as STRINGS, recipe-row notes as '' (not null), and
+ * bottles_used in ITS OWN order, not submission order — the modal maps them
+ * by recipe_ingredient name, so order must not matter.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadContract } from './helpers/contract.js';
 import '../../src/reserve_automation/web/static/js/components/base-page.js';
 import '../../src/reserve_automation/web/static/js/cocktails/cocktail-detail.js';
 
@@ -36,58 +49,18 @@ function routeFetch(routes) {
     });
 }
 
-function freshApp(id = '7') {
+// The contract detail cocktail has id "2"
+function freshApp(id = '2') {
     return window.cocktailDetailApp(id);
 }
 
-// Shape: routes/cocktails.py::_cocktail_to_dict
-const COCKTAIL = {
-    id: 7,
-    name: 'Old Fashioned',
-    description: 'A classic',
-    ingredients: [
-        { ingredient: 'bourbon', amount: 2, unit: 'oz', notes: null, optional: false },
-        { ingredient: 'sugar', amount: 1, unit: 'barspoon', notes: 'demerara', optional: true },
-    ],
-    instructions: ['Stir with ice', 'Strain over a big cube'],
-    garnish: 'orange peel',
-    glassware: 'rocks',
-    method: 'stirred',
-    style: 'classic',
-    serving_size: 1,
-    stars: null,
-    photo: null,
-    avg_score: 8.5,
-};
-
-// Shape: routes/cocktails.py::_tasting_to_dict
-const TASTINGS = [
-    {
-        id: 11, recipe_name: 'Old Fashioned', taster_name: 'Ben',
-        tasting_date: '2026-06-01', score: 8, notes: 'good', bartender: 'Ben',
-        bottles_used: [{ recipe_ingredient: 'bourbon', actual_product: 'Weller SR' }],
-    },
-    {
-        id: 12, recipe_name: 'Old Fashioned', taster_name: 'Sarah',
-        tasting_date: '2026-06-10', score: 6, notes: '', bartender: null,
-        bottles_used: [],
-    },
-    {
-        id: 13, recipe_name: 'Old Fashioned', taster_name: 'Guest',
-        tasting_date: '2026-06-20', score: null, notes: 'no score', bartender: null,
-        bottles_used: [],
-    },
-];
-
-// Shape: routes/ingredients.py::_ingredient_to_dict
-const ING_BOURBON = {
-    id: 3, name: 'Bourbon', cost: null, abv: null,
-    is_product: false, ancestors: ['Whiskey'],
-};
-const ING_WELLER = {
-    id: 9, name: 'Weller Special Reserve', cost: 30, abv: 45,
-    is_product: true, ancestors: ['Whiskey', 'Bourbon'],
-};
+const cocktailDetail = () => loadContract('cocktail_detail');
+const cocktailTastings = () => loadContract('cocktail_tastings');
+const cocktailsList = () => loadContract('cocktails_list');
+const ingredientsSearch = () => loadContract('ingredients_search'); // q=bo: Bourbon + Buffalo Trace Bourbon
+const ingredientsFlat = () => loadContract('ingredients_flat');
+const whiskeyDescendants = () => loadContract('ingredient_descendants'); // of Whiskey (id "1")
+const createdIngredient = () => loadContract('ingredient_create_response'); // Angostura Bitters
 
 beforeEach(() => {
     vi.stubGlobal('fetch', routeFetch([]));
@@ -136,31 +109,31 @@ describe('initial state', () => {
 
 describe('loadCocktail', () => {
     it('loads the cocktail, its tastings, and sibling names for parent selection', async () => {
+        const cocktail = cocktailDetail();
+        const tastings = cocktailTastings();
         const fetchMock = routeFetch([
-            ['/api/v1/cocktails/7/tastings', jsonResponse(TASTINGS)],
-            ['/api/v1/cocktails/7', jsonResponse(COCKTAIL)],
-            ['/api/v1/cocktails', jsonResponse([
-                { ...COCKTAIL }, { ...COCKTAIL, id: 8, name: 'Moscow Mule' },
-            ])],
+            ['/api/v1/cocktails/2/tastings', jsonResponse(tastings)],
+            ['/api/v1/cocktails/2', jsonResponse(cocktail)],
+            ['/api/v1/cocktails', jsonResponse(cocktailsList())],
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
-        const app = freshApp('7');
+        const app = freshApp('2');
         await app.loadCocktail();
 
-        expect(fetchMock).toHaveBeenCalledWith('/api/v1/cocktails/7');
-        expect(app.cocktail).toEqual(COCKTAIL);
-        expect(app.tastings).toEqual(TASTINGS);
+        expect(fetchMock).toHaveBeenCalledWith('/api/v1/cocktails/2');
+        expect(app.cocktail).toEqual(cocktail);
+        expect(app.tastings).toEqual(tastings);
         // own name filtered out of the parent-cocktail datalist
-        expect(app.cocktailNames).toEqual(['Moscow Mule']);
+        expect(app.cocktailNames).toEqual(['Manhattan', 'Old Fashioned']);
         expect(app.loading).toBe(false);
     });
 
     it('leaves cocktail null on a 404 but still clears loading', async () => {
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/cocktails/7', jsonResponse({ detail: 'Cocktail not found' }, { ok: false, status: 404 })],
+            ['/api/v1/cocktails/2', jsonResponse({ detail: 'Cocktail not found' }, { ok: false, status: 404 })],
         ]));
-        const app = freshApp('7');
+        const app = freshApp('2');
         await app.loadCocktail();
         expect(app.cocktail).toBeNull();
         expect(app.loading).toBe(false);
@@ -168,7 +141,7 @@ describe('loadCocktail', () => {
 
     it('swallows network errors and clears loading', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('boom'); }));
-        const app = freshApp('7');
+        const app = freshApp('2');
         await app.loadCocktail();
         expect(app.cocktail).toBeNull();
         expect(app.loading).toBe(false);
@@ -177,34 +150,47 @@ describe('loadCocktail', () => {
 });
 
 describe('loadTastings', () => {
-    it('averages only the scored tastings', async () => {
+    it('averages the scored tastings (contract data: Ben 9, Sarah 8)', async () => {
+        const tastings = cocktailTastings();
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/cocktails/7/tastings', jsonResponse(TASTINGS)],
+            ['/api/v1/cocktails/2/tastings', jsonResponse(tastings)],
         ]));
-        const app = freshApp('7');
+        const app = freshApp('2');
         await app.loadTastings();
-        expect(app.tastings).toEqual(TASTINGS);
-        expect(app.avgScore).toBe(7); // (8 + 6) / 2, null score excluded
+        expect(app.tastings).toEqual(tastings);
+        expect(app.avgScore).toBe(8.5);
+    });
+
+    it('excludes unscored tastings from the average', async () => {
+        // Variant: a third tasting without a score must not drag the average
+        const tastings = cocktailTastings();
+        tastings.push({ ...tastings[1], id: '3', taster_name: 'Guest', score: null });
+        vi.stubGlobal('fetch', routeFetch([['/tastings', jsonResponse(tastings)]]));
+        const app = freshApp('2');
+        await app.loadTastings();
+        expect(app.avgScore).toBe(8.5);
     });
 
     it('sets avgScore null when nothing is scored', async () => {
+        const unscored = { ...cocktailTastings()[1], score: null };
         vi.stubGlobal('fetch', routeFetch([
-            ['/tastings', jsonResponse([{ ...TASTINGS[2] }])],
+            ['/tastings', jsonResponse([unscored])],
         ]));
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.avgScore = 5;
         await app.loadTastings();
         expect(app.avgScore).toBeNull();
     });
 
     it('keeps existing tastings on a failed response', async () => {
+        const tastings = cocktailTastings();
         vi.stubGlobal('fetch', routeFetch([
             ['/tastings', jsonResponse({ detail: 'nope' }, { ok: false, status: 500 })],
         ]));
-        const app = freshApp('7');
-        app.tastings = TASTINGS;
+        const app = freshApp('2');
+        app.tastings = tastings;
         await app.loadTastings();
-        expect(app.tastings).toEqual(TASTINGS);
+        expect(app.tastings).toEqual(tastings);
     });
 });
 
@@ -214,54 +200,58 @@ describe('loadTastings', () => {
 
 describe('searchBottles', () => {
     it('searches by the typed query and sorts products first', async () => {
+        // Contract order is [Bourbon (category), Buffalo Trace Bourbon
+        // (product)] — the component must flip the product to the top.
         const fetchMock = routeFetch([
-            ['/api/v1/ingredients/search', jsonResponse([ING_BOURBON, ING_WELLER])],
+            ['/api/v1/ingredients/search', jsonResponse(ingredientsSearch())],
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
-        const app = freshApp('7');
-        app.bottleSearchQueries[0] = 'weller';
-        await app.searchBottles(0, 'bourbon');
+        const app = freshApp('2');
+        app.bottleSearchQueries[0] = 'bo';
+        await app.searchBottles(0, 'Brandy');
 
-        expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingredients/search?q=weller');
-        // is_product entries bubble to the top
+        expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingredients/search?q=bo');
         expect(app.bottleResults[0].map(r => r.name))
-            .toEqual(['Weller Special Reserve', 'Bourbon']);
-        // no query in the box -> did NOT fall back to the descendants flow
+            .toEqual(['Buffalo Trace Bourbon', 'Bourbon']);
+        // typed query -> did NOT fall back to the descendants flow
         expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/ingredients?flat=true');
     });
 
     it('with no query, defaults to the recipe ingredient node plus its descendants', async () => {
         const fetchMock = routeFetch([
             ['/api/v1/ingredients/search', jsonResponse([])],
-            ['/api/v1/ingredients?flat=true', jsonResponse([ING_BOURBON, ING_WELLER])],
-            ['/api/v1/ingredients/3/descendants', jsonResponse([ING_WELLER])],
+            ['/api/v1/ingredients?flat=true', jsonResponse(ingredientsFlat())],
+            ['/api/v1/ingredients/1/descendants', jsonResponse(whiskeyDescendants())],
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
-        const app = freshApp('7');
-        await app.searchBottles(0, 'bourbon'); // matches "Bourbon" case-insensitively
+        const app = freshApp('2');
+        await app.searchBottles(0, 'whiskey'); // matches "Whiskey" case-insensitively
 
-        expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingredients/search?q=bourbon');
-        expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingredients/3/descendants');
-        expect(app.bottleResults[0].map(r => r.name))
-            .toEqual(['Weller Special Reserve', 'Bourbon']);
+        expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingredients/search?q=whiskey');
+        expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingredients/1/descendants');
+        // [Whiskey, Bourbon, Buffalo Trace, Eagle Rare] products-first sorted
+        expect(app.bottleResults[0].map(r => r.name)).toEqual([
+            'Buffalo Trace Bourbon', 'Eagle Rare 10 Year', 'Whiskey', 'Bourbon',
+        ]);
     });
 
     it('with no query and no matching node, keeps the plain search results', async () => {
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/ingredients/search', jsonResponse([ING_WELLER])],
+            ['/api/v1/ingredients/search', jsonResponse(ingredientsSearch())],
             ['/api/v1/ingredients?flat=true', jsonResponse([])],
         ]));
-        const app = freshApp('7');
-        await app.searchBottles(1, 'rye');
-        expect(app.bottleResults[1]).toEqual([ING_WELLER]);
+        const app = freshApp('2');
+        await app.searchBottles(1, 'Rye');
+        expect(app.bottleResults[1].map(r => r.name))
+            .toEqual(['Buffalo Trace Bourbon', 'Bourbon']);
     });
 
     it('swallows fetch failures', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
-        const app = freshApp('7');
-        await app.searchBottles(0, 'bourbon');
+        const app = freshApp('2');
+        await app.searchBottles(0, 'Brandy');
         expect(app.bottleResults[0]).toBeUndefined();
         expect(console.error).toHaveBeenCalled();
     });
@@ -269,53 +259,55 @@ describe('searchBottles', () => {
 
 describe('selectBottle', () => {
     it('records the selection, mirrors it into the query box, and closes the dropdown', () => {
-        const app = freshApp('7');
-        app.bottleResults[0] = [ING_WELLER];
-        app.selectBottle(0, ING_WELLER, 'bourbon');
+        const product = ingredientsSearch()[1]; // Buffalo Trace Bourbon
+        const app = freshApp('2');
+        app.bottleResults[0] = [product];
+        app.selectBottle(0, product, 'Bourbon');
         expect(app.tastingData.bottles_used[0]).toEqual({
-            recipe_ingredient: 'bourbon',
-            actual_product: 'Weller Special Reserve',
+            recipe_ingredient: 'Bourbon',
+            actual_product: 'Buffalo Trace Bourbon',
         });
-        expect(app.bottleSearchQueries[0]).toBe('Weller Special Reserve');
+        expect(app.bottleSearchQueries[0]).toBe('Buffalo Trace Bourbon');
         expect(app.bottleResults[0]).toEqual([]);
     });
 });
 
 // ---------------------------------------------------------------------------
-// createAndSelectIngredient (create-on-the-fly)
+// createAndSelectIngredient (create-on-the-fly) — the success response is the
+// contract fixture for POST /api/v1/ingredients.
 // ---------------------------------------------------------------------------
 
 describe('createAndSelectIngredient', () => {
     it('does nothing when the query box is blank', async () => {
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.bottleSearchQueries[0] = '   ';
-        await app.createAndSelectIngredient(0, 'bourbon');
+        await app.createAndSelectIngredient(0, 'Brandy');
         expect(fetch).not.toHaveBeenCalled();
     });
 
     it('POSTs the new ingredient parented under the recipe ingredient and selects it', async () => {
-        const created = { ...ING_WELLER, name: 'New Rye' };
+        const created = createdIngredient(); // Angostura Bitters
         const fetchMock = routeFetch([
             ['/api/v1/ingredients', jsonResponse(created)],
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
-        const app = freshApp('7');
-        app.bottleSearchQueries[0] = '  New Rye ';
-        await app.createAndSelectIngredient(0, 'bourbon');
+        const app = freshApp('2');
+        app.bottleSearchQueries[0] = '  Angostura Bitters ';
+        await app.createAndSelectIngredient(0, 'Bitters');
 
         const [url, opts] = fetchMock.mock.calls[0];
         expect(url).toBe('/api/v1/ingredients');
         expect(opts.method).toBe('POST');
-        expect(JSON.parse(opts.body)).toEqual({ name: 'New Rye', parent: 'bourbon' });
+        expect(JSON.parse(opts.body)).toEqual({ name: 'Angostura Bitters', parent: 'Bitters' });
         expect(app.tastingData.bottles_used[0]).toEqual({
-            recipe_ingredient: 'bourbon', actual_product: 'New Rye',
+            recipe_ingredient: 'Bitters', actual_product: 'Angostura Bitters',
         });
         expect(app.tastingError).toBe('');
     });
 
     it('retries at the root when the recipe-ingredient parent is rejected (400)', async () => {
-        const created = { ...ING_WELLER, name: 'Fresh Mint' };
+        const created = { ...createdIngredient(), name: 'Fresh Mint', parent: null };
         let calls = 0;
         const fetchMock = routeFetch([
             ['/api/v1/ingredients', () => {
@@ -327,7 +319,7 @@ describe('createAndSelectIngredient', () => {
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.bottleSearchQueries[0] = 'Fresh Mint';
         await app.createAndSelectIngredient(0, 'mint');
 
@@ -340,11 +332,11 @@ describe('createAndSelectIngredient', () => {
         vi.stubGlobal('fetch', routeFetch([
             ['/api/v1/ingredients', jsonResponse({ detail: 'exists' }, { ok: false, status: 409 })],
         ]));
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.bottleSearchQueries[0] = 'Angostura';
-        await app.createAndSelectIngredient(0, 'bitters');
+        await app.createAndSelectIngredient(0, 'Bitters');
         expect(app.tastingData.bottles_used[0]).toEqual({
-            recipe_ingredient: 'bitters', actual_product: 'Angostura',
+            recipe_ingredient: 'Bitters', actual_product: 'Angostura',
         });
         expect(app.tastingError).toBe('');
     });
@@ -356,34 +348,36 @@ describe('createAndSelectIngredient', () => {
                 { ok: false, status: 422 },
             )],
         ]));
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.bottleSearchQueries[0] = 'X';
-        await app.createAndSelectIngredient(0, 'bourbon');
+        await app.createAndSelectIngredient(0, 'Brandy');
         expect(app.tastingError).toBe('name: too long');
         expect(app.tastingData.bottles_used[0]).toBeUndefined();
     });
 
     it('reports thrown errors', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('net down'); }));
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.bottleSearchQueries[0] = 'X';
-        await app.createAndSelectIngredient(0, 'bourbon');
+        await app.createAndSelectIngredient(0, 'Brandy');
         expect(app.tastingError).toBe('net down');
     });
 });
 
 // ---------------------------------------------------------------------------
-// Tasting form save/close
+// Tasting form save/close — the POST body assertions mirror what the wizard
+// builds; the contract producer (test_cocktails_contract.py) sends these
+// exact payloads to the real API.
 // ---------------------------------------------------------------------------
 
 describe('closeTastingForm', () => {
     it('resets the wizard to step 1 with fresh data', () => {
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.showTastingForm = true;
         app.tastingStep = 2;
         app.tastingData.taster_name = 'Ben';
-        app.bottleSearchQueries[0] = 'weller';
-        app.bottleResults[0] = [ING_WELLER];
+        app.bottleSearchQueries[0] = 'korbel';
+        app.bottleResults[0] = ingredientsSearch();
 
         app.closeTastingForm();
 
@@ -399,7 +393,7 @@ describe('closeTastingForm', () => {
 
 describe('saveTasting', () => {
     it('requires a taster name before hitting the API', async () => {
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.tastingData.taster_name = '  ';
         await app.saveTasting();
         expect(app.tastingError).toBe('Name is required');
@@ -407,38 +401,39 @@ describe('saveTasting', () => {
     });
 
     it('POSTs the tasting with sparse/empty bottles_used entries dropped', async () => {
+        const tastings = cocktailTastings();
         const fetchMock = routeFetch([
-            ['/api/v1/cocktails/7/tastings', (url, opts) =>
+            ['/api/v1/cocktails/2/tastings', (url, opts) =>
                 opts && opts.method === 'POST'
-                    ? jsonResponse(TASTINGS[0])
-                    : jsonResponse(TASTINGS)],
+                    ? jsonResponse(tastings[0])
+                    : jsonResponse(tastings)],
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.showTastingForm = true;
         app.tastingData.taster_name = 'Ben';
-        app.tastingData.score = 8.5;
-        app.tastingData.notes = 'zesty';
+        app.tastingData.score = 9;
+        app.tastingData.notes = 'Nailed the supper club vibe';
         app.tastingData.bartender = 'Sarah';
         // Sparse: slot 0 empty product, slot 1 unset (hole), slot 2 selected
-        app.tastingData.bottles_used[0] = { recipe_ingredient: 'bourbon', actual_product: '  ' };
-        app.tastingData.bottles_used[2] = { recipe_ingredient: 'sugar', actual_product: 'Demerara' };
+        app.tastingData.bottles_used[0] = { recipe_ingredient: 'Brandy', actual_product: '  ' };
+        app.tastingData.bottles_used[2] = { recipe_ingredient: 'Sugar', actual_product: 'Demerara Cube' };
 
         await app.saveTasting();
 
         const postCall = fetchMock.mock.calls.find(([, o]) => o && o.method === 'POST');
-        expect(postCall[0]).toBe('/api/v1/cocktails/7/tastings');
+        expect(postCall[0]).toBe('/api/v1/cocktails/2/tastings');
         expect(JSON.parse(postCall[1].body)).toEqual({
             taster_name: 'Ben',
-            score: 8.5,
-            notes: 'zesty',
+            score: 9,
+            notes: 'Nailed the supper club vibe',
             bartender: 'Sarah',
-            bottles_used: [{ recipe_ingredient: 'sugar', actual_product: 'Demerara' }],
+            bottles_used: [{ recipe_ingredient: 'Sugar', actual_product: 'Demerara Cube' }],
         });
         // closed + tastings reloaded
         expect(app.showTastingForm).toBe(false);
-        expect(app.tastings).toEqual(TASTINGS);
+        expect(app.tastings).toEqual(tastings);
         expect(app.tastingSaving).toBe(false);
     });
 
@@ -446,7 +441,7 @@ describe('saveTasting', () => {
         vi.stubGlobal('fetch', routeFetch([
             ['/tastings', jsonResponse({ detail: 'Cocktail not found' }, { ok: false, status: 404 })],
         ]));
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.showTastingForm = true;
         app.tastingData.taster_name = 'Ben';
         await app.saveTasting();
@@ -457,7 +452,7 @@ describe('saveTasting', () => {
 
     it('reports thrown errors', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('nope'); }));
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.tastingData.taster_name = 'Ben';
         await app.saveTasting();
         expect(app.tastingError).toBe('nope');
@@ -470,33 +465,38 @@ describe('saveTasting', () => {
 // ---------------------------------------------------------------------------
 
 describe('openEditForm', () => {
-    it('deep-copies the cocktail into editData and lazily loads ingredient names', () => {
+    it('deep-copies the cocktail into editData, including parent_cocktail', () => {
         const fetchMock = routeFetch([
-            ['/api/v1/ingredients?flat=true', jsonResponse([ING_BOURBON])],
+            ['/api/v1/ingredients?flat=true', jsonResponse(ingredientsFlat())],
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
-        const app = freshApp('7');
-        app.cocktail = JSON.parse(JSON.stringify(COCKTAIL));
+        const cocktail = cocktailDetail();
+        const app = freshApp('2');
+        app.cocktail = cocktail;
         app.openEditForm();
 
         expect(app.showEditForm).toBe(true);
-        expect(app.editData.name).toBe('Old Fashioned');
-        expect(app.editData.description).toBe('A classic');
-        // API responses never include parent_cocktail -> defaults to ''
-        expect(app.editData.parent_cocktail).toBe('');
-        expect(app.editData.ingredients).toEqual(COCKTAIL.ingredients);
+        expect(app.editData.name).toBe('Wisconsin Old Fashioned');
+        expect(app.editData.description).toBe('Brandy old fashioned sweet, the supper club standard');
+        // The contract response DOES carry parent_cocktail — the edit form
+        // must seed it or every save wipes the stored parent (July 2026 bug;
+        // the old hand-written fixture omitted the field and masked this).
+        expect(app.editData.parent_cocktail).toBe('Old Fashioned');
+        expect(app.editData.ingredients).toEqual(cocktail.ingredients);
         // deep copy: mutating editData must not touch the displayed cocktail
-        app.editData.ingredients[0].ingredient = 'rye';
-        expect(app.cocktail.ingredients[0].ingredient).toBe('bourbon');
+        app.editData.ingredients[0].ingredient = 'Rye';
+        expect(app.cocktail.ingredients[0].ingredient).toBe('Brandy');
         expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingredients?flat=true');
     });
 
     it('seeds one empty ingredient and instruction row for bare recipes', () => {
-        const app = freshApp('7');
-        app.ingredientNames = ['Bourbon']; // already loaded -> no fetch
-        app.cocktail = { ...COCKTAIL, ingredients: [], instructions: [], description: null,
-                         method: null, style: null, glassware: null, garnish: null };
+        const app = freshApp('2');
+        app.ingredientNames = ['Brandy']; // already loaded -> no fetch
+        app.cocktail = {
+            ...cocktailDetail(), ingredients: [], instructions: [], description: null,
+            parent_cocktail: null, method: null, style: null, glassware: null, garnish: null,
+        };
         app.openEditForm();
         expect(fetch).not.toHaveBeenCalled();
         expect(app.editData.ingredients).toEqual([
@@ -505,12 +505,13 @@ describe('openEditForm', () => {
         expect(app.editData.instructions).toEqual(['']);
         expect(app.editData.method).toBe('');
         expect(app.editData.garnish).toBe('');
+        expect(app.editData.parent_cocktail).toBe('');
     });
 });
 
 describe('saveEdit', () => {
     it('requires a name', async () => {
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.editData.name = ' ';
         await app.saveEdit();
         expect(app.editError).toBe('Name is required');
@@ -518,53 +519,53 @@ describe('saveEdit', () => {
     });
 
     it('PUTs the recipe with blank rows filtered and empty strings nulled', async () => {
+        const cocktail = cocktailDetail();
         const fetchMock = routeFetch([
-            ['/api/v1/cocktails/7/tastings', jsonResponse([])],
-            ['/api/v1/cocktails/7', (url, opts) =>
-                opts && opts.method === 'PUT' ? jsonResponse(COCKTAIL) : jsonResponse(COCKTAIL)],
-            ['/api/v1/cocktails', jsonResponse([COCKTAIL])],
+            ['/api/v1/cocktails/2/tastings', jsonResponse(cocktailTastings())],
+            ['/api/v1/cocktails/2', jsonResponse(cocktail)],
+            ['/api/v1/cocktails', jsonResponse(cocktailsList())],
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.showEditForm = true;
         app.editData = {
-            name: 'Old Fashioned', description: '', parent_cocktail: '',
-            method: 'stirred', style: '', glassware: 'rocks', garnish: '',
+            name: 'Wisconsin Old Fashioned', description: '', parent_cocktail: 'Old Fashioned',
+            method: 'built', style: '', glassware: 'rocks', garnish: '',
             ingredients: [
-                { ingredient: 'bourbon', amount: 2, unit: 'oz', notes: '', optional: false },
+                { ingredient: 'Brandy', amount: 2, unit: 'oz', notes: '', optional: false },
                 { ingredient: '  ', amount: null, unit: 'oz', notes: '', optional: false },
             ],
-            instructions: ['Stir', '  ', ''],
+            instructions: ['Build over ice', '  ', ''],
         };
         await app.saveEdit();
 
         const putCall = fetchMock.mock.calls.find(([, o]) => o && o.method === 'PUT');
-        expect(putCall[0]).toBe('/api/v1/cocktails/7');
+        expect(putCall[0]).toBe('/api/v1/cocktails/2');
         expect(JSON.parse(putCall[1].body)).toEqual({
-            name: 'Old Fashioned',
+            name: 'Wisconsin Old Fashioned',
             description: null,
-            parent_cocktail: null,
-            method: 'stirred',
+            parent_cocktail: 'Old Fashioned',
+            method: 'built',
             style: null,
             glassware: 'rocks',
             garnish: null,
-            ingredients: [{ ingredient: 'bourbon', amount: 2, unit: 'oz', notes: '', optional: false }],
-            instructions: ['Stir'],
+            ingredients: [{ ingredient: 'Brandy', amount: 2, unit: 'oz', notes: '', optional: false }],
+            instructions: ['Build over ice'],
         });
         expect(app.showEditForm).toBe(false);
         // reloaded the cocktail afterwards
-        expect(app.cocktail).toEqual(COCKTAIL);
+        expect(app.cocktail).toEqual(cocktail);
         expect(app.editSaving).toBe(false);
     });
 
     it('shows the API error and keeps the modal open', async () => {
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/cocktails/7', jsonResponse({ detail: 'name taken' }, { ok: false, status: 400 })],
+            ['/api/v1/cocktails/2', jsonResponse({ detail: 'name taken' }, { ok: false, status: 400 })],
         ]));
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.showEditForm = true;
-        app.editData.name = 'Old Fashioned';
+        app.editData.name = 'Wisconsin Old Fashioned';
         await app.saveEdit();
         expect(app.editError).toBe('name taken');
         expect(app.showEditForm).toBe(true);
@@ -573,8 +574,8 @@ describe('saveEdit', () => {
 
     it('reports thrown errors', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('down'); }));
-        const app = freshApp('7');
-        app.editData.name = 'Old Fashioned';
+        const app = freshApp('2');
+        app.editData.name = 'Wisconsin Old Fashioned';
         await app.saveEdit();
         expect(app.editError).toBe('down');
     });
@@ -587,7 +588,7 @@ describe('saveEdit', () => {
 describe('deleteCocktail', () => {
     it('is confirm-gated', async () => {
         vi.stubGlobal('confirm', vi.fn(() => false));
-        const app = freshApp('7');
+        const app = freshApp('2');
         await app.deleteCocktail();
         expect(fetch).not.toHaveBeenCalled();
     });
@@ -595,20 +596,20 @@ describe('deleteCocktail', () => {
     it('DELETEs and navigates back to the list', async () => {
         vi.stubGlobal('location', { href: '' });
         const fetchMock = routeFetch([
-            ['/api/v1/cocktails/7', jsonResponse({ message: 'deleted' })],
+            ['/api/v1/cocktails/2', jsonResponse({ status: 'deleted' })],
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
-        const app = freshApp('7');
+        const app = freshApp('2');
         await app.deleteCocktail();
 
-        expect(fetchMock).toHaveBeenCalledWith('/api/v1/cocktails/7', { method: 'DELETE' });
+        expect(fetchMock).toHaveBeenCalledWith('/api/v1/cocktails/2', { method: 'DELETE' });
         expect(window.location.href).toBe('/cocktails');
     });
 
     it('alerts on network failure', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
-        const app = freshApp('7');
+        const app = freshApp('2');
         await app.deleteCocktail();
         expect(alert).toHaveBeenCalledWith('Failed to delete: offline');
     });
@@ -617,40 +618,40 @@ describe('deleteCocktail', () => {
 describe('deleteTasting', () => {
     it('is confirm-gated', async () => {
         vi.stubGlobal('confirm', vi.fn(() => false));
-        const app = freshApp('7');
-        await app.deleteTasting(11);
+        const app = freshApp('2');
+        await app.deleteTasting('1');
         expect(fetch).not.toHaveBeenCalled();
     });
 
     it('DELETEs the tasting and reloads the history', async () => {
-        const remaining = [TASTINGS[1]];
+        const remaining = [cocktailTastings()[1]];
         const fetchMock = routeFetch([
-            ['/api/v1/cocktails/7/tastings/11', jsonResponse({ message: 'deleted' })],
-            ['/api/v1/cocktails/7/tastings', jsonResponse(remaining)],
+            ['/api/v1/cocktails/2/tastings/1', jsonResponse({ status: 'deleted', id: '1' })],
+            ['/api/v1/cocktails/2/tastings', jsonResponse(remaining)],
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
-        const app = freshApp('7');
-        await app.deleteTasting(11);
+        const app = freshApp('2');
+        await app.deleteTasting('1');
 
         expect(fetchMock).toHaveBeenCalledWith(
-            '/api/v1/cocktails/7/tastings/11', { method: 'DELETE' });
+            '/api/v1/cocktails/2/tastings/1', { method: 'DELETE' });
         expect(app.tastings).toEqual(remaining);
     });
 
     it('alerts when the API refuses', async () => {
         vi.stubGlobal('fetch', routeFetch([
-            ['/tastings/11', jsonResponse({ detail: 'nope' }, { ok: false, status: 403 })],
+            ['/tastings/1', jsonResponse({ detail: 'nope' }, { ok: false, status: 403 })],
         ]));
-        const app = freshApp('7');
-        await app.deleteTasting(11);
+        const app = freshApp('2');
+        await app.deleteTasting('1');
         expect(alert).toHaveBeenCalledWith('Failed to delete tasting');
     });
 
     it('alerts on network failure', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
-        const app = freshApp('7');
-        await app.deleteTasting(11);
+        const app = freshApp('2');
+        await app.deleteTasting('1');
         expect(alert).toHaveBeenCalledWith('Failed to delete: offline');
     });
 });
@@ -661,36 +662,46 @@ describe('deleteTasting', () => {
 
 describe('openEditTastingModal', () => {
     it('indexes bottles_used by the recipe ingredient positions', () => {
-        const app = freshApp('7');
-        app.cocktail = COCKTAIL;
-        app.openEditTastingModal(TASTINGS[0]);
+        const app = freshApp('2');
+        app.cocktail = cocktailDetail();
+        // Contract data: the API returns bottles_used in ITS OWN order
+        // (Angostura before Brandy, not submission order) — mapping by
+        // recipe_ingredient name must realign them to recipe positions.
+        app.openEditTastingModal(cocktailTastings()[0]);
 
-        expect(app.editingTastingId).toBe(11);
+        expect(app.editingTastingId).toBe('1'); // string id, straight from the API
         expect(app.showEditTastingForm).toBe(true);
         expect(app.editTastingError).toBe('');
         expect(app.editTastingData.taster_name).toBe('Ben');
-        expect(app.editTastingData.tasting_date).toBe('2026-06-01');
-        expect(app.editTastingData.score).toBe(8);
+        expect(app.editTastingData.tasting_date).toBe('2026-07-07');
+        expect(app.editTastingData.score).toBe(9);
         expect(app.editTastingData.bottles_used).toEqual([
-            { recipe_ingredient: 'bourbon', actual_product: 'Weller SR' },
-            { recipe_ingredient: 'sugar', actual_product: '' },
+            { recipe_ingredient: 'Brandy', actual_product: 'Korbel Brandy' },
+            { recipe_ingredient: 'Angostura Bitters', actual_product: 'Angostura Bitters' },
+            { recipe_ingredient: 'Sugar', actual_product: '' },
+            { recipe_ingredient: 'Lemon-Lime Soda', actual_product: '' },
         ]);
-        expect(app.editBottleQueries).toEqual({ 0: 'Weller SR', 1: '' });
+        expect(app.editBottleQueries).toEqual({
+            0: 'Korbel Brandy', 1: 'Angostura Bitters', 2: '', 3: '',
+        });
     });
 
     it('defaults a null score to 7 and missing fields to empty strings', () => {
-        const app = freshApp('7');
-        app.cocktail = COCKTAIL;
-        app.openEditTastingModal(TASTINGS[2]);
+        const app = freshApp('2');
+        app.cocktail = cocktailDetail();
+        // Variant: unscored tasting (the current API always stores the wizard
+        // score, so null score is a legacy/synthetic case)
+        const unscored = { ...cocktailTastings()[1], score: null, notes: 'no score', bartender: null };
+        app.openEditTastingModal(unscored);
         expect(app.editTastingData.score).toBe(7);
         expect(app.editTastingData.bartender).toBe('');
         expect(app.editTastingData.notes).toBe('no score');
     });
 
     it('copes with the cocktail not being loaded yet', () => {
-        const app = freshApp('7');
+        const app = freshApp('2');
         app.cocktail = null;
-        app.openEditTastingModal(TASTINGS[1]);
+        app.openEditTastingModal(cocktailTastings()[1]);
         expect(app.editTastingData.bottles_used).toEqual([]);
     });
 });
@@ -700,17 +711,17 @@ describe('openEditTastingModal', () => {
 describe('searchBottles (edit mode)', () => {
     it('searches by the typed query, reading/writing the edit buckets', async () => {
         const fetchMock = routeFetch([
-            ['/api/v1/ingredients/search', jsonResponse([ING_BOURBON, ING_WELLER])],
+            ['/api/v1/ingredients/search', jsonResponse(ingredientsSearch())],
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
-        const app = freshApp('7');
-        app.editBottleQueries[0] = 'weller';
-        await app.searchBottles(0, 'bourbon', 'edit');
+        const app = freshApp('2');
+        app.editBottleQueries[0] = 'bo';
+        await app.searchBottles(0, 'Brandy', 'edit');
 
-        expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingredients/search?q=weller');
+        expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingredients/search?q=bo');
         expect(app.editBottleResults[0].map(r => r.name))
-            .toEqual(['Weller Special Reserve', 'Bourbon']);
+            .toEqual(['Buffalo Trace Bourbon', 'Bourbon']);
         // add-mode buckets untouched
         expect(app.bottleResults).toEqual({});
     });
@@ -718,84 +729,90 @@ describe('searchBottles (edit mode)', () => {
     it('with no query, defaults to the recipe node plus descendants', async () => {
         vi.stubGlobal('fetch', routeFetch([
             ['/api/v1/ingredients/search', jsonResponse([])],
-            ['/api/v1/ingredients?flat=true', jsonResponse([ING_BOURBON])],
-            ['/api/v1/ingredients/3/descendants', jsonResponse([ING_WELLER])],
+            ['/api/v1/ingredients?flat=true', jsonResponse(ingredientsFlat())],
+            ['/api/v1/ingredients/1/descendants', jsonResponse(whiskeyDescendants())],
         ]));
-        const app = freshApp('7');
-        await app.searchBottles(0, 'Bourbon', 'edit');
-        expect(app.editBottleResults[0].map(r => r.name))
-            .toEqual(['Weller Special Reserve', 'Bourbon']);
+        const app = freshApp('2');
+        await app.searchBottles(0, 'Whiskey', 'edit');
+        expect(app.editBottleResults[0].map(r => r.name)).toEqual([
+            'Buffalo Trace Bourbon', 'Eagle Rare 10 Year', 'Whiskey', 'Bourbon',
+        ]);
     });
 
     it('ignores the add-mode query for the same slot', async () => {
         const fetchMock = routeFetch([
-            ['/api/v1/ingredients/search', jsonResponse([ING_WELLER])],
+            ['/api/v1/ingredients/search', jsonResponse(ingredientsSearch())],
             ['/api/v1/ingredients?flat=true', jsonResponse([])],
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
-        const app = freshApp('7');
-        app.bottleSearchQueries[0] = 'weller'; // add-mode bucket must not leak in
-        await app.searchBottles(0, 'rye', 'edit');
+        const app = freshApp('2');
+        app.bottleSearchQueries[0] = 'korbel'; // add-mode bucket must not leak in
+        await app.searchBottles(0, 'Rye', 'edit');
         // empty edit query -> falls back to the recipe ingredient
-        expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingredients/search?q=rye');
-        expect(app.editBottleResults[0]).toEqual([ING_WELLER]);
+        expect(fetchMock).toHaveBeenCalledWith('/api/v1/ingredients/search?q=Rye');
+        expect(app.editBottleResults[0].map(r => r.name))
+            .toEqual(['Buffalo Trace Bourbon', 'Bourbon']);
     });
 
     it('bails silently on a failed search', async () => {
         vi.stubGlobal('fetch', routeFetch([
             ['/api/v1/ingredients/search', jsonResponse({}, { ok: false, status: 500 })],
         ]));
-        const app = freshApp('7');
-        await app.searchBottles(0, 'bourbon', 'edit');
+        const app = freshApp('2');
+        await app.searchBottles(0, 'Brandy', 'edit');
         expect(app.editBottleResults[0]).toBeUndefined();
     });
 
     it('swallows thrown errors', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
-        const app = freshApp('7');
-        await expect(app.searchBottles(0, 'bourbon', 'edit')).resolves.toBeUndefined();
+        const app = freshApp('2');
+        await expect(app.searchBottles(0, 'Brandy', 'edit')).resolves.toBeUndefined();
         expect(console.error).toHaveBeenCalled();
     });
 });
 
 describe('selectEditBottle', () => {
     it('records the selection into editTastingData and closes the dropdown', () => {
-        const app = freshApp('7');
+        const product = ingredientsSearch()[1]; // Buffalo Trace Bourbon
+        const app = freshApp('2');
         app.editTastingData = { bottles_used: [] };
-        app.editBottleResults[1] = [ING_WELLER];
-        app.selectEditBottle(1, ING_WELLER, 'bourbon');
+        app.editBottleResults[1] = [product];
+        app.selectEditBottle(1, product, 'Bourbon');
         expect(app.editTastingData.bottles_used[1]).toEqual({
-            recipe_ingredient: 'bourbon', actual_product: 'Weller Special Reserve',
+            recipe_ingredient: 'Bourbon', actual_product: 'Buffalo Trace Bourbon',
         });
-        expect(app.editBottleQueries[1]).toBe('Weller Special Reserve');
+        expect(app.editBottleQueries[1]).toBe('Buffalo Trace Bourbon');
         expect(app.editBottleResults[1]).toEqual([]);
     });
 });
 
 describe('saveEditTasting', () => {
+    // The PATCH body assertions mirror what the modal builds; the contract
+    // producer PATCHes these exact payloads to pin the tasting dates.
     function seededApp() {
-        const app = freshApp('7');
-        app.editingTastingId = 11;
+        const app = freshApp('2');
+        app.editingTastingId = '1';
         app.showEditTastingForm = true;
         app.editTastingData = {
             taster_name: 'Ben',
-            tasting_date: '2026-06-01',
-            score: '8.5',
+            tasting_date: '2026-07-07',
+            score: '9.5',
             notes: 'better',
             bartender: 'Sarah',
             bottles_used: [
-                { recipe_ingredient: 'bourbon', actual_product: 'Weller SR' },
-                { recipe_ingredient: 'sugar', actual_product: '' },
+                { recipe_ingredient: 'Brandy', actual_product: 'Korbel Brandy' },
+                { recipe_ingredient: 'Sugar', actual_product: '' },
             ],
         };
         return app;
     }
 
     it('PATCHes the tasting with parsed score and empty bottle rows dropped', async () => {
+        const tastings = cocktailTastings();
         const fetchMock = routeFetch([
-            ['/api/v1/cocktails/7/tastings/11', jsonResponse(TASTINGS[0])],
-            ['/api/v1/cocktails/7/tastings', jsonResponse(TASTINGS)],
+            ['/api/v1/cocktails/2/tastings/1', jsonResponse({ status: 'updated', id: 1 })],
+            ['/api/v1/cocktails/2/tastings', jsonResponse(tastings)],
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
@@ -803,23 +820,23 @@ describe('saveEditTasting', () => {
         await app.saveEditTasting();
 
         const patchCall = fetchMock.mock.calls.find(([, o]) => o && o.method === 'PATCH');
-        expect(patchCall[0]).toBe('/api/v1/cocktails/7/tastings/11');
+        expect(patchCall[0]).toBe('/api/v1/cocktails/2/tastings/1');
         expect(JSON.parse(patchCall[1].body)).toEqual({
             taster_name: 'Ben',
-            tasting_date: '2026-06-01',
-            score: 8.5,
+            tasting_date: '2026-07-07',
+            score: 9.5,
             notes: 'better',
             bartender: 'Sarah',
-            bottles_used: [{ recipe_ingredient: 'bourbon', actual_product: 'Weller SR' }],
+            bottles_used: [{ recipe_ingredient: 'Brandy', actual_product: 'Korbel Brandy' }],
         });
         expect(app.showEditTastingForm).toBe(false);
-        expect(app.tastings).toEqual(TASTINGS);
+        expect(app.tastings).toEqual(tastings);
     });
 
     it('sends a null score when the slider value is empty', async () => {
         const fetchMock = routeFetch([
-            ['/api/v1/cocktails/7/tastings/11', jsonResponse(TASTINGS[0])],
-            ['/api/v1/cocktails/7/tastings', jsonResponse(TASTINGS)],
+            ['/api/v1/cocktails/2/tastings/1', jsonResponse({ status: 'updated', id: 1 })],
+            ['/api/v1/cocktails/2/tastings', jsonResponse(cocktailTastings())],
         ]);
         vi.stubGlobal('fetch', fetchMock);
 
@@ -833,7 +850,7 @@ describe('saveEditTasting', () => {
 
     it('surfaces server errors without closing the modal', async () => {
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/cocktails/7/tastings/11', jsonResponse({ detail: 'Tasting not found' }, { ok: false, status: 404 })],
+            ['/api/v1/cocktails/2/tastings/1', jsonResponse({ detail: 'Tasting not found' }, { ok: false, status: 404 })],
         ]));
         const app = seededApp();
         await app.saveEditTasting();
@@ -843,7 +860,7 @@ describe('saveEditTasting', () => {
 
     it('falls back to the status code when the error body is not JSON', async () => {
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/cocktails/7/tastings/11', {
+            ['/api/v1/cocktails/2/tastings/1', {
                 ok: false, status: 500,
                 json: async () => { throw new Error('not json'); },
             }],
@@ -861,7 +878,7 @@ describe('saveEditTasting', () => {
 describe('viewIngredient', () => {
     it('navigates to the ingredients page with an auto-search hash', async () => {
         vi.stubGlobal('location', { href: '' });
-        const app = freshApp('7');
+        const app = freshApp('2');
         await app.viewIngredient('Angostura & Co');
         expect(window.location.href)
             .toBe(`/ingredients#search=${encodeURIComponent('Angostura & Co')}`);
@@ -880,7 +897,7 @@ describe('handleAutocomplete', () => {
     }
 
     it('ignores keys other than Tab/Enter', () => {
-        const app = freshApp('7');
+        const app = freshApp('2');
         const event = keyEvent('a', 'bo');
         app.handleAutocomplete(event, ['Bourbon']);
         expect(event.preventDefault).not.toHaveBeenCalled();
@@ -888,14 +905,14 @@ describe('handleAutocomplete', () => {
     });
 
     it('ignores empty input', () => {
-        const app = freshApp('7');
+        const app = freshApp('2');
         const event = keyEvent('Tab', '   ');
         app.handleAutocomplete(event, ['Bourbon']);
         expect(event.preventDefault).not.toHaveBeenCalled();
     });
 
     it('prefers a starts-with match and fires an input event for x-model', () => {
-        const app = freshApp('7');
+        const app = freshApp('2');
         const event = keyEvent('Tab', 'bo');
         const inputSpy = vi.fn();
         event.target.addEventListener('input', inputSpy);
@@ -906,7 +923,7 @@ describe('handleAutocomplete', () => {
     });
 
     it('falls back to a contains match on Enter', () => {
-        const app = freshApp('7');
+        const app = freshApp('2');
         const event = keyEvent('Enter', 'fashion');
         app.handleAutocomplete(event, ['Old Fashioned', 'Martini']);
         expect(event.target.value).toBe('Old Fashioned');
@@ -914,7 +931,7 @@ describe('handleAutocomplete', () => {
     });
 
     it('does nothing when nothing matches', () => {
-        const app = freshApp('7');
+        const app = freshApp('2');
         const event = keyEvent('Tab', 'zzz');
         app.handleAutocomplete(event, ['Bourbon']);
         expect(event.target.value).toBe('zzz');

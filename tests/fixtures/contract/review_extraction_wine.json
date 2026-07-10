@@ -1,0 +1,93 @@
+{
+  "extraction_id": "00000000-0000-4000-8000-000000000001",
+  "extraction_type": "tasting",
+  "upload_filename": "wine-card.jpg",
+  "template_type": "aws_wine",
+  "data": {
+    "template_type": "aws_wine",
+    "tastings": [
+      {
+        "id": null,
+        "bottle_name": "Cabernet Sauvignon",
+        "taster_name": "",
+        "tasting_date": "2026-07-07",
+        "beverage_type": "wine",
+        "wine_appearance": 3.0,
+        "wine_aroma": 5.0,
+        "wine_taste": 4.0,
+        "wine_aftertaste": 1.5,
+        "wine_overall": 1.5,
+        "whiskey_nose": null,
+        "whiskey_palate": null,
+        "whiskey_finish": null,
+        "whiskey_overall": null,
+        "appearance_notes": [
+          "ruby"
+        ],
+        "nose_notes": [
+          "cassis"
+        ],
+        "palate_notes": [
+          "plum"
+        ],
+        "finish_notes": [
+          "long"
+        ],
+        "overall_notes": "Lovely",
+        "days_from_crack": null,
+        "fill_level": null,
+        "place": null,
+        "theme": null,
+        "price": null,
+        "color": null,
+        "confidence": 1.0
+      },
+      {
+        "id": null,
+        "bottle_name": "Mystery Red",
+        "taster_name": "Sarah",
+        "tasting_date": "2026-07-07",
+        "beverage_type": "wine",
+        "wine_appearance": 2.0,
+        "wine_aroma": 3.0,
+        "wine_taste": 3.0,
+        "wine_aftertaste": 1.0,
+        "wine_overall": 1.0,
+        "whiskey_nose": null,
+        "whiskey_palate": null,
+        "whiskey_finish": null,
+        "whiskey_overall": null,
+        "appearance_notes": null,
+        "nose_notes": null,
+        "palate_notes": null,
+        "finish_notes": null,
+        "overall_notes": null,
+        "days_from_crack": null,
+        "fill_level": null,
+        "place": null,
+        "theme": null,
+        "price": null,
+        "color": null,
+        "confidence": 1.0
+      }
+    ]
+  },
+  "match_previews": [
+    {
+      "bottle_name": "Cabernet Sauvignon",
+      "taster_name": "",
+      "tasting_date": "2026-07-07",
+      "matched": true,
+      "matched_to": "Caymus Vineyards - Cabernet Sauvignon",
+      "confidence": 0.6545454545454545
+    },
+    {
+      "bottle_name": "Mystery Red",
+      "taster_name": "Sarah",
+      "tasting_date": "2026-07-07",
+      "matched": false,
+      "matched_to": null,
+      "confidence": 0.0
+    }
+  ]
+}

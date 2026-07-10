@@ -4,10 +4,18 @@
  *
  * Alpine itself is not loaded; the factory's return value is used directly.
  * The 10-second refresh poll is exercised with fake timers.
+ *
+ * The event-list fixture is NOT hand-written: it is the events_list contract
+ * fixture — a real GET /api/v1/events response captured and snapshot-verified
+ * by tests/contract/test_events_contract.py (see tests/contract/contract.py).
+ * Notably, bottles are objects ({bottle_id, bottle_name, bottle_path,
+ * blind_number}) and participants are keyed by id carrying participant_name —
+ * the old hand-written fixture had string bottles and {name} participants.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadContract } from './helpers/contract.js';
 import '../../src/reserve_automation/web/static/js/events/events-page.js';
 
 function jsonResponse(data, { ok = true, status = 200 } = {}) {
@@ -34,25 +42,13 @@ function freshApp() {
     return window.eventsApp();
 }
 
-// Fixtures mirror web/routes/events.py list_events(): an array of event dicts
-// (blind-redacted for non-managers). Fields read by templates/events.html.
-const EVENTS = [
-    {
-        event_id: 'evt-1', name: 'Bourbon Night', event_type: 'bottle',
-        beverage_type: 'whiskey', bottles: ['b1', 'b2'], is_blind: true,
-        event_mode: 'standard', status: 'open', host_name: 'Ben',
-        participants: { p1: { name: 'Sarah' } },
-    },
-    {
-        event_id: 'evt-2', name: 'Flight Club', event_type: 'cocktail',
-        beverage_type: 'cocktail', bottles: [], cocktails: ['old-fashioned'],
-        is_blind: false, event_mode: 'flight', status: 'closed',
-        host_name: 'Sarah', participants: {},
-    },
-];
+// Real GET /api/v1/events response: the whiskey and wine contract events.
+function makeEventsList() {
+    return loadContract('events_list');
+}
 
 beforeEach(() => {
-    vi.stubGlobal('fetch', routeFetch([['/api/v1/events', jsonResponse(EVENTS)]]));
+    vi.stubGlobal('fetch', routeFetch([['/api/v1/events', jsonResponse(makeEventsList())]]));
     vi.stubGlobal('alert', vi.fn());
     vi.stubGlobal('confirm', vi.fn(() => true));
 });
@@ -76,8 +72,44 @@ describe('loadEvents', () => {
         const app = freshApp();
         await app.loadEvents();
         expect(fetch).toHaveBeenCalledWith('/api/v1/events');
-        expect(app.events).toEqual(EVENTS);
+        expect(app.events).toEqual(makeEventsList());
         expect(app.loading).toBe(false);
+    });
+
+    it('stores the fields templates/events.html renders, in list order', async () => {
+        const app = freshApp();
+        await app.loadEvents();
+
+        expect(app.events.map(e => e.name))
+            .toEqual(['Contract Whiskey Night', 'Contract Wine Night']);
+        const [whiskey, wine] = app.events;
+
+        // Card header + badges read these directly.
+        expect(whiskey.event_type).toBe('bottle');
+        expect(whiskey.beverage_type).toBe('whiskey');
+        expect(whiskey.is_blind).toBe(true);
+        expect(whiskey.event_mode).toBe('standard');
+        expect(whiskey.status).toBe('closed');
+        expect(whiskey.host_name).toBe('Ben');
+
+        // "N bottles" uses bottles.length — bottles are OBJECTS, not strings.
+        expect(whiskey.bottles).toHaveLength(3);
+        expect(whiskey.bottles[0]).toEqual({
+            bottle_id: '1',
+            bottle_name: 'Willett - Family Estate Single Barrel',
+            bottle_path: '1',
+            blind_number: 1,
+        });
+        expect(whiskey.cocktails).toEqual([]);
+
+        // Participant count uses Object.keys(participants).length.
+        expect(Object.keys(whiskey.participants)).toHaveLength(2);
+        expect(Object.values(whiskey.participants).map(p => p.participant_name))
+            .toEqual(['Alice', 'Bob']);
+
+        expect(wine.beverage_type).toBe('wine');
+        expect(wine.bottles).toHaveLength(2);
+        expect(Object.keys(wine.participants)).toHaveLength(1);
     });
 
     it('logs and clears loading on an HTTP error, keeping prior events', async () => {
@@ -86,9 +118,10 @@ describe('loadEvents', () => {
             ['/api/v1/events', jsonResponse({}, { ok: false, status: 500 })],
         ]));
         const app = freshApp();
-        app.events = EVENTS;
+        const prior = makeEventsList();
+        app.events = prior;
         await app.loadEvents();
-        expect(app.events).toEqual(EVENTS); // unchanged
+        expect(app.events).toEqual(prior); // unchanged
         expect(app.loading).toBe(false);
         expect(errSpy).toHaveBeenCalled();
     });
@@ -110,7 +143,7 @@ describe('init — 10s refresh poll', () => {
         const app = freshApp();
         await app.init();
         expect(fetch).toHaveBeenCalledTimes(1);
-        expect(app.events).toEqual(EVENTS);
+        expect(app.events).toEqual(makeEventsList());
 
         await vi.advanceTimersByTimeAsync(10000);
         expect(fetch).toHaveBeenCalledTimes(2);

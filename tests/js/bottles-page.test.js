@@ -7,14 +7,22 @@
  * directly, which exercises the live filteredBottles getter the same way
  * Alpine would.
  *
- * Bottle fixtures mirror GET /api/v1/bottles/collection
- * (web/routes/bottles/collection.py): BottleMetadata.model_dump(mode='json')
- * — id, type, producer, name, year, region, country, variety (list),
- * beverage_type, style, barrel_type, inventory.
+ * Bottle fixtures are NOT hand-written: they are contract fixtures — the
+ * real GET /api/v1/bottles/collection and /api/v1/me responses captured and
+ * snapshot-verified by tests/contract/test_bottles_contract.py (see
+ * tests/contract/contract.py). Collection contents (sorted by producer,name):
+ *   id 1  Buffalo Trace - Eagle Rare 10 Year   whiskey, Kentucky/USA, Bourbon,
+ *         barrel "New Charred Oak", inventory 2, notes set
+ *   id 3  Caymus Vineyards - Special Selection Cabernet  wine, Napa Valley,
+ *         Red, variety [Cabernet Sauvignon, Merlot], style Bold, inventory 1
+ *   id 4  Cloudy Bay - Sauvignon Blanc Reserve  wine, country-only (NZ),
+ *         White, style Crisp, inventory 0
+ *   id 2  Willett - Pot Still Reserve           whiskey, minimal (all nulls)
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadContract } from './helpers/contract.js';
 import '../../src/reserve_automation/web/static/js/components/bottle-editor-modal.js';
 import '../../src/reserve_automation/web/static/js/bottles/bottles-page.js';
 
@@ -42,36 +50,11 @@ function freshApp() {
     return window.bottlesApp();
 }
 
-const BOTTLES = [
-    {
-        id: '1', type: 'wine', producer: 'Chateau Margaux', name: 'Grand Vin',
-        year: 2015, region: 'Bordeaux', country: 'France',
-        variety: ['Cabernet Sauvignon', 'Merlot'], beverage_type: 'Red',
-        style: 'Bold', barrel_type: null, inventory: 2,
-    },
-    {
-        id: '2', type: 'wine', producer: 'Cloudy Bay', name: 'Sauvignon Blanc',
-        year: 2022, region: null, country: 'New Zealand',
-        variety: ['Sauvignon Blanc'], beverage_type: 'White',
-        style: 'Crisp', barrel_type: null, inventory: 0,
-    },
-    {
-        id: '3', type: 'whiskey', producer: 'Buffalo Trace', name: 'Weller 12',
-        year: null, region: 'Kentucky', country: 'USA',
-        variety: [], beverage_type: 'Bourbon',
-        style: null, barrel_type: 'New Oak', inventory: 1,
-    },
-    {
-        id: '4', type: 'whiskey', producer: 'Lagavulin', name: '16 Year',
-        year: 2020, region: 'Islay', country: 'Scotland',
-        variety: [], beverage_type: 'Scotch',
-        style: null, barrel_type: 'Sherry Cask', inventory: 3,
-    },
-];
+const COLLECTION = loadContract('bottles_collection');
 
 function appWithBottles() {
     const app = freshApp();
-    app.labelBottles = JSON.parse(JSON.stringify(BOTTLES));
+    app.labelBottles = loadContract('bottles_collection').bottles;
     return app;
 }
 
@@ -132,7 +115,7 @@ describe('composition and initial state', () => {
     it('keeps the filteredBottles getter live (the reason this factory is never spread)', () => {
         const app = freshApp();
         expect(app.filteredBottles).toEqual([]);
-        app.labelBottles = JSON.parse(JSON.stringify(BOTTLES));
+        app.labelBottles = loadContract('bottles_collection').bottles;
         expect(app.filteredBottles.length).toBe(4);
     });
 });
@@ -143,92 +126,100 @@ describe('composition and initial state', () => {
 
 describe('filteredBottles', () => {
     it('returns everything with no filters active', () => {
-        expect(appWithBottles().filteredBottles.map(b => b.id)).toEqual(['1', '2', '3', '4']);
+        expect(appWithBottles().filteredBottles.map(b => b.id)).toEqual(['1', '3', '4', '2']);
     });
 
     it('filters by type tab', () => {
         const app = appWithBottles();
         app.gridFilterType = 'wine';
-        expect(app.filteredBottles.map(b => b.id)).toEqual(['1', '2']);
-        app.gridFilterType = 'whiskey';
         expect(app.filteredBottles.map(b => b.id)).toEqual(['3', '4']);
+        app.gridFilterType = 'whiskey';
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['1', '2']);
     });
 
     it('searches across producer, name, year, region, country, variety, beverage_type and style', () => {
         const app = appWithBottles();
 
-        app.gridSearchQuery = 'margaux';            // producer
-        expect(app.filteredBottles.map(b => b.id)).toEqual(['1']);
-
-        app.gridSearchQuery = 'weller';             // name
+        app.gridSearchQuery = 'caymus';             // producer
         expect(app.filteredBottles.map(b => b.id)).toEqual(['3']);
+
+        app.gridSearchQuery = 'eagle';              // name
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['1']);
 
         app.gridSearchQuery = '2022';               // year
-        expect(app.filteredBottles.map(b => b.id)).toEqual(['2']);
-
-        app.gridSearchQuery = 'islay';              // region
         expect(app.filteredBottles.map(b => b.id)).toEqual(['4']);
 
-        app.gridSearchQuery = 'zealand';            // country
-        expect(app.filteredBottles.map(b => b.id)).toEqual(['2']);
-
-        app.gridSearchQuery = 'merlot';             // variety list
-        expect(app.filteredBottles.map(b => b.id)).toEqual(['1']);
-
-        app.gridSearchQuery = 'bourbon';            // beverage_type
+        app.gridSearchQuery = 'napa';               // region
         expect(app.filteredBottles.map(b => b.id)).toEqual(['3']);
 
+        app.gridSearchQuery = 'zealand';            // country
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['4']);
+
+        app.gridSearchQuery = 'merlot';             // variety list
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['3']);
+
+        app.gridSearchQuery = 'bourbon';            // beverage_type
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['1']);
+
         app.gridSearchQuery = 'crisp';              // style
-        expect(app.filteredBottles.map(b => b.id)).toEqual(['2']);
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['4']);
 
         app.gridSearchQuery = 'nothing-matches';
         expect(app.filteredBottles).toEqual([]);
     });
 
+    it('tolerates the minimal bottle whose optional fields are all null (contract data)', () => {
+        // Real minimal bottles carry null (not '') for every optional field —
+        // the (b.x || '') guards must hold for actual API nulls.
+        const app = appWithBottles();
+        app.gridSearchQuery = 'pot still';
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['2']);
+    });
+
     it('matches the region filter against region OR country', () => {
         const app = appWithBottles();
         app.gridFilterRegion = 'Kentucky';
-        expect(app.filteredBottles.map(b => b.id)).toEqual(['3']);
-        app.gridFilterRegion = 'New Zealand';       // bottle 2 has no region, only country
-        expect(app.filteredBottles.map(b => b.id)).toEqual(['2']);
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['1']);
+        app.gridFilterRegion = 'New Zealand';       // bottle 4 has no region, only country
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['4']);
     });
 
     it('filters by beverage type', () => {
         const app = appWithBottles();
-        app.gridFilterBeverageType = 'Scotch';
+        app.gridFilterBeverageType = 'White';
         expect(app.filteredBottles.map(b => b.id)).toEqual(['4']);
     });
 
     it('filters by variety substring, case-insensitively', () => {
         const app = appWithBottles();
         app.gridFilterVariety = 'sauv';
-        expect(app.filteredBottles.map(b => b.id)).toEqual(['1', '2']);
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['3', '4']);
         app.gridFilterVariety = 'merlot';
-        expect(app.filteredBottles.map(b => b.id)).toEqual(['1']);
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['3']);
     });
 
     it('filters by style and barrel type exactly', () => {
         const app = appWithBottles();
         app.gridFilterStyle = 'Bold';
-        expect(app.filteredBottles.map(b => b.id)).toEqual(['1']);
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['3']);
 
         const app2 = appWithBottles();
-        app2.gridFilterBarrelType = 'Sherry Cask';
-        expect(app2.filteredBottles.map(b => b.id)).toEqual(['4']);
+        app2.gridFilterBarrelType = 'New Charred Oak';
+        expect(app2.filteredBottles.map(b => b.id)).toEqual(['1']);
     });
 
     it('hides out-of-stock bottles with the in-stock toggle', () => {
         const app = appWithBottles();
         app.gridFilterInStockOnly = true;
-        expect(app.filteredBottles.map(b => b.id)).toEqual(['1', '3', '4']);
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['1', '3']);
     });
 
     it('stacks filters', () => {
         const app = appWithBottles();
         app.gridFilterType = 'whiskey';
-        app.gridFilterRegion = 'Islay';
+        app.gridFilterRegion = 'Kentucky';
         app.gridFilterInStockOnly = true;
-        expect(app.filteredBottles.map(b => b.id)).toEqual(['4']);
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['1']);
     });
 });
 
@@ -244,11 +235,11 @@ describe('gridHasActiveFilters', () => {
     it.each([
         ['gridFilterType', 'wine'],
         ['gridSearchQuery', 'x'],
-        ['gridFilterRegion', 'Islay'],
+        ['gridFilterRegion', 'Kentucky'],
         ['gridFilterBeverageType', 'Red'],
         ['gridFilterVariety', 'Merlot'],
         ['gridFilterStyle', 'Bold'],
-        ['gridFilterBarrelType', 'New Oak'],
+        ['gridFilterBarrelType', 'New Charred Oak'],
         ['gridFilterInStockOnly', true],
     ])('is truthy when %s is set', (key, value) => {
         const app = freshApp();
@@ -262,11 +253,11 @@ describe('reset helpers', () => {
         const app = freshApp();
         app.gridFilterType = 'wine';
         app.gridSearchQuery = 'keep me';
-        app.gridFilterRegion = 'Bordeaux';
+        app.gridFilterRegion = 'Napa Valley';
         app.gridFilterBeverageType = 'Red';
         app.gridFilterVariety = 'Merlot';
         app.gridFilterStyle = 'Bold';
-        app.gridFilterBarrelType = 'New Oak';
+        app.gridFilterBarrelType = 'New Charred Oak';
 
         app.gridResetTypeFilters();
 
@@ -282,8 +273,8 @@ describe('reset helpers', () => {
     it('gridResetAllFilters restores every filter to defaults', () => {
         const app = freshApp();
         app.gridFilterType = 'whiskey';
-        app.gridSearchQuery = 'weller';
-        app.gridFilterBarrelType = 'New Oak';
+        app.gridSearchQuery = 'eagle';
+        app.gridFilterBarrelType = 'New Charred Oak';
         app.gridFilterInStockOnly = true;
 
         app.gridResetAllFilters();
@@ -302,21 +293,23 @@ describe('reset helpers', () => {
 
 describe('option providers', () => {
     it('gridAvailableRegions collects region (or country as fallback), sorted', () => {
+        // Cloudy Bay contributes its country (no region); the minimal Willett
+        // bottle has neither and contributes nothing.
         const app = appWithBottles();
         expect(app.gridAvailableRegions()).toEqual(
-            ['Bordeaux', 'Islay', 'Kentucky', 'New Zealand'],
+            ['Kentucky', 'Napa Valley', 'New Zealand'],
         );
     });
 
     it('gridAvailableRegions respects the current type tab', () => {
         const app = appWithBottles();
         app.gridFilterType = 'whiskey';
-        expect(app.gridAvailableRegions()).toEqual(['Islay', 'Kentucky']);
+        expect(app.gridAvailableRegions()).toEqual(['Kentucky']);
     });
 
     it('gridAvailableBeverageTypes respects the current type tab', () => {
         const app = appWithBottles();
-        expect(app.gridAvailableBeverageTypes()).toEqual(['Bourbon', 'Red', 'Scotch', 'White']);
+        expect(app.gridAvailableBeverageTypes()).toEqual(['Bourbon', 'Red', 'White']);
         app.gridFilterType = 'wine';
         expect(app.gridAvailableBeverageTypes()).toEqual(['Red', 'White']);
     });
@@ -328,7 +321,7 @@ describe('option providers', () => {
 
     it('gridAvailableBarrelTypes lists whiskey barrels only', () => {
         const app = appWithBottles();
-        expect(app.gridAvailableBarrelTypes()).toEqual(['New Oak', 'Sherry Cask']);
+        expect(app.gridAvailableBarrelTypes()).toEqual(['New Charred Oak']);
     });
 });
 
@@ -344,10 +337,10 @@ describe('navigateToCreateTasting', () => {
         const preselect = JSON.parse(sessionStorage.getItem('preselect_bottle'));
         expect(preselect).toEqual({
             bottle_path: '1',
-            bottle_name: 'Chateau Margaux - Grand Vin (2015)',
-            producer: 'Chateau Margaux',
+            bottle_name: 'Buffalo Trace - Eagle Rare 10 Year (2018)',
+            producer: 'Buffalo Trace',
             thumbnail_url: '/api/v1/labels/thumbnail?id=1&size=400',
-            beverage_type: 'wine',
+            beverage_type: 'whiskey',
             confidence: 1.0,
         });
         expect(window.location.href).toBe('/manual-tasting');
@@ -355,9 +348,9 @@ describe('navigateToCreateTasting', () => {
 
     it('omits the year suffix when the bottle has no year', () => {
         const app = appWithBottles();
-        app.navigateToCreateTasting(app.labelBottles[2]);
+        app.navigateToCreateTasting(app.labelBottles[3]);   // Willett, year null
         const preselect = JSON.parse(sessionStorage.getItem('preselect_bottle'));
-        expect(preselect.bottle_name).toBe('Buffalo Trace - Weller 12');
+        expect(preselect.bottle_name).toBe('Willett - Pot Still Reserve');
         expect(preselect.beverage_type).toBe('whiskey');
     });
 });
@@ -367,14 +360,11 @@ describe('navigateToCreateTasting', () => {
 // ---------------------------------------------------------------------------
 
 describe('init', () => {
-    it('reads permissions from /api/v1/me and loads the collection', async () => {
+    it('reads permissions from /api/v1/me and loads the collection (contract data)', async () => {
         vi.spyOn(console, 'log').mockImplementation(() => {});
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/me', jsonResponse({
-                authenticated: true,
-                permissions: { bottles_edit: true, tastings_submit: true },
-            })],
-            ['/api/v1/bottles/collection', jsonResponse({ bottles: BOTTLES, count: 4 })],
+            ['/api/v1/me', jsonResponse(loadContract('me'))],
+            ['/api/v1/bottles/collection', jsonResponse(loadContract('bottles_collection'))],
         ]));
 
         const app = freshApp();
@@ -384,6 +374,19 @@ describe('init', () => {
         expect(app.canCreateTasting).toBe(true);
         expect(app.labelBottles.length).toBe(4);
         expect(app.labelsLoading).toBe(false);
+    });
+
+    it('turns permissions off for guests (contract data: explicit false flags)', async () => {
+        vi.spyOn(console, 'log').mockImplementation(() => {});
+        vi.stubGlobal('fetch', routeFetch([
+            ['/api/v1/me', jsonResponse(loadContract('me_guest'))],
+            ['/api/v1/bottles/collection', jsonResponse(loadContract('bottles_collection'))],
+        ]));
+        const app = freshApp();
+        await app.init();
+        expect(app.canEdit).toBe(false);
+        expect(app.canCreateTasting).toBe(false);
+        expect(app.labelBottles.length).toBe(4);
     });
 
     it('keeps permissions off when /api/v1/me is not ok', async () => {
@@ -402,7 +405,7 @@ describe('init', () => {
         vi.spyOn(console, 'log').mockImplementation(() => {});
         vi.stubGlobal('fetch', vi.fn(async (url) => {
             if (String(url).includes('/api/v1/me')) throw new Error('offline');
-            return jsonResponse({ bottles: BOTTLES, count: 4 });
+            return jsonResponse(loadContract('bottles_collection'));
         }));
         const app = freshApp();
         await app.init();
@@ -431,14 +434,14 @@ describe('loadBottles', () => {
     it('fetches the exact collection endpoint and stores the bottles', async () => {
         vi.spyOn(console, 'log').mockImplementation(() => {});
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/bottles/collection', jsonResponse({ bottles: BOTTLES, count: 4 })],
+            ['/api/v1/bottles/collection', jsonResponse(loadContract('bottles_collection'))],
         ]));
 
         const app = freshApp();
         await app.loadBottles();
 
         expect(fetch).toHaveBeenCalledWith('/api/v1/bottles/collection');
-        expect(app.labelBottles).toEqual(BOTTLES);
+        expect(app.labelBottles).toEqual(COLLECTION.bottles);
         expect(app.labelsLoading).toBe(false);
     });
 

@@ -9,14 +9,18 @@
  * computedWineScore, computed100ptScore, computedWhiskeyScore) the same way
  * Alpine would.
  *
- * Fixtures mirror the real API shapes in web/routes/tastings.py:
- * GET /api/v1/tastings/{id} (session), POST .../match ({duplicate_warning}),
- * POST .../approve and .../skip ({stats}), and web/routes/bottles.py
- * GET /api/v1/bottles/search ({results}).
+ * Fixtures are CONTRACT fixtures — real API responses captured and
+ * snapshot-verified by tests/contract/test_tastings_contract.py:
+ * GET /api/v1/tastings/{id} (tastings_review_session / _wine), POST .../match
+ * (tastings_review_match_response, carrying a real duplicate_warning),
+ * POST .../approve and .../skip (tastings_review_*_response), and
+ * GET /api/v1/bottles/search (tastings_bottle_search*). Per-test variants are
+ * explicit mutations of a loaded fixture.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadContract } from './helpers/contract.js';
 import '../../src/reserve_automation/web/static/js/components/tasting-form-mixin.js';
 import '../../src/reserve_automation/web/static/js/tastings/review-tastings.js';
 
@@ -40,92 +44,24 @@ function routeFetch(routes) {
     });
 }
 
-const EXTRACTION_ID = 'ext-abc-123';
+// Normalized extraction id assigned by the contract snapshots.
+const EXTRACTION_ID = '00000000-0000-4000-8000-000000000001';
 
-// Mirrors the GET /api/v1/tastings/{extraction_id} response (routes/tastings.py
-// get_tasting_session → response_data). Note the per-type tasting_data keys:
-// wine sessions carry wine_appearance/wine_aroma/wine_taste/wine_aftertaste,
-// whiskey (bourbon) sessions carry whiskey_nose/whiskey_palate/whiskey_finish.
+// Contract wine (aws_wine) session — two tastings:
+//   [0] 'Cabernet Sauvignon', taster '' (auto-fill target), AWS 3+5+4+1.5+1.5=15,
+//       one candidate: bottle_path '3' (DB id), 'Caymus Vineyards - Cabernet
+//       Sauvignon', thumbnail_url null (seeded bottles carry no label images)
+//   [1] 'Mystery Red', taster 'Sarah', AWS 2+3+3+1+1=10, no candidates
 function wineSession() {
-    return {
-        extraction_id: EXTRACTION_ID,
-        beverage_type: 'wine',
-        template_type: 'aws_wine',
-        expected_count: 2,
-        actual_count: 2,
-        count_mismatch: false,
-        current_index: 0,
-        tastings: [
-            {
-                status: 'extracted',
-                selected_match: null,
-                duplicate_warning: null,
-                match_candidates: [
-                    {
-                        bottle_path: 'Cellar/Wine/Grand Cru.md',
-                        bottle_name: 'Grand Cru',
-                        producer: 'Domaine X',
-                        confidence: 0.92,
-                        thumbnail_url: '/media/bottles/1/label.jpg',
-                    },
-                    {
-                        bottle_path: 'Cellar/Wine/Petit Verdot.md',
-                        bottle_name: 'Petit Verdot',
-                        producer: 'Domaine Y',
-                        confidence: 0.41,
-                        thumbnail_url: null,
-                    },
-                ],
-                tasting_data: {
-                    bottle_name: 'Grand Cru',
-                    taster_name: '',
-                    tasting_date: '2026-07-01',
-                    place: '',
-                    theme: '',
-                    wine_appearance: 3,
-                    wine_aroma: 5,
-                    wine_taste: 4,
-                    wine_aftertaste: 1.5,
-                    wine_overall: 1.5,
-                },
-            },
-            {
-                status: 'extracted',
-                selected_match: null,
-                duplicate_warning: null,
-                match_candidates: [],
-                tasting_data: {
-                    bottle_name: 'Mystery Red',
-                    taster_name: 'Sarah',
-                    tasting_date: '2026-07-01',
-                    place: '',
-                    theme: '',
-                    wine_appearance: 2,
-                    wine_aroma: 3,
-                    wine_taste: 3,
-                    wine_aftertaste: 1,
-                    wine_overall: 1,
-                },
-            },
-        ],
-        stats: { approved: 0, skipped: 0, remaining: 2, all_done: false },
-    };
+    return loadContract('tastings_review_session_wine');
 }
 
+// Contract bourbon session — two tastings:
+//   [0] 'Weller Special Reserve', taster 'Ben', 2.5+2.5+2+0.8=7.8,
+//       one candidate: bottle_path '1'
+//   [1] 'Mystery Bourbon', no candidates
 function bourbonSession() {
-    const session = wineSession();
-    session.beverage_type = 'whiskey';
-    session.template_type = 'bourbon';
-    session.tastings[0].tasting_data = {
-        bottle_name: 'Weller 12',
-        taster_name: 'Ben',
-        tasting_date: '2026-07-01',
-        whiskey_nose: 2.5,
-        whiskey_palate: 2.5,
-        whiskey_finish: 2,
-        whiskey_overall: 0.8,
-    };
-    return session;
+    return loadContract('tastings_review_session');
 }
 
 function clearParticipantCookie() {
@@ -215,7 +151,7 @@ describe('getters', () => {
         expect(app.currentTasting).toBeNull();
 
         await loadedApp().then(loaded => {
-            expect(loaded.currentTasting.tasting_data.bottle_name).toBe('Grand Cru');
+            expect(loaded.currentTasting.tasting_data.bottle_name).toBe('Cabernet Sauvignon');
             loaded.currentIndex = 1;
             expect(loaded.currentTasting.tasting_data.bottle_name).toBe('Mystery Red');
         });
@@ -226,7 +162,7 @@ describe('getters', () => {
         expect(app.tasting).toEqual({});
 
         const loaded = await loadedApp();
-        expect(loaded.tasting.bottle_name).toBe('Grand Cru');
+        expect(loaded.tasting.bottle_name).toBe('Cabernet Sauvignon');
     });
 
     it('isWine keys off template_type === aws_wine', async () => {
@@ -478,30 +414,29 @@ describe('saveTastingData', () => {
 // ---------------------------------------------------------------------------
 
 describe('selectMatch / clearMatch', () => {
-    it('POSTs the bottle_path and applies the match + duplicate warning', async () => {
-        const app = await loadedApp(wineSession(), [
-            ['/match', jsonResponse({
-                status: 'matched',
-                selected_match: 'Cellar/Wine/Grand Cru.md',
-                duplicate_warning: 'Ben already tasted this on 2026-07-01',
-            })],
+    it('POSTs the bottle_path (the DB id) and applies the match + real duplicate warning', async () => {
+        // Contract match response: selecting bottle '1' for a taster/date that
+        // already has a saved tasting returns a duplicate_warning string.
+        const matchResponse = loadContract('tastings_review_match_response');
+        const app = await loadedApp(bourbonSession(), [
+            ['/match', jsonResponse(matchResponse)],
         ]);
         const originalArray = app.session.tastings;
 
-        await app.selectMatch('Cellar/Wine/Grand Cru.md');
+        await app.selectMatch('1');
 
         expect(fetch).toHaveBeenCalledWith(
             `/api/v1/tastings/${EXTRACTION_ID}/0/match`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bottle_path: 'Cellar/Wine/Grand Cru.md' }),
+                body: JSON.stringify({ bottle_path: '1' }),
             },
         );
         const t = app.session.tastings[0];
-        expect(t.selected_match).toBe('Cellar/Wine/Grand Cru.md');
+        expect(t.selected_match).toBe('1');
         expect(t.status).toBe('matched');
-        expect(t.duplicate_warning).toBe('Ben already tasted this on 2026-07-01');
+        expect(t.duplicate_warning).toBe('A tasting by Ben on 2026-07-07 may already exist');
         // Reactivity nudge: the array is reassigned, not mutated in place.
         expect(app.session.tastings).not.toBe(originalArray);
         expect(app.searchResults).toEqual([]);
@@ -513,7 +448,7 @@ describe('selectMatch / clearMatch', () => {
             ['/match', jsonResponse({ detail: 'nope' }, { ok: false, status: 500 })],
         ]);
 
-        await app.selectMatch('Cellar/Wine/Grand Cru.md');
+        await app.selectMatch('3');
 
         expect(alert).toHaveBeenCalledWith(expect.stringContaining('HTTP 500'));
         expect(app.session.tastings[0].selected_match).toBeNull();
@@ -521,15 +456,18 @@ describe('selectMatch / clearMatch', () => {
     });
 
     it('selectMatchFromSearch also closes the modal and clears the query', async () => {
+        // Variant: no prior tasting for this combo -> duplicate_warning null.
+        const matchResponse = { ...loadContract('tastings_review_match_response'),
+            selected_match: '3', duplicate_warning: null };
         const app = await loadedApp(wineSession(), [
-            ['/match', jsonResponse({ status: 'matched', duplicate_warning: null })],
+            ['/match', jsonResponse(matchResponse)],
         ]);
         app.showSearchModal = true;
-        app.searchQuery = 'grand';
+        app.searchQuery = 'caymus';
 
-        await app.selectMatchFromSearch('Cellar/Wine/Grand Cru.md');
+        await app.selectMatchFromSearch('3');
 
-        expect(app.session.tastings[0].selected_match).toBe('Cellar/Wine/Grand Cru.md');
+        expect(app.session.tastings[0].selected_match).toBe('3');
         expect(app.showSearchModal).toBe(false);
         expect(app.searchQuery).toBe('');
         expect(app.searchResults).toEqual([]);
@@ -537,7 +475,7 @@ describe('selectMatch / clearMatch', () => {
 
     it('clearMatch resets the match locally with a fresh array', async () => {
         const app = await loadedApp();
-        app.session.tastings[0].selected_match = 'Cellar/Wine/Grand Cru.md';
+        app.session.tastings[0].selected_match = '3';
         app.session.tastings[0].status = 'matched';
         const originalArray = app.session.tastings;
 
@@ -550,21 +488,34 @@ describe('selectMatch / clearMatch', () => {
 });
 
 describe('selected match display helpers', () => {
-    it('resolve thumbnail/name/confidence from the matching candidate', async () => {
+    it('resolve name/confidence from the matching candidate (contract data)', async () => {
         const app = await loadedApp();
-        app.session.tastings[0].selected_match = 'Cellar/Wine/Grand Cru.md';
+        const candidate = app.session.tastings[0].match_candidates[0];
+        app.session.tastings[0].selected_match = candidate.bottle_path; // '3'
 
-        expect(app.getSelectedMatchThumbnail()).toBe('/media/bottles/1/label.jpg');
-        expect(app.getSelectedMatchName()).toBe('Grand Cru');
-        expect(app.getSelectedMatchConfidence()).toBe(0.92);
+        // Contract truth: seeded bottles carry no label image, so the real
+        // candidate's thumbnail_url is null.
+        expect(app.getSelectedMatchThumbnail()).toBeNull();
+        expect(app.getSelectedMatchName()).toBe('Caymus Vineyards - Cabernet Sauvignon');
+        expect(app.getSelectedMatchConfidence()).toBe(candidate.confidence);
+    });
+
+    it('uses the candidate thumbnail when the bottle has a label (mutated variant)', async () => {
+        const app = await loadedApp();
+        // Explicit mutation: bottles WITH labels get /api/v1/bottle-label/{id}
+        // (see TastingService.get_match_candidates).
+        app.session.tastings[0].match_candidates[0].thumbnail_url = '/api/v1/bottle-label/3';
+        app.session.tastings[0].selected_match = '3';
+
+        expect(app.getSelectedMatchThumbnail()).toBe('/api/v1/bottle-label/3');
     });
 
     it('fall back when the selected path is not among the candidates', async () => {
         const app = await loadedApp();
-        app.session.tastings[0].selected_match = 'Cellar/Wine/From Search.md';
+        app.session.tastings[0].selected_match = '999';
 
         expect(app.getSelectedMatchThumbnail()).toBeNull();
-        expect(app.getSelectedMatchName()).toBe('Cellar/Wine/From Search.md');
+        expect(app.getSelectedMatchName()).toBe('999');
         expect(app.getSelectedMatchConfidence()).toBe(0);
     });
 });
@@ -576,14 +527,15 @@ describe('selected match display helpers', () => {
 describe('debouncedSearch / searchBottles', () => {
     it('debounces: only one search fires after 100ms of quiet', async () => {
         vi.useFakeTimers();
+        const search = loadContract('tastings_bottle_search_wine');
         const app = await loadedApp(wineSession(), [
-            ['/api/v1/bottles/search', jsonResponse({ results: [{ bottle_path: 'a' }] })],
+            ['/api/v1/bottles/search', jsonResponse(search)],
         ]);
         fetch.mockClear();
 
-        app.searchQuery = 'gra';
+        app.searchQuery = 'cay';
         app.debouncedSearch();
-        app.searchQuery = 'gran';
+        app.searchQuery = 'caym';
         app.debouncedSearch();
         expect(app.searching).toBe(true);
         expect(fetch).not.toHaveBeenCalled();
@@ -591,7 +543,7 @@ describe('debouncedSearch / searchBottles', () => {
         await vi.advanceTimersByTimeAsync(100);
 
         expect(fetch).toHaveBeenCalledTimes(1);
-        expect(app.searchResults).toEqual([{ bottle_path: 'a' }]);
+        expect(app.searchResults).toEqual(search.results);
         expect(app.searching).toBe(false);
     });
 
@@ -609,18 +561,22 @@ describe('debouncedSearch / searchBottles', () => {
     });
 
     it('searchBottles hits the search endpoint with encoded query, beverage type and limit', async () => {
+        const search = loadContract('tastings_bottle_search_wine');
         const app = await loadedApp(wineSession(), [
-            ['/api/v1/bottles/search', jsonResponse({ results: [] })],
+            ['/api/v1/bottles/search', jsonResponse(search)],
         ]);
         fetch.mockClear();
-        app.searchQuery = 'grand cru';
+        app.searchQuery = 'caymus cab';
 
         await app.searchBottles();
 
         expect(fetch).toHaveBeenCalledWith(
-            '/api/v1/bottles/search?q=grand%20cru&beverage_type=wine&limit=20',
+            '/api/v1/bottles/search?q=caymus%20cab&beverage_type=wine&limit=20',
             { credentials: 'same-origin' },
         );
+        // Real candidate shape: the DB id rides in bottle_path.
+        expect(app.searchResults).toEqual(search.results);
+        expect(app.searchResults[0].bottle_path).toBe('3');
     });
 
     it('alerts and clears results when the search endpoint errors', async () => {
@@ -653,14 +609,13 @@ describe('approveTasting', () => {
     });
 
     it('POSTs approve, marks the tasting, adopts stats and advances to next pending', async () => {
-        const app = await loadedApp(wineSession(), [
-            ['/approve', jsonResponse({
-                status: 'approved',
-                file_created: 'Cellar/Tastings/x.md',
-                stats: { approved: 1, skipped: 0, remaining: 1, all_done: false },
-            })],
+        // Contract approve response: file_created is the new tasting's DB id
+        // (a string), stats gain a `total` field.
+        const approval = loadContract('tastings_review_approve_response');
+        const app = await loadedApp(bourbonSession(), [
+            ['/approve', jsonResponse(approval)],
         ]);
-        app.session.tastings[0].selected_match = 'Cellar/Wine/Grand Cru.md';
+        app.session.tastings[0].selected_match = '1';
 
         await app.approveTasting();
 
@@ -669,20 +624,19 @@ describe('approveTasting', () => {
             { method: 'POST' },
         );
         expect(app.session.tastings[0].status).toBe('approved');
+        expect(app.stats).toEqual(approval.stats);
         expect(app.stats.approved).toBe(1);
         expect(app.currentIndex).toBe(1); // findNextPending moved on
         expect(app.approving).toBe(false);
     });
 
-    it('stays put when the stats say all done', async () => {
-        const app = await loadedApp(wineSession(), [
-            ['/approve', jsonResponse({
-                status: 'approved',
-                file_created: 'f.md',
-                stats: { approved: 1, skipped: 1, remaining: 0, all_done: true },
-            })],
+    it('stays put when the stats say all done (mutated variant)', async () => {
+        const approval = loadContract('tastings_review_approve_response');
+        approval.stats = { ...approval.stats, skipped: 1, remaining: 0, all_done: true };
+        const app = await loadedApp(bourbonSession(), [
+            ['/approve', jsonResponse(approval)],
         ]);
-        app.session.tastings[0].selected_match = 'Cellar/Wine/Grand Cru.md';
+        app.session.tastings[0].selected_match = '1';
         app.session.tastings[1].status = 'skipped';
 
         await app.approveTasting();
@@ -692,10 +646,10 @@ describe('approveTasting', () => {
     });
 
     it('alerts with the API detail on failure and resets approving', async () => {
-        const app = await loadedApp(wineSession(), [
+        const app = await loadedApp(bourbonSession(), [
             ['/approve', jsonResponse({ detail: 'No bottle selected for this tasting' }, { ok: false, status: 400 })],
         ]);
-        app.session.tastings[0].selected_match = 'Cellar/Wine/Grand Cru.md';
+        app.session.tastings[0].selected_match = '1';
 
         await app.approveTasting();
 
@@ -706,20 +660,36 @@ describe('approveTasting', () => {
 });
 
 describe('skipTasting', () => {
-    it('POSTs skip, marks the tasting, adopts stats and advances', async () => {
-        const app = await loadedApp(wineSession(), [
-            ['/skip', jsonResponse({
-                status: 'skipped',
-                stats: { approved: 0, skipped: 1, remaining: 1, all_done: false },
-            })],
+    it('POSTs skip and stays put when the batch is done (contract response)', async () => {
+        // Contract skip response: skipping the LAST pending tasting -> all_done.
+        const skipped = loadContract('tastings_review_skip_response');
+        const app = await loadedApp(bourbonSession(), [
+            ['/skip', jsonResponse(skipped)],
         ]);
+        app.session.tastings[0].status = 'approved';
+        app.currentIndex = 1;
 
         await app.skipTasting();
 
         expect(fetch).toHaveBeenCalledWith(
-            `/api/v1/tastings/${EXTRACTION_ID}/0/skip`,
+            `/api/v1/tastings/${EXTRACTION_ID}/1/skip`,
             { method: 'POST' },
         );
+        expect(app.session.tastings[1].status).toBe('skipped');
+        expect(app.stats).toEqual(skipped.stats);
+        expect(app.currentIndex).toBe(1); // all_done -> no advance
+        expect(app.skipping).toBe(false);
+    });
+
+    it('adopts stats and advances when tastings remain (mutated variant)', async () => {
+        const skipped = loadContract('tastings_review_skip_response');
+        skipped.stats = { ...skipped.stats, approved: 0, remaining: 1, all_done: false };
+        const app = await loadedApp(bourbonSession(), [
+            ['/skip', jsonResponse(skipped)],
+        ]);
+
+        await app.skipTasting();
+
         expect(app.session.tastings[0].status).toBe('skipped');
         expect(app.stats.skipped).toBe(1);
         expect(app.currentIndex).toBe(1);

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "7",
+    "name": "Bitters",
+    "parent": null,
+    "cost": null,
+    "volume_ml": null,
+    "abv": null,
+    "notes": null,
+    "label_image": null,
+    "is_product": false,
+    "ancestors": [],
+    "children": [
+      {
+        "id": "8",
+        "name": "Angostura Bitters",
+        "parent": "Bitters",
+        "cost": 11.49,
+        "volume_ml": 118,
+        "abv": 44.7,
+        "notes": "The classic aromatic bitters",
+        "label_image": null,
+        "is_product": true,
+        "ancestors": [
+          "Bitters"
+        ],
+        "children": []
+      }
+    ]
+  },
+  {
+    "id": "5",
+    "name": "Brandy",
+    "parent": null,
+    "cost": null,
+    "volume_ml": null,
+    "abv": null,
+    "notes": null,
+    "label_image": null,
+    "is_product": false,
+    "ancestors": [],
+    "children": [
+      {
+        "id": "6",
+        "name": "Korbel Brandy",
+        "parent": "Brandy",
+        "cost": 15.99,
+        "volume_ml": 750,
+        "abv": 40.0,
+        "notes": null,
+        "label_image": null,
+        "is_product": true,
+        "ancestors": [
+          "Brandy"
+        ],
+        "children": []
+      }
+    ]
+  },
+  {
+    "id": "1",
+    "name": "Whiskey",
+    "parent": null,
+    "cost": null,
+    "volume_ml": null,
+    "abv": null,
+    "notes": null,
+    "label_image": null,
+    "is_product": false,
+    "ancestors": [],
+    "children": [
+      {
+        "id": "2",
+        "name": "Bourbon",
+        "parent": "Whiskey",
+        "cost": null,
+        "volume_ml": null,
+        "abv": null,
+        "notes": null,
+        "label_image": null,
+        "is_product": false,
+        "ancestors": [
+          "Whiskey"
+        ],
+        "children": [
+          {
+            "id": "3",
+            "name": "Buffalo Trace Bourbon",
+            "parent": "Bourbon",
+            "cost": 29.99,
+            "volume_ml": 750,
+            "abv": 45.0,
+            "notes": "Shelf staple",
+            "label_image": null,
+            "is_product": true,
+            "ancestors": [
+              "Whiskey",
+              "Bourbon"
+            ],
+            "children": []
+          },
+          {
+            "id": "4",
+            "name": "Eagle Rare 10 Year",
+            "parent": "Bourbon",
+            "cost": 39.99,
+            "volume_ml": 750,
+            "abv": 45.0,
+            "notes": null,
+            "label_image": null,
+            "is_product": true,
+            "ancestors": [
+              "Whiskey",
+              "Bourbon"
+            ],
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,217 @@
+[
+  {
+    "event_id": "00000000-0000-4000-8000-000000000001",
+    "name": "Contract Whiskey Night",
+    "beverage_type": "whiskey",
+    "is_blind": true,
+    "status": "closed",
+    "host_name": "Ben",
+    "event_type": "bottle",
+    "event_mode": "standard",
+    "created_at": "2026-07-07T19:00:00",
+    "bottles": [
+      {
+        "bottle_id": "1",
+        "bottle_name": "Willett - Family Estate Single Barrel",
+        "bottle_path": "1",
+        "blind_number": 1
+      },
+      {
+        "bottle_id": "2",
+        "bottle_name": "Buffalo Trace - Weller Special Reserve",
+        "bottle_path": "2",
+        "blind_number": 2
+      },
+      {
+        "bottle_id": "3",
+        "bottle_name": "Blantons - Original Single Barrel",
+        "bottle_path": "3",
+        "blind_number": 3
+      }
+    ],
+    "cocktails": [],
+    "participants": {
+      "00000000-0000-4000-8000-000000000002": {
+        "participant_id": "00000000-0000-4000-8000-000000000002",
+        "participant_name": "Alice",
+        "tastings": [
+          {
+            "bottle_id": "1",
+            "tasting_data": {
+              "wine_appearance": 0,
+              "wine_aroma": 0,
+              "wine_taste": 0,
+              "wine_aftertaste": 0,
+              "wine_overall": 0,
+              "whiskey_nose": 3,
+              "whiskey_palate": 3,
+              "whiskey_finish": 2,
+              "whiskey_overall": 1,
+              "appearance_notes": [],
+              "nose_notes": [
+                "caramel",
+                "oak"
+              ],
+              "palate_notes": [
+                "cherry",
+                "baking spice"
+              ],
+              "finish_notes": [
+                "long",
+                "warm"
+              ],
+              "overall_notes": "Outstanding pour"
+            }
+          },
+          {
+            "bottle_id": "2",
+            "tasting_data": {
+              "wine_appearance": 0,
+              "wine_aroma": 0,
+              "wine_taste": 0,
+              "wine_aftertaste": 0,
+              "wine_overall": 0,
+              "whiskey_nose": 2,
+              "whiskey_palate": 2,
+              "whiskey_finish": 2,
+              "whiskey_overall": 1,
+              "appearance_notes": [],
+              "nose_notes": [
+                "vanilla"
+              ],
+              "palate_notes": [
+                "soft wheat"
+              ],
+              "finish_notes": [
+                "medium"
+              ],
+              "overall_notes": "Solid daily sipper"
+            }
+          }
+        ],
+        "cocktail_ratings": []
+      },
+      "00000000-0000-4000-8000-000000000003": {
+        "participant_id": "00000000-0000-4000-8000-000000000003",
+        "participant_name": "Bob",
+        "tastings": [
+          {
+            "bottle_id": "1",
+            "tasting_data": {
+              "wine_appearance": 0,
+              "wine_aroma": 0,
+              "wine_taste": 0,
+              "wine_aftertaste": 0,
+              "wine_overall": 0,
+              "whiskey_nose": 2,
+              "whiskey_palate": 3,
+              "whiskey_finish": 3,
+              "whiskey_overall": 0,
+              "appearance_notes": [],
+              "nose_notes": [
+                "leather"
+              ],
+              "palate_notes": [
+                "dark fruit"
+              ],
+              "finish_notes": [
+                "oily"
+              ],
+              "overall_notes": ""
+            }
+          },
+          {
+            "bottle_id": "3",
+            "tasting_data": {
+              "wine_appearance": 0,
+              "wine_aroma": 0,
+              "wine_taste": 0,
+              "wine_aftertaste": 0,
+              "wine_overall": 0,
+              "whiskey_nose": 1,
+              "whiskey_palate": 1,
+              "whiskey_finish": 2,
+              "whiskey_overall": 0,
+              "appearance_notes": [],
+              "nose_notes": [
+                "ethanol"
+              ],
+              "palate_notes": [
+                "thin"
+              ],
+              "finish_notes": [
+                "short"
+              ],
+              "overall_notes": "Not for me"
+            }
+          }
+        ],
+        "cocktail_ratings": []
+      }
+    }
+  },
+  {
+    "event_id": "00000000-0000-4000-8000-000000000004",
+    "name": "Contract Wine Night",
+    "beverage_type": "wine",
+    "is_blind": true,
+    "status": "closed",
+    "host_name": "Ben",
+    "event_type": "bottle",
+    "event_mode": "standard",
+    "created_at": "2026-07-07T19:00:00",
+    "bottles": [
+      {
+        "bottle_id": "4",
+        "bottle_name": "Caymus Vineyards - Cabernet Sauvignon",
+        "bottle_path": "4",
+        "blind_number": 1
+      },
+      {
+        "bottle_id": "5",
+        "bottle_name": "Opus One - Opus One",
+        "bottle_path": "5",
+        "blind_number": 2
+      }
+    ],
+    "cocktails": [],
+    "participants": {
+      "00000000-0000-4000-8000-000000000005": {
+        "participant_id": "00000000-0000-4000-8000-000000000005",
+        "participant_name": "Alice",
+        "tastings": [
+          {
+            "bottle_id": "4",
+            "tasting_data": {
+              "wine_appearance": 2,
+              "wine_aroma": 5,
+              "wine_taste": 4,
+              "wine_aftertaste": 2,
+              "wine_overall": 1.5,
+              "whiskey_nose": 0,
+              "whiskey_palate": 0,
+              "whiskey_finish": 0,
+              "whiskey_overall": 0,
+              "appearance_notes": [
+                "ruby",
+                "clear"
+              ],
+              "nose_notes": [
+                "cherry",
+                "oak"
+              ],
+              "palate_notes": [
+                "plum"
+              ],
+              "finish_notes": [
+                "long"
+              ],
+              "overall_notes": "lovely & <bold>"
+            }
+          }
+        ],
+        "cocktail_ratings": []
+      }
+    }
+  }
+]

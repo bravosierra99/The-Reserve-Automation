@@ -534,6 +534,14 @@ window.manualTastingWizard = function() {
             }
         },
 
+        // Tastings saved via /api/v1/manual-tasting/save carry bottle_id;
+        // legacy event tastings carried bottle_path. Normalize to one string
+        // key (same contract as event-results.js tastingBottleKey).
+        tastingBottleKey(tasting) {
+            const key = tasting.bottle_id ?? tasting.bottle_path;
+            return key == null ? '' : String(key);
+        },
+
         hasBottleBeenTasted(bottle) {
             // Check if this bottle has been tasted by the current participant
             if (!this.participantSession || !this.eventData) return false;
@@ -541,7 +549,9 @@ window.manualTastingWizard = function() {
             const participant = this.eventData.participants[this.participantSession.participant_id];
             if (!participant) return false;
 
-            return participant.tastings.some(t => t.bottle_path === bottle.bottle_path);
+            return participant.tastings.some(
+                t => this.tastingBottleKey(t) === String(bottle.bottle_path)
+            );
         },
 
         async editBottleTasting(bottle) {
@@ -551,7 +561,9 @@ window.manualTastingWizard = function() {
             const participant = this.eventData.participants[this.participantSession.participant_id];
             if (!participant) return;
 
-            const existingTasting = participant.tastings.find(t => t.bottle_path === bottle.bottle_path);
+            const existingTasting = participant.tastings.find(
+                t => this.tastingBottleKey(t) === String(bottle.bottle_path)
+            );
             if (!existingTasting) return;
 
             // Select the bottle

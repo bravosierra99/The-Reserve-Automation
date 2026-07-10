@@ -1,0 +1,10 @@
+{
+  "tasting_count": 2,
+  "avg_score": 7.5,
+  "latest_date": "2026-07-04",
+  "tasters": [
+    "Ben",
+    "Sarah"
+  ],
+  "max_score": 10
+}

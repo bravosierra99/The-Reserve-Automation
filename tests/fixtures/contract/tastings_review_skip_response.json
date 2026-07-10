@@ -1,0 +1,10 @@
+{
+  "status": "skipped",
+  "stats": {
+    "total": 2,
+    "approved": 1,
+    "skipped": 1,
+    "remaining": 0,
+    "all_done": true
+  }
+}

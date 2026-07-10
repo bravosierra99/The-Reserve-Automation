@@ -2,10 +2,18 @@
  * Unit tests for the base-page components loaded on every page
  * (src/reserve_automation/web/static/js/components/base-page.js):
  * authNav, backupBanner, and the shared formatApiError helper.
+ *
+ * API fixtures are NOT hand-written: they are contract fixtures — real
+ * /api/v1/me and /api/v1/admin/backup-status responses captured and
+ * snapshot-verified by tests/contract/test_bottles_contract.py (see
+ * tests/contract/contract.py for the rationale). Per-test variants are
+ * explicit mutations of a fresh contract clone. The only hand-written
+ * shapes left are the FastAPI 422 error bodies fed to formatApiError.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadContract } from './helpers/contract.js';
 import '../../src/reserve_automation/web/static/js/components/base-page.js';
 
 function jsonResponse(data, { ok = true, status = 200 } = {}) {
@@ -36,22 +44,36 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('authNav', () => {
-    it('loads identity and permissions from /api/v1/me', async () => {
+    it('loads identity and permissions from /api/v1/me (contract data)', async () => {
         const nav = window.authNav();
         global.fetch = routeFetch([
-            ['/api/v1/me', jsonResponse({
-                display_name: 'Ben',
-                role: 'admin',
-                permissions: { bottles_view: true, management_access: true },
-            })],
+            ['/api/v1/me', jsonResponse(loadContract('me'))],
         ]);
 
         await nav.init();
 
-        expect(nav.displayName).toBe('Ben');
+        expect(nav.displayName).toBe('Admin');
         expect(nav.role).toBe('admin');
         expect(nav.p.management_access).toBe(true);
+        expect(nav.p.bottles_view).toBe(true);
         expect(nav.mobileOpen).toBe(false);
+    });
+
+    it('carries explicit false permissions for guests (contract data)', async () => {
+        const nav = window.authNav();
+        global.fetch = routeFetch([
+            ['/api/v1/me', jsonResponse(loadContract('me_guest'))],
+        ]);
+
+        await nav.init();
+
+        expect(nav.displayName).toBe('Guest');
+        expect(nav.role).toBe('guest');
+        // The real API sends every permission key with an explicit boolean —
+        // x-show bindings rely on false, not undefined.
+        expect(nav.p.management_access).toBe(false);
+        expect(nav.p.upload_access).toBe(false);
+        expect(nav.p.events_view).toBe(true);
     });
 
     it('defaults to all links visible when /me is unreachable (fail-open nav, auth still gates routes)', async () => {
@@ -90,12 +112,12 @@ describe('backupBanner', () => {
         return banner;
     }
 
-    const ADMIN = { permissions: { management_access: true } };
+    const ADMIN = loadContract('me');
 
-    it('stays hidden for non-admin users and never asks for backup status', async () => {
+    it('stays hidden for non-admin users and never asks for backup status (contract guest)', async () => {
         const banner = window.backupBanner();
         global.fetch = routeFetch([
-            ['/api/v1/me', jsonResponse({ permissions: { bottles_view: true } })],
+            ['/api/v1/me', jsonResponse(loadContract('me_guest'))],
         ]);
 
         await banner.init();
@@ -106,40 +128,47 @@ describe('backupBanner', () => {
     });
 
     it('stays hidden when backups are healthy', async () => {
-        const banner = bannerWith(ADMIN, { status: 'ok', age_minutes: 5 });
+        const fresh = loadContract('admin_backup_status');
+        fresh.age_minutes = 5;
+        const banner = bannerWith(ADMIN, fresh);
         await banner.init();
         expect(banner.visible).toBe(false);
     });
 
-    it('shows red on backup error', async () => {
-        const banner = bannerWith(ADMIN, { status: 'error', error: 'disk full' });
+    it('shows red on backup error (contract data)', async () => {
+        const banner = bannerWith(ADMIN, loadContract('admin_backup_status_error'));
         await banner.init();
         expect(banner.visible).toBe(true);
         expect(banner.level).toBe('red');
-        expect(banner.message).toContain('disk full');
+        expect(banner.message).toContain('rsync failed: disk full');
     });
 
-    it('shows amber when the status file is missing', async () => {
-        const banner = bannerWith(ADMIN, { status: 'unknown' });
+    it('shows amber when the status file is missing (contract data)', async () => {
+        const banner = bannerWith(ADMIN, loadContract('admin_backup_status_unknown'));
         await banner.init();
         expect(banner.level).toBe('amber');
         expect(banner.message).toContain('status file missing');
     });
 
     it('escalates by staleness: amber at 30+ min, red at 120+ min', async () => {
-        const amber = bannerWith(ADMIN, { status: 'ok', age_minutes: 45 });
+        // Contract capture is 45 minutes stale — squarely in the amber band.
+        const amber = bannerWith(ADMIN, loadContract('admin_backup_status'));
         await amber.init();
         expect(amber.level).toBe('amber');
         expect(amber.message).toContain('45 minutes ago');
 
-        const red = bannerWith(ADMIN, { status: 'ok', age_minutes: 180 });
+        const stale = loadContract('admin_backup_status');
+        stale.age_minutes = 180;
+        const red = bannerWith(ADMIN, stale);
         await red.init();
         expect(red.level).toBe('red');
         expect(red.message).toContain('3 hour');
     });
 
     it('treats a null age as healthy (no banner)', async () => {
-        const banner = bannerWith(ADMIN, { status: 'ok', age_minutes: null });
+        const noAge = loadContract('admin_backup_status');
+        noAge.age_minutes = null;
+        const banner = bannerWith(ADMIN, noAge);
         await banner.init();
         expect(banner.visible).toBe(false);
     });
@@ -154,6 +183,8 @@ describe('backupBanner', () => {
 
 // ---------------------------------------------------------------------------
 // formatApiError — the "[object Object]" killer
+// (Hand-written fixtures: these are FastAPI error shapes, not captureable as
+// happy-path contract responses.)
 // ---------------------------------------------------------------------------
 
 describe('formatApiError', () => {

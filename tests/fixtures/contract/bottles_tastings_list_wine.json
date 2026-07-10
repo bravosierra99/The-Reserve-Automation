@@ -1,0 +1,37 @@
+{
+  "tastings": [
+    {
+      "filename": "Tasting-2026-07-05-Ben.md",
+      "date": "2026-07-05",
+      "taster": "Ben",
+      "scores": {
+        "appearance": 2.0,
+        "aroma": 5.0,
+        "taste": 5.0,
+        "aftertaste": 2.0,
+        "overall": 1.5
+      },
+      "total_score": 88.8,
+      "max_score": 100,
+      "notes": {
+        "appearance": [
+          "ruby",
+          "opaque"
+        ],
+        "aroma": [
+          "cassis",
+          "cocoa"
+        ],
+        "taste": [
+          "black cherry"
+        ],
+        "aftertaste": [
+          "long"
+        ],
+        "overall": "Special occasion wine"
+      },
+      "aws_score": 15.5
+    }
+  ],
+  "bottle_type": "wine"
+}

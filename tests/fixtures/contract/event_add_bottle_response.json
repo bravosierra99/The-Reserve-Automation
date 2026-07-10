@@ -1,0 +1,8 @@
+{
+  "message": "Bottle added",
+  "bottle": {
+    "bottle_id": "3",
+    "bottle_name": "Bottle #3",
+    "blind_number": 3
+  }
+}

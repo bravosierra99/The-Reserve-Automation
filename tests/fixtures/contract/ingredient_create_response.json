@@ -1,0 +1,12 @@
+{
+  "id": "8",
+  "name": "Angostura Bitters",
+  "parent": "Bitters",
+  "cost": 11.49,
+  "volume_ml": 118,
+  "abv": 44.7,
+  "notes": "The classic aromatic bitters",
+  "label_image": null,
+  "is_product": true,
+  "ancestors": []
+}

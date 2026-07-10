@@ -1,0 +1,34 @@
+{
+  "id": "1",
+  "name": "Contract Old Fashioned",
+  "description": null,
+  "ingredients": [
+    {
+      "ingredient": "Bourbon",
+      "amount": 2.0,
+      "unit": "oz",
+      "notes": "",
+      "optional": false
+    },
+    {
+      "ingredient": "Sweet Vermouth",
+      "amount": 1.0,
+      "unit": "oz",
+      "notes": "",
+      "optional": false
+    }
+  ],
+  "instructions": [
+    "Stir with ice",
+    "Strain over a large cube"
+  ],
+  "garnish": "Orange peel",
+  "glassware": "Rocks",
+  "method": "Stirred",
+  "style": "Spirit-forward",
+  "parent_cocktail": null,
+  "serving_size": 1,
+  "stars": null,
+  "photo": null,
+  "avg_score": 8.0
+}

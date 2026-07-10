@@ -1,0 +1,14 @@
+{
+  "query": "caymus",
+  "results": [
+    {
+      "bottle_path": "3",
+      "bottle_name": "Caymus Vineyards - Cabernet Sauvignon",
+      "producer": "Caymus Vineyards",
+      "vintage": 2021,
+      "confidence": 0.27906976744186046,
+      "thumbnail_url": null,
+      "beverage_type": "wine"
+    }
+  ]
+}

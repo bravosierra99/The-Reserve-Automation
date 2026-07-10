@@ -3,15 +3,23 @@
  * (src/reserve_automation/web/static/js/events/event-results.js).
  *
  * Alpine itself is not loaded; the factory's return value is used directly.
- * Fixtures mirror GET /api/v1/events/{id} (web/routes/events.py): bottles are
- * [{bottle_id, bottle_name, bottle_path, blind_number}] and participants a
- * dict of {participant_id, participant_name, tastings: [{bottle_id,
- * tasting_data}]}. Legacy tastings carried bottle_path and participants
- * carried name — covered by the dedicated legacy-shape tests.
+ *
+ * The event fixtures are NOT hand-written: they are contract fixtures —
+ * real GET /api/v1/events/{id} responses captured and snapshot-verified by
+ * tests/contract/test_events_contract.py (see tests/contract/contract.py).
+ * July 2026 lesson: this suite previously passed 38 tests against invented
+ * fixtures whose field names matched the code's wrong assumptions, while the
+ * page rendered undefined in prod. Per-test variants mutate a fresh clone of
+ * the contract fixture so the base shape always comes from the real API.
+ *
+ * Contract flow data (test_events_contract.py): bottles 1=Willett, 2=Weller,
+ * 3=Blantons; Alice scored bottle1=9, bottle2=7; Bob scored bottle1=8,
+ * bottle3=4 → overall averages 8.5 / 7.0 / 4.0.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadContract } from './helpers/contract.js';
 import '../../src/reserve_automation/web/static/js/events/event-results.js';
 
 function jsonResponse(data, { ok = true, status = 200 } = {}) {
@@ -34,78 +42,42 @@ function routeFetch(routes) {
     });
 }
 
-const EVENT_ID = 'ev-abc-123';
+// Normalized IDs assigned by the contract snapshot (first-encounter order).
+const EVENT_ID = '00000000-0000-4000-8000-000000000001';
+const ALICE = '00000000-0000-4000-8000-000000000002';
+const BOB = '00000000-0000-4000-8000-000000000003';
+
+const WILLETT = 'Willett - Family Estate Single Barrel';
+const WELLER = 'Buffalo Trace - Weller Special Reserve';
+const BLANTONS = 'Blantons - Original Single Barrel';
+
+function makeWhiskeyEvent(overrides = {}) {
+    return { ...loadContract('event_detail'), ...overrides };
+}
+
+function makeWineEvent(overrides = {}) {
+    return { ...loadContract('event_detail_wine'), ...overrides };
+}
+
+// The wine event's single tasting (Alice on Caymus): AWS 14.5/20 with
+// HTML-hostile overall notes — straight from the contract fixture.
+function wineTastingData() {
+    const event = makeWineEvent();
+    const [participant] = Object.values(event.participants);
+    return participant.tastings[0].tasting_data;
+}
 
 function freshApp() {
     return window.eventResultsApp(EVENT_ID);
 }
 
-// Whiskey scores: nose/3 + palate/3 + finish/3 + overall/1 = /10
+// Synthetic whiskey scores for variant tests (nose/3+palate/3+finish/3+overall/1)
 function whiskeyData(nose, palate, finish, overall, extra = {}) {
     return {
         whiskey_nose: nose, whiskey_palate: palate,
         whiskey_finish: finish, whiskey_overall: overall,
         ...extra,
     };
-}
-
-function makeWhiskeyEvent(overrides = {}) {
-    return {
-        event_id: EVENT_ID,
-        name: 'Whiskey Night',
-        beverage_type: 'whiskey',
-        is_blind: true,
-        status: 'revealed',
-        host_name: 'Ben',
-        bottles: [
-            { bottle_id: '1', bottle_name: 'Weller 12', bottle_path: '1', blind_number: 1 },
-            { bottle_id: '2', bottle_name: 'Eagle Rare', bottle_path: '2', blind_number: 2 },
-        ],
-        participants: {
-            'p-ben': {
-                participant_id: 'p-ben',
-                participant_name: 'Ben',
-                tastings: [
-                    { bottle_id: '1', tasting_data: whiskeyData(3, 3, 2, 1) },   // 9
-                    { bottle_id: '2', tasting_data: whiskeyData(1, 1, 1, 0) },   // 3
-                ],
-            },
-            'p-sarah': {
-                participant_id: 'p-sarah',
-                participant_name: 'Sarah',
-                tastings: [
-                    { bottle_id: '1', tasting_data: whiskeyData(2, 2, 2, 1) },   // 7
-                ],
-            },
-        },
-        ...overrides,
-    };
-}
-
-// The manual-tasting wizard stores wine aroma/taste/aftertaste notes under
-// nose_notes/palate_notes/finish_notes (same keys as whiskey).
-const WINE_DATA = {
-    wine_appearance: 2, wine_aroma: 5, wine_taste: 4,
-    wine_aftertaste: 2, wine_overall: 1.5,
-    appearance_notes: ['ruby', 'clear'],
-    nose_notes: ['cherry', 'oak'],
-    palate_notes: ['plum'],
-    finish_notes: ['long'],
-    overall_notes: 'lovely & <bold>',
-};
-
-function makeWineEvent() {
-    return makeWhiskeyEvent({
-        name: 'Wine Night',
-        beverage_type: 'wine',
-        participants: {
-            'p-ben': {
-                participant_id: 'p-ben',
-                participant_name: 'Ben',
-                tastings: [{ bottle_id: '1', tasting_data: WINE_DATA }],
-            },
-        },
-    });
 }
 
 beforeEach(() => {
@@ -149,8 +121,8 @@ describe('initial state', () => {
 // ---------------------------------------------------------------------------
 
 describe('loadEventAndCalculateResults', () => {
-    it('fetches the exact event endpoint and computes rankings on success', async () => {
-        const event = makeWhiskeyEvent();
+    it('fetches the exact event endpoint and computes rankings from the real response', async () => {
+        const event = makeWhiskeyEvent();   // contract status: closed
         vi.stubGlobal('fetch', routeFetch([[`/api/v1/events/${EVENT_ID}`, jsonResponse(event)]]));
 
         const app = freshApp();
@@ -160,18 +132,18 @@ describe('loadEventAndCalculateResults', () => {
         expect(app.event).toEqual(event);
         expect(app.loading).toBe(false);
         expect(app.error).toBeNull();
-        expect(app.overallRankings.length).toBe(2);
+        expect(app.overallRankings.length).toBe(3);
         expect(app.participantRankings.length).toBe(2);
     });
 
-    it('accepts closed events too', async () => {
+    it('accepts revealed (not yet closed) events too', async () => {
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/events/', jsonResponse(makeWhiskeyEvent({ status: 'closed' }))],
+            ['/api/v1/events/', jsonResponse(makeWhiskeyEvent({ status: 'revealed' }))],
         ]));
         const app = freshApp();
         await app.loadEventAndCalculateResults();
         expect(app.error).toBeNull();
-        expect(app.overallRankings.length).toBe(2);
+        expect(app.overallRankings.length).toBe(3);
     });
 
     it('refuses results for still-open (blind) events — names stay hidden pre-reveal', async () => {
@@ -234,9 +206,9 @@ describe('calculateTastingScore', () => {
         expect(app.calculateTastingScore(whiskeyData(1.5, 2, 0.5, 0), 'whiskey')).toBe(4);
     });
 
-    it('sums the five wine AWS components (out of 20)', () => {
+    it('sums the five wine AWS components of the contract tasting (out of 20)', () => {
         const app = freshApp();
-        expect(app.calculateTastingScore(WINE_DATA, 'wine')).toBe(14.5);
+        expect(app.calculateTastingScore(wineTastingData(), 'wine')).toBe(14.5);
     });
 
     it('treats missing components as 0', () => {
@@ -263,19 +235,23 @@ describe('calculateTastingScore', () => {
 // ---------------------------------------------------------------------------
 
 describe('calculateOverallRankings', () => {
-    it('averages scores per bottle and sorts highest first', () => {
+    it('averages scores per bottle and sorts highest first (contract data)', () => {
         const app = freshApp();
         app.event = makeWhiskeyEvent();
         app.calculateOverallRankings();
 
         expect(app.overallRankings).toEqual([
             {
-                bottle_path: '1', bottle_name: 'Weller 12',
-                avg_score: 8, tasting_count: 2,          // (9 + 7) / 2
+                bottle_path: '1', bottle_name: WILLETT,
+                avg_score: 8.5, tasting_count: 2,        // Alice 9, Bob 8
             },
             {
-                bottle_path: '2', bottle_name: 'Eagle Rare',
-                avg_score: 3, tasting_count: 1,
+                bottle_path: '2', bottle_name: WELLER,
+                avg_score: 7, tasting_count: 1,          // Alice
+            },
+            {
+                bottle_path: '3', bottle_name: BLANTONS,
+                avg_score: 4, tasting_count: 1,          // Bob
             },
         ]);
     });
@@ -283,7 +259,7 @@ describe('calculateOverallRankings', () => {
     it('falls back to the bottle key when the bottle is not in the event list', () => {
         const app = freshApp();
         const event = makeWhiskeyEvent();
-        event.participants['p-ben'].tastings.push(
+        event.participants[ALICE].tastings.push(
             { bottle_id: 'ghost-99', tasting_data: whiskeyData(1, 1, 1, 1) },
         );
         app.event = event;
@@ -296,9 +272,9 @@ describe('calculateOverallRankings', () => {
 
     it('produces no rankings when nobody has tasted anything', () => {
         const app = freshApp();
-        app.event = makeWhiskeyEvent({
-            participants: { 'p-ben': { participant_id: 'p-ben', participant_name: 'Ben', tastings: [] } },
-        });
+        const event = makeWhiskeyEvent();
+        for (const p of Object.values(event.participants)) p.tastings = [];
+        app.event = event;
         app.calculateOverallRankings();
         expect(app.overallRankings).toEqual([]);
     });
@@ -306,19 +282,21 @@ describe('calculateOverallRankings', () => {
     it('handles integer bottle_id tastings against string bottle ids (regression)', () => {
         const app = freshApp();
         const event = makeWhiskeyEvent();
-        event.participants['p-sarah'].tastings = [
+        event.participants[BOB].tastings = [
             { bottle_id: 1, tasting_data: whiskeyData(2, 2, 2, 1) },
         ];
         app.event = event;
         app.calculateOverallRankings();
-        const weller = app.overallRankings.find(r => r.bottle_path === '1');
-        expect(weller.bottle_name).toBe('Weller 12');
-        expect(weller.tasting_count).toBe(2);
+        const willett = app.overallRankings.find(r => r.bottle_path === '1');
+        expect(willett.bottle_name).toBe(WILLETT);
+        expect(willett.tasting_count).toBe(2);
     });
 });
 
 // ---------------------------------------------------------------------------
-// Legacy event shape (pre-SQLite tastings: bottle_path + participant name)
+// Legacy event shape (pre-SQLite tastings: bottle_path + participant name).
+// These fixtures are intentionally hand-written — the current API can no
+// longer produce this shape, but old events stored it.
 // ---------------------------------------------------------------------------
 
 describe('legacy event shape', () => {
@@ -341,7 +319,7 @@ describe('legacy event shape', () => {
         app.calculateParticipantRankings();
 
         expect(app.overallRankings).toEqual([
-            { bottle_path: '2', bottle_name: 'Eagle Rare', avg_score: 10, tasting_count: 1 },
+            { bottle_path: '2', bottle_name: WELLER, avg_score: 10, tasting_count: 1 },
         ]);
         expect(app.participantRankings[0].name).toBe('Old Timer');
     });
@@ -352,7 +330,7 @@ describe('legacy event shape', () => {
         app.openTastingModal('p-old', '2');
         expect(app.showModal).toBe(true);
         expect(app.modalData.participantName).toBe('Old Timer');
-        expect(app.modalData.bottleName).toBe('Eagle Rare');
+        expect(app.modalData.bottleName).toBe(WELLER);
     });
 });
 
@@ -361,35 +339,37 @@ describe('legacy event shape', () => {
 // ---------------------------------------------------------------------------
 
 describe('calculateParticipantRankings', () => {
-    it('builds a per-participant list sorted by score, highest first', () => {
+    it('builds a per-participant list sorted by score, highest first (contract data)', () => {
         const app = freshApp();
         app.event = makeWhiskeyEvent();
         app.calculateParticipantRankings();
 
         expect(app.participantRankings.length).toBe(2);
-        const ben = app.participantRankings.find(p => p.participant_id === 'p-ben');
-        expect(ben.name).toBe('Ben');
-        expect(ben.rankings).toEqual([
-            { bottle_path: '1', bottle_name: 'Weller 12', score: 9 },
-            { bottle_path: '2', bottle_name: 'Eagle Rare', score: 3 },
+        const alice = app.participantRankings.find(p => p.participant_id === ALICE);
+        expect(alice.name).toBe('Alice');
+        expect(alice.rankings).toEqual([
+            { bottle_path: '1', bottle_name: WILLETT, score: 9 },
+            { bottle_path: '2', bottle_name: WELLER, score: 7 },
         ]);
 
-        const sarah = app.participantRankings.find(p => p.participant_id === 'p-sarah');
-        expect(sarah.rankings).toEqual([
-            { bottle_path: '1', bottle_name: 'Weller 12', score: 7 },
+        const bob = app.participantRankings.find(p => p.participant_id === BOB);
+        expect(bob.name).toBe('Bob');
+        expect(bob.rankings).toEqual([
+            { bottle_path: '1', bottle_name: WILLETT, score: 8 },
+            { bottle_path: '3', bottle_name: BLANTONS, score: 4 },
         ]);
     });
 
     it('falls back to the bottle key for unknown bottles', () => {
         const app = freshApp();
         const event = makeWhiskeyEvent();
-        event.participants['p-sarah'].tastings = [
+        event.participants[BOB].tastings = [
             { bottle_id: 'gone', tasting_data: whiskeyData(1, 0, 0, 0) },
         ];
         app.event = event;
         app.calculateParticipantRankings();
-        const sarah = app.participantRankings.find(p => p.participant_id === 'p-sarah');
-        expect(sarah.rankings[0].bottle_name).toBe('gone');
+        const bob = app.participantRankings.find(p => p.participant_id === BOB);
+        expect(bob.rankings[0].bottle_name).toBe('gone');
     });
 });
 
@@ -401,8 +381,8 @@ describe('getTastingForBottle', () => {
     it('finds the tasting for a participant/bottle pair', () => {
         const app = freshApp();
         app.event = makeWhiskeyEvent();
-        const tasting = app.getTastingForBottle('p-sarah', '1');
-        expect(app.tastingBottleKey(tasting)).toBe('1');
+        const tasting = app.getTastingForBottle(ALICE, '2');
+        expect(app.tastingBottleKey(tasting)).toBe('2');
     });
 
     it('returns null for an unknown participant', () => {
@@ -414,7 +394,7 @@ describe('getTastingForBottle', () => {
     it('returns undefined when the participant has not tasted the bottle', () => {
         const app = freshApp();
         app.event = makeWhiskeyEvent();
-        expect(app.getTastingForBottle('p-sarah', '2')).toBeUndefined();
+        expect(app.getTastingForBottle(ALICE, '3')).toBeUndefined();
     });
 });
 
@@ -430,17 +410,17 @@ describe('formatTastingNotes', () => {
         expect(app.formatTastingNotes({})).toBe('<p class="text-gray-500">No tasting data</p>');
     });
 
-    it('renders all five wine sections with scores, notes and the AWS total', () => {
+    it('renders all five wine sections with scores, notes and the AWS total (contract data)', () => {
         const app = freshApp();
         app.event = makeWineEvent();
-        const html = app.formatTastingNotes({ tasting_data: WINE_DATA });
+        const html = app.formatTastingNotes({ tasting_data: wineTastingData() });
 
         expect(html).toContain('Appearance');
         expect(html).toContain('2.0/3');
         expect(html).toContain('ruby, clear');           // appearance notes joined, not hashtagged
         expect(html).toContain('Aroma');
         expect(html).toContain('5.0/6');
-        expect(html).toContain('#cherry #oak');          // hashtag formatting
+        expect(html).toContain('#cherry #oak');          // wizard stores aroma notes as nose_notes
         expect(html).toContain('Taste');
         expect(html).toContain('4.0/6');
         expect(html).toContain('#plum');
@@ -451,12 +431,29 @@ describe('formatTastingNotes', () => {
         expect(html).toContain('AWS Score: 14.5/20');
     });
 
-    it('escapes HTML in wine overall notes', () => {
+    it('escapes HTML in wine overall notes (contract data)', () => {
         const app = freshApp();
         app.event = makeWineEvent();
-        const html = app.formatTastingNotes({ tasting_data: WINE_DATA });
+        const html = app.formatTastingNotes({ tasting_data: wineTastingData() });
         expect(html).toContain('lovely &amp; &lt;bold&gt;');
         expect(html).not.toContain('<bold>');
+    });
+
+    it('renders a real saved whiskey tasting (contract data)', () => {
+        const app = freshApp();
+        const event = makeWhiskeyEvent();
+        app.event = event;
+        const html = app.formatTastingNotes(event.participants[ALICE].tastings[0]);
+
+        expect(html).toContain('Nose');
+        expect(html).toContain('3.0/3');
+        expect(html).toContain('#caramel #oak');
+        expect(html).toContain('Palate');
+        expect(html).toContain('#cherry #baking spice');
+        expect(html).toContain('Finish');
+        expect(html).toContain('#long #warm');
+        expect(html).toContain('Outstanding pour');
+        expect(html).toContain('Total: 9.0/10');
     });
 
     it('renders whiskey sections with per-component maxima and the /10 total', () => {
@@ -470,14 +467,8 @@ describe('formatTastingNotes', () => {
         });
         const html = app.formatTastingNotes({ tasting_data: data });
 
-        expect(html).toContain('Nose');
         expect(html).toContain('2.5/3');
-        expect(html).toContain('#caramel');
-        expect(html).toContain('Palate');
         expect(html).toContain('#spice #oak');
-        expect(html).toContain('Finish');
-        expect(html).toContain('#long');
-        expect(html).toContain('Overall');
         expect(html).toContain('1.0/1');
         expect(html).toContain('good &lt;stuff&gt;');    // falls back to `notes` and escapes
         expect(html).toContain('Total: 8.5/10');
@@ -537,14 +528,14 @@ describe('escapeHtml', () => {
 // ---------------------------------------------------------------------------
 
 describe('openTastingModal', () => {
-    it('populates modalData and opens the modal', () => {
+    it('populates modalData and opens the modal (contract data)', () => {
         const app = freshApp();
         app.event = makeWhiskeyEvent();
-        app.openTastingModal('p-sarah', '1');
+        app.openTastingModal(ALICE, '2');
 
         expect(app.showModal).toBe(true);
-        expect(app.modalData.participantName).toBe('Sarah');
-        expect(app.modalData.bottleName).toBe('Weller 12');
+        expect(app.modalData.participantName).toBe('Alice');
+        expect(app.modalData.bottleName).toBe(WELLER);
         expect(app.modalData.formattedNotes).toContain('Total: 7.0/10');
     });
 
@@ -559,7 +550,7 @@ describe('openTastingModal', () => {
     it('does nothing when the participant has no tasting for the bottle', () => {
         const app = freshApp();
         app.event = makeWhiskeyEvent();
-        app.openTastingModal('p-sarah', '2');
+        app.openTastingModal(ALICE, '3');
         expect(app.showModal).toBe(false);
     });
 });

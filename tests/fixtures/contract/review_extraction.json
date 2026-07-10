@@ -1,0 +1,90 @@
+{
+  "extraction_id": "00000000-0000-4000-8000-000000000001",
+  "extraction_type": "tasting",
+  "upload_filename": "card.jpg",
+  "template_type": "bourbon",
+  "data": {
+    "template_type": "bourbon",
+    "tastings": [
+      {
+        "id": null,
+        "bottle_name": "Weller Special Reserve",
+        "taster_name": "Ben",
+        "tasting_date": "2026-07-07",
+        "beverage_type": "whiskey",
+        "wine_appearance": null,
+        "wine_aroma": null,
+        "wine_taste": null,
+        "wine_aftertaste": null,
+        "wine_overall": null,
+        "whiskey_nose": 2.5,
+        "whiskey_palate": 2.5,
+        "whiskey_finish": 2.0,
+        "whiskey_overall": 0.8,
+        "appearance_notes": null,
+        "nose_notes": [
+          "caramel",
+          "oak"
+        ],
+        "palate_notes": [
+          "cherry"
+        ],
+        "finish_notes": [],
+        "overall_notes": "Great pour",
+        "days_from_crack": 30,
+        "fill_level": 80,
+        "place": null,
+        "theme": null,
+        "price": null,
+        "color": null,
+        "confidence": 1.0
+      },
+      {
+        "id": null,
+        "bottle_name": "Mystery Bourbon",
+        "taster_name": "",
+        "tasting_date": "2026-07-07",
+        "beverage_type": "whiskey",
+        "wine_appearance": null,
+        "wine_aroma": null,
+        "wine_taste": null,
+        "wine_aftertaste": null,
+        "wine_overall": null,
+        "whiskey_nose": 1.0,
+        "whiskey_palate": 1.0,
+        "whiskey_finish": 1.0,
+        "whiskey_overall": 0.5,
+        "appearance_notes": null,
+        "nose_notes": null,
+        "palate_notes": null,
+        "finish_notes": null,
+        "overall_notes": null,
+        "days_from_crack": null,
+        "fill_level": null,
+        "place": null,
+        "theme": null,
+        "price": null,
+        "color": null,
+        "confidence": 1.0
+      }
+    ]
+  },
+  "match_previews": [
+    {
+      "bottle_name": "Weller Special Reserve",
+      "taster_name": "Ben",
+      "tasting_date": "2026-07-07",
+      "matched": true,
+      "matched_to": "Buffalo Trace - Weller Special Reserve",
+      "confidence": 0.7333333333333333
+    },
+    {
+      "bottle_name": "Mystery Bourbon",
+      "taster_name": "",
+      "tasting_date": "2026-07-07",
+      "matched": false,
+      "matched_to": null,
+      "confidence": 0.0
+    }
+  ]
+}

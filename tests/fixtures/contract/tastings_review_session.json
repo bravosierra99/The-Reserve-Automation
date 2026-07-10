@@ -1,0 +1,97 @@
+{
+  "extraction_id": "00000000-0000-4000-8000-000000000001",
+  "beverage_type": "whiskey",
+  "template_type": "bourbon",
+  "expected_count": 2,
+  "actual_count": 2,
+  "count_mismatch": false,
+  "current_index": 0,
+  "tastings": [
+    {
+      "index": 0,
+      "status": "extracted",
+      "tasting_data": {
+        "bottle_name": "Weller Special Reserve",
+        "taster_name": "Ben",
+        "tasting_date": "2026-07-07",
+        "beverage_type": "whiskey",
+        "wine_appearance": null,
+        "wine_aroma": null,
+        "wine_taste": null,
+        "wine_aftertaste": null,
+        "wine_overall": null,
+        "whiskey_nose": 2.5,
+        "whiskey_palate": 2.5,
+        "whiskey_finish": 2.0,
+        "whiskey_overall": 0.8,
+        "days_from_crack": 30,
+        "fill_level": 80,
+        "color": null,
+        "place": null,
+        "theme": null,
+        "appearance_notes": [],
+        "nose_notes": [
+          "caramel",
+          "oak"
+        ],
+        "palate_notes": [
+          "cherry"
+        ],
+        "finish_notes": [],
+        "overall_notes": "Great pour"
+      },
+      "match_candidates": [
+        {
+          "bottle_path": "1",
+          "bottle_name": "Buffalo Trace - Weller Special Reserve",
+          "producer": "Buffalo Trace",
+          "vintage": null,
+          "confidence": 0.7333333333333333,
+          "thumbnail_url": null,
+          "beverage_type": "whiskey"
+        }
+      ],
+      "selected_match": null,
+      "duplicate_warning": null
+    },
+    {
+      "index": 1,
+      "status": "extracted",
+      "tasting_data": {
+        "bottle_name": "Mystery Bourbon",
+        "taster_name": "",
+        "tasting_date": "2026-07-07",
+        "beverage_type": "whiskey",
+        "wine_appearance": null,
+        "wine_aroma": null,
+        "wine_taste": null,
+        "wine_aftertaste": null,
+        "wine_overall": null,
+        "whiskey_nose": 1.0,
+        "whiskey_palate": 1.0,
+        "whiskey_finish": 1.0,
+        "whiskey_overall": 0.5,
+        "days_from_crack": null,
+        "fill_level": null,
+        "color": null,
+        "place": null,
+        "theme": null,
+        "appearance_notes": [],
+        "nose_notes": [],
+        "palate_notes": [],
+        "finish_notes": [],
+        "overall_notes": null
+      },
+      "match_candidates": [],
+      "selected_match": null,
+      "duplicate_warning": null
+    }
+  ],
+  "stats": {
+    "total": 2,
+    "approved": 0,
+    "skipped": 0,
+    "remaining": 2,
+    "all_done": false
+  }
+}

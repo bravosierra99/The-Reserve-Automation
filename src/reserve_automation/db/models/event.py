@@ -35,15 +35,22 @@ class EventModel(Base):
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
 
-    # Relationships
+    # Relationships. All ordered deterministically: without order_by, SQLite
+    # returns rows in index order — for participants that's the random UUID
+    # PK, so display order (and the contract snapshots in tests/contract/)
+    # varied arbitrarily. Participants have no join-timestamp column, so
+    # alphabetical by name; the rest use insertion (id) order.
     bottles: Mapped[list["EventBottleModel"]] = relationship(
-        back_populates="event", cascade="all, delete-orphan"
+        back_populates="event", cascade="all, delete-orphan",
+        order_by="EventBottleModel.id",
     )
     cocktails: Mapped[list["EventCocktailModel"]] = relationship(
-        back_populates="event", cascade="all, delete-orphan"
+        back_populates="event", cascade="all, delete-orphan",
+        order_by="EventCocktailModel.id",
     )
     participants: Mapped[list["EventParticipantModel"]] = relationship(
-        back_populates="event", cascade="all, delete-orphan"
+        back_populates="event", cascade="all, delete-orphan",
+        order_by="[EventParticipantModel.name, EventParticipantModel.id]",
     )
 
     def __repr__(self) -> str:
@@ -110,10 +117,12 @@ class EventParticipantModel(Base):
     # Relationships
     event: Mapped["EventModel"] = relationship(back_populates="participants")
     tastings: Mapped[list["EventTastingModel"]] = relationship(
-        back_populates="participant", cascade="all, delete-orphan"
+        back_populates="participant", cascade="all, delete-orphan",
+        order_by="EventTastingModel.id",
     )
     cocktail_ratings: Mapped[list["EventCocktailRatingModel"]] = relationship(
-        back_populates="participant", cascade="all, delete-orphan"
+        back_populates="participant", cascade="all, delete-orphan",
+        order_by="EventCocktailRatingModel.id",
     )
 
     def __repr__(self) -> str:

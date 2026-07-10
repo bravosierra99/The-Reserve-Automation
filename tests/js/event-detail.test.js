@@ -6,17 +6,27 @@
  * init() is exercised with hand-supplied $watch/$refs stubs (Alpine magics)
  * and a stubbed QRCode global (the page loads qrcodejs from a CDN).
  *
- * Fixtures mirror web/routes/events.py:
- *   GET  /api/v1/events/{id}          — bottles/participants shapes
- *   POST /api/v1/events/{id}/join     — {participant_id, participant_name, event_id}
- *                                       + participant_sessions cookie (httponly=False,
- *                                       URL-encoded JSON keyed by event_id)
- *   POST /api/v1/events/{id}/bottles  — {message, bottle}
- * and web/routes/bottles/extraction.py GET /api/v1/bottles/search — {query, results}.
+ * API fixtures are NOT hand-written: they are contract fixtures — real
+ * responses captured and snapshot-verified by
+ * tests/contract/test_events_contract.py (see tests/contract/contract.py):
+ *   event_detail_blind_open   GET  /api/v1/events/{id} (open blind event:
+ *                             3 redacted bottles, Alice + Bob joined)
+ *   me                        GET  /api/v1/me (display_name prefill)
+ *   event_join_response       POST /api/v1/events/{id}/join
+ *   event_bottle_search       GET  /api/v1/bottles/search (MatchCandidate:
+ *                             the DB id lives in bottle_path; no bottle_id)
+ *   event_add_bottle_response       POST .../bottles on a blind event
+ *                             (identity-redacted; NO bottle_path key)
+ *   event_add_bottle_response_open  same POST on a non-blind event
+ *                             (full EventBottle echo)
+ * Per-test variants are explicit mutations of a fresh clone. Hand-written
+ * shapes remain only for error responses and the participant_sessions cookie
+ * (browser state, not an API body).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { loadContract } from './helpers/contract.js';
 import '../../src/reserve_automation/web/static/js/events/event-detail.js';
 
 function jsonResponse(data, { ok = true, status = 200 } = {}) {
@@ -39,30 +49,17 @@ function routeFetch(routes) {
     });
 }
 
-const EVENT_ID = 'ev-detail-42';
+// The contract event's normalized id (first UUID the snapshot encountered).
+const EVENT_ID = '00000000-0000-4000-8000-000000000001';
 
 function makeEvent(overrides = {}) {
-    return {
-        event_id: EVENT_ID,
-        name: 'Blind Bourbon Bash',
-        beverage_type: 'whiskey',
-        event_type: 'bottle',
-        is_blind: true,
-        status: 'open',
-        host_name: 'Ben',
-        bottles: [
-            { bottle_id: '1', bottle_name: 'Bottle #1', bottle_path: '1', blind_number: 1 },
-            { bottle_id: '2', bottle_name: 'Bottle #2', bottle_path: '2', blind_number: 2 },
-        ],
-        participants: {
-            'p-ben': {
-                participant_id: 'p-ben',
-                name: 'Ben',
-                tastings: [{ bottle_path: '1', tasting_data: { whiskey_nose: 2 } }],
-            },
-        },
-        ...overrides,
-    };
+    return { ...loadContract('event_detail_blind_open'), ...overrides };
+}
+
+// UUID placeholders are per-fixture (see contract.py): the join response's
+// event_id normalized differently there, so pin it to this event explicitly.
+function makeJoinResponse(overrides = {}) {
+    return { ...loadContract('event_join_response'), event_id: EVENT_ID, ...overrides };
 }
 
 function freshApp() {
@@ -131,7 +128,7 @@ describe('initial state', () => {
 describe('init', () => {
     it('builds the share URL, prefills the name from /api/v1/me and loads the event', async () => {
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/me', jsonResponse({ authenticated: true, display_name: 'Ben Smith', permissions: {} })],
+            ['/api/v1/me', jsonResponse(loadContract('me'))],
             ['/api/v1/events/', jsonResponse(makeEvent())],
         ]));
 
@@ -139,15 +136,18 @@ describe('init', () => {
         await app.init();
 
         expect(app.eventUrl).toBe(window.location.origin + '/events/' + EVENT_ID);
-        expect(app.participantName).toBe('Ben Smith');
-        expect(app.event.name).toBe('Blind Bourbon Bash');
+        expect(app.participantName).toBe('Admin');   // me.display_name
+        expect(app.event.name).toBe('Contract Whiskey Night');
         expect(app.loading).toBe(false);
         expect(app.$watch).toHaveBeenCalledWith('showQRModal', expect.any(Function));
     });
 
     it('leaves the name empty when /api/v1/me has no display_name or fails', async () => {
+        const me = loadContract('me');
+        me.authenticated = false;
+        me.display_name = null;
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/me', jsonResponse({ authenticated: false, display_name: null })],
+            ['/api/v1/me', jsonResponse(me)],
             ['/api/v1/events/', jsonResponse(makeEvent())],
         ]));
         const app = freshApp();
@@ -268,6 +268,13 @@ describe('loadEvent', () => {
         expect(app.event).toEqual(event);
         expect(app.loading).toBe(false);
         expect(app.error).toBeNull();
+        // The contract shape the page depends on: redacted bottles pre-reveal,
+        // participants keyed by id carrying participant_name (NOT name).
+        expect(app.event.bottles[0]).toEqual({
+            bottle_id: '1', bottle_name: 'Bottle #1', bottle_path: '1', blind_number: 1,
+        });
+        const participants = Object.values(app.event.participants);
+        expect(participants.map(p => p.participant_name)).toEqual(['Alice', 'Bob']);
     });
 
     it('reports a 404 as Event not found', async () => {
@@ -358,27 +365,24 @@ describe('joinEvent', () => {
     });
 
     it('POSTs the exact join payload, stores participantInfo and reloads the event', async () => {
-        const joinResponse = {
-            participant_id: 'p-new',
-            participant_name: 'New Guy',
-            event_id: EVENT_ID,
-        };
+        const joinResponse = makeJoinResponse();   // Alice's real join response
         vi.stubGlobal('fetch', routeFetch([
             [`/api/v1/events/${EVENT_ID}/join`, jsonResponse(joinResponse)],
             ['/api/v1/events/', jsonResponse(makeEvent())],
         ]));
 
         const app = freshApp();
-        app.participantName = 'New Guy';
+        app.participantName = 'Alice';
         await app.joinEvent();
 
         const [url, opts] = fetch.mock.calls[0];
         expect(url).toBe(`/api/v1/events/${EVENT_ID}/join`);
         expect(opts.method).toBe('POST');
         expect(opts.headers).toEqual({ 'Content-Type': 'application/json' });
-        expect(JSON.parse(opts.body)).toEqual({ participant_name: 'New Guy' });
+        expect(JSON.parse(opts.body)).toEqual({ participant_name: 'Alice' });
 
         expect(app.participantInfo).toEqual(joinResponse);
+        expect(app.participantInfo.participant_name).toBe('Alice');
         expect(app.joined).toBe(true);
         expect(app.joining).toBe(false);
         expect(app.event).not.toBeNull();   // reloaded after joining
@@ -390,7 +394,7 @@ describe('joinEvent', () => {
             ['/join', jsonResponse({}, { ok: false, status: 400 })],
         ]));
         const app = freshApp();
-        app.participantName = 'New Guy';
+        app.participantName = 'Alice';
         await app.joinEvent();
         expect(alert).toHaveBeenCalledWith('Failed to join event: Failed to join event');
         expect(app.joined).toBe(false);
@@ -399,13 +403,14 @@ describe('joinEvent', () => {
 });
 
 // ---------------------------------------------------------------------------
-// searchBottlesToAdd
+// searchBottlesToAdd — contract fixture event_bottle_search holds the real
+// MatchCandidate shape: the DB id is in bottle_path, there is NO bottle_id.
 // ---------------------------------------------------------------------------
 
 describe('searchBottlesToAdd', () => {
     it('clears results for queries under 2 characters without fetching', async () => {
         const app = freshApp();
-        app.addBottleResults = [{ bottle_path: '9' }];
+        app.addBottleResults = loadContract('event_bottle_search').results;
         app.addBottleQuery = 'w';
         await app.searchBottlesToAdd();
         expect(app.addBottleResults).toEqual([]);
@@ -414,7 +419,7 @@ describe('searchBottlesToAdd', () => {
 
     it('queries the search endpoint with encoded query and beverage type', async () => {
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/bottles/search', jsonResponse({ query: 'a b', results: [] })],
+            ['/api/v1/bottles/search', jsonResponse(loadContract('event_bottle_search'))],
         ]));
         const app = freshApp();
         app.event = makeEvent();
@@ -424,23 +429,38 @@ describe('searchBottlesToAdd', () => {
             .toBe('/api/v1/bottles/search?q=a%20b&beverage_type=whiskey');
     });
 
-    it('hides bottles already in the event from the results', async () => {
+    it('hides bottles already in the event from the results (contract data)', async () => {
+        // The contract search hit (Blantons, bottle_path '3') is already the
+        // event's bottle 3 — the page must not offer to add it twice.
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/bottles/search', jsonResponse({
-                query: 'we',
-                results: [
-                    { bottle_path: '1', bottle_name: 'Already In Event' },
-                    { bottle_path: '3', bottle_name: 'Weller Antique' },
-                ],
-            })],
+            ['/api/v1/bottles/search', jsonResponse(loadContract('event_bottle_search'))],
         ]));
         const app = freshApp();
         app.event = makeEvent();
-        app.addBottleQuery = 'we';
+        app.addBottleQuery = 'blanton';
         await app.searchBottlesToAdd();
-        expect(app.addBottleResults).toEqual([
-            { bottle_path: '3', bottle_name: 'Weller Antique' },
-        ]);
+        expect(app.addBottleResults).toEqual([]);
+    });
+
+    it('offers the full MatchCandidate when the bottle is not yet in the event', async () => {
+        vi.stubGlobal('fetch', routeFetch([
+            ['/api/v1/bottles/search', jsonResponse(loadContract('event_bottle_search'))],
+        ]));
+        const app = freshApp();
+        const event = makeEvent();
+        event.bottles = event.bottles.filter(b => b.bottle_id !== '3');
+        app.event = event;
+        app.addBottleQuery = 'blanton';
+        await app.searchBottlesToAdd();
+        expect(app.addBottleResults).toEqual([{
+            bottle_path: '3',
+            bottle_name: 'Blantons - Original Single Barrel',
+            producer: 'Blantons',
+            vintage: null,
+            confidence: 0.35,
+            thumbnail_url: null,
+            beverage_type: 'whiskey',
+        }]);
     });
 
     it('dedupes legacy event bottles that carry only bottle_path (no bottle_id)', async () => {
@@ -448,31 +468,29 @@ describe('searchBottlesToAdd', () => {
         // legacy event bottle without bottle_id collected `undefined` and its
         // search hit (keyed by bottle_path) reappeared in the results.
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/bottles/search', jsonResponse({
-                query: 'we',
-                results: [
-                    { bottle_path: '7', bottle_name: 'Legacy In Event' },
-                    { bottle_path: '3', bottle_name: 'Weller Antique' },
-                ],
-            })],
+            ['/api/v1/bottles/search', jsonResponse(loadContract('event_bottle_search'))],
         ]));
         const app = freshApp();
         const event = makeEvent();
-        event.bottles.push({ bottle_name: 'Legacy In Event', bottle_path: '7', blind_number: 3 });
+        // Legacy row: strip bottle_id from the Blantons event bottle.
+        event.bottles = event.bottles.map(b =>
+            b.bottle_id === '3'
+                ? { bottle_name: b.bottle_name, bottle_path: '3', blind_number: b.blind_number }
+                : b);
         app.event = event;
-        app.addBottleQuery = 'we';
+        app.addBottleQuery = 'blanton';
         await app.searchBottlesToAdd();
-        expect(app.addBottleResults).toEqual([
-            { bottle_path: '3', bottle_name: 'Weller Antique' },
-        ]);
+        expect(app.addBottleResults).toEqual([]);
     });
 
     it('handles a missing results key and no loaded event', async () => {
+        const noResults = loadContract('event_bottle_search');
+        delete noResults.results;
         vi.stubGlobal('fetch', routeFetch([
-            ['/api/v1/bottles/search', jsonResponse({ query: 'we' })],
+            ['/api/v1/bottles/search', jsonResponse(noResults)],
         ]));
         const app = freshApp();
-        app.addBottleQuery = 'well';
+        app.addBottleQuery = 'blanton';
         await app.searchBottlesToAdd();
         expect(app.addBottleResults).toEqual([]);
         expect(String(fetch.mock.calls[0][0])).toContain('beverage_type=');
@@ -482,11 +500,12 @@ describe('searchBottlesToAdd', () => {
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
         const app = freshApp();
-        app.addBottleQuery = 'well';
-        app.addBottleResults = [{ bottle_path: '3' }];
+        const prior = loadContract('event_bottle_search').results;
+        app.addBottleQuery = 'blanton';
+        app.addBottleResults = prior;
         await app.searchBottlesToAdd();
         expect(consoleError).toHaveBeenCalled();
-        expect(app.addBottleResults).toEqual([{ bottle_path: '3' }]);
+        expect(app.addBottleResults).toEqual(prior);
     });
 });
 
@@ -495,19 +514,20 @@ describe('searchBottlesToAdd', () => {
 // ---------------------------------------------------------------------------
 
 describe('addBottleToEvent', () => {
-    it('POSTs the bottle id and reports the blind number on blind events', async () => {
+    it('POSTs the search result\'s bottle_path as bottle_id and reports the blind number', async () => {
+        // Blind-event contract response: identity-redacted (bottle_name is
+        // "Bottle #3", no bottle_path key).
         vi.stubGlobal('fetch', routeFetch([
-            [`/api/v1/events/${EVENT_ID}/bottles`, jsonResponse({
-                message: 'Bottle added',
-                bottle: { bottle_id: '3', bottle_name: 'Bottle #3', blind_number: 3 },
-            })],
+            [`/api/v1/events/${EVENT_ID}/bottles`,
+                jsonResponse(loadContract('event_add_bottle_response'))],
             ['/api/v1/events/', jsonResponse(makeEvent())],
         ]));
 
+        const [candidate] = loadContract('event_bottle_search').results;
         const app = freshApp();
-        app.addBottleQuery = 'well';
-        app.addBottleResults = [{ bottle_path: '3', bottle_name: 'Weller Antique' }];
-        await app.addBottleToEvent({ bottle_path: '3', bottle_name: 'Weller Antique' });
+        app.addBottleQuery = 'blanton';
+        app.addBottleResults = [candidate];
+        await app.addBottleToEvent(candidate);
 
         const [url, opts] = fetch.mock.calls[0];
         expect(url).toBe(`/api/v1/events/${EVENT_ID}/bottles`);
@@ -522,19 +542,19 @@ describe('addBottleToEvent', () => {
         expect(app.event).not.toBeNull();   // event reloaded
     });
 
-    it('reports the real bottle name on non-blind events', async () => {
+    it('reports the real bottle name on non-blind events (contract data)', async () => {
+        // Non-blind contract response: full EventBottle echo, blind_number null.
         vi.stubGlobal('fetch', routeFetch([
-            ['/bottles', jsonResponse({
-                message: 'Bottle added',
-                bottle: { bottle_id: '3', bottle_name: 'Weller Antique', blind_number: null },
-            })],
+            ['/bottles', jsonResponse(loadContract('event_add_bottle_response_open'))],
             ['/api/v1/events/', jsonResponse(makeEvent({ is_blind: false }))],
         ]));
         const app = freshApp();
-        await app.addBottleToEvent({ bottle_path: '3' });
-        expect(app.addBottleMessage).toBe('Added Weller Antique');
+        await app.addBottleToEvent({ bottle_path: '2' });
+        expect(app.addBottleMessage).toBe('Added Buffalo Trace - Weller Special Reserve');
     });
 
+    // Error responses below are hand-written: assert_contract snapshots the
+    // happy-path flow; the {detail} shape is FastAPI's HTTPException format.
     it('surfaces the API error detail on failure', async () => {
         vi.stubGlobal('fetch', routeFetch([
             ['/bottles', jsonResponse(
@@ -566,11 +586,11 @@ describe('addBottleToEvent', () => {
 describe('isHost', () => {
     it('matches the participant name against the event host', () => {
         const app = freshApp();
-        app.event = makeEvent({ host_name: 'Ben' });
-        app.participantInfo = { participant_name: 'Ben' };
-        expect(app.isHost()).toBe(true);
-        app.participantInfo = { participant_name: 'Sarah' };
+        app.event = makeEvent();                       // contract host_name: Ben
+        app.participantInfo = makeJoinResponse();      // Alice joined
         expect(app.isHost()).toBe(false);
+        app.participantInfo = makeJoinResponse({ participant_name: 'Ben' });
+        expect(app.isHost()).toBe(true);
     });
 
     it('is (quirkily) true before joining or loading — undefined === undefined', () => {
@@ -582,7 +602,7 @@ describe('isHost', () => {
         expect(app.isHost()).toBe(true);
 
         // Once the event loads (host known) but before joining, it is false.
-        app.event = makeEvent({ host_name: 'Ben' });
+        app.event = makeEvent();
         expect(app.isHost()).toBe(false);
     });
 });
