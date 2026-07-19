@@ -440,9 +440,10 @@ window.manualTastingWizard = function() {
                     alert('Tasting saved successfully!');
                     window.location.href = `/events/${result.event_id}`;
                 } else {
-                    // Obsidian mode - show file path and redirect to bottles
+                    // Obsidian mode - confirm, then land back on the tasted
+                    // bottle (?bottle= deep link opens its modal on /bottles)
                     alert(`Tasting saved successfully to ${result.file_path}`);
-                    window.location.href = '/bottles';
+                    window.location.href = `/bottles?bottle=${encodeURIComponent(this.selectedBottle.bottle_path)}`;
                 }
             } catch (e) {
                 alert('Error: ' + (e.message || 'Failed to save tasting'));

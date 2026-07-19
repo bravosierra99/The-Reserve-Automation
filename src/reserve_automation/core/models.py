@@ -9,7 +9,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 
 class BeverageType(str, Enum):
@@ -119,6 +119,26 @@ class BottleMetadata(BaseModel):
     def strip_whitespace(cls, v: str) -> str:
         """Clean up string fields."""
         return v.strip() if v else v
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def display_name(self) -> str:
+        """Unambiguous human-readable label: producer - name (year, Batch X).
+
+        Year and batch are appended so near-identical bottlings (e.g. George
+        T. Stagg 2018 vs 2025) are tellable apart in pickers and event lists.
+        Serialized via model_dump, so the frontend uses this same one path.
+        """
+        label = f"{self.producer} - {self.name}" if self.producer else self.name
+        qualifiers = []
+        if self.year:
+            qualifiers.append(str(self.year))
+        batch = (self.batch_number or "").strip()
+        if batch and batch.lower() not in self.name.lower():
+            qualifiers.append(f"Batch {batch}")
+        if qualifiers:
+            label += f" ({', '.join(qualifiers)})"
+        return label
 
     def to_obsidian_dict(self) -> dict:
         """Convert to Obsidian frontmatter format."""

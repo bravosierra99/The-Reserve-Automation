@@ -141,6 +141,17 @@ describe('searchBottlesForEvent', () => {
         expect(component.eventBottleSearching).toBe(false);
     });
 
+    it('search results carry display_name — the exact label the picker templates render', async () => {
+        // management.html renders bottle.display_name (server-composed with
+        // year/batch so near-identical bottlings are tellable apart); if the
+        // contract payload drops it the picker rows would render blank.
+        const contract = searchFixture();
+        for (const bottle of contract.bottles) {
+            expect(bottle.display_name).toBeTypeOf('string');
+            expect(bottle.display_name.length).toBeGreaterThan(0);
+        }
+    });
+
     it('debounces: rapid keystrokes trigger a single search after 300ms', () => {
         vi.useFakeTimers();
         const searchSpy = vi.spyOn(component, 'searchBottlesForEvent').mockResolvedValue();

@@ -119,8 +119,9 @@ async def create_event(
                     detail=f"Bottle not found for ID: {bottle_id}"
                 )
 
-            # Build bottle name from metadata
-            bottle_name = f"{bottle.producer} - {bottle.name}" if bottle.producer else bottle.name
+            # Build bottle name from metadata (year/batch included so
+            # near-identical bottlings stay tellable apart on event pages)
+            bottle_name = bottle.display_name
 
             event_bottle = EventBottle(
                 bottle_id=bottle_id,
@@ -421,7 +422,7 @@ async def add_event_bottle(
             else:
                 blind_number = max(used_numbers, default=0) + 1
 
-        bottle_name = f"{bottle.producer} - {bottle.name}" if bottle.producer else bottle.name
+        bottle_name = bottle.display_name
         event_bottle = EventBottle(
             bottle_id=request_data.bottle_id,
             bottle_name=bottle_name,

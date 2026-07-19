@@ -35,7 +35,8 @@
       "extracted_at": "2026-07-07T19:00:00",
       "enriched": false,
       "label_image_url": null,
-      "notes": null
+      "notes": null,
+      "display_name": "Cloudy Bay - Sauvignon Blanc Reserve (2022)"
     },
     {
       "producer": "Willett",
@@ -70,7 +71,8 @@
       "extracted_at": "2026-07-07T19:00:00",
       "enriched": false,
       "label_image_url": null,
-      "notes": null
+      "notes": null,
+      "display_name": "Willett - Pot Still Reserve"
     }
   ],
   "count": 2,

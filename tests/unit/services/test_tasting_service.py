@@ -359,6 +359,7 @@ class TestMatchCandidates:
         mock_wine.year = 2019
         mock_wine.type = "wine"
         mock_wine.label_image_url = None
+        mock_wine.display_name = "Caymus - Cabernet (2019)"
 
         mock_whiskey = MagicMock()
         mock_whiskey.id = 2
@@ -367,6 +368,7 @@ class TestMatchCandidates:
         mock_whiskey.year = None
         mock_whiskey.type = "whiskey"
         mock_whiskey.label_image_url = None
+        mock_whiskey.display_name = "Buffalo Trace - Bourbon"
 
         db_service.bottle_repo.search.return_value = [mock_wine, mock_whiskey]
 
@@ -402,6 +404,7 @@ class TestMatchCandidates:
             m.year = None
             m.type = "wine"
             m.label_image_url = None
+            m.display_name = f"{name.split()[0]} - Wine"
             mock_bottles.append(m)
 
         db_service.bottle_repo.search.return_value = mock_bottles
@@ -427,6 +430,7 @@ class TestMatchCandidates:
             m.year = None
             m.type = "wine"
             m.label_image_url = None
+            m.display_name = f"Producer{i} - Wine"
             mock_bottles.append(m)
 
         db_service.bottle_repo.search.return_value = mock_bottles

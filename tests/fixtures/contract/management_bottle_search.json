@@ -33,7 +33,8 @@
       "extracted_at": "2026-07-07T19:00:00",
       "enriched": false,
       "label_image_url": null,
-      "notes": null
+      "notes": null,
+      "display_name": "Buffalo Trace - Weller 12 Year"
     },
     {
       "producer": "Buffalo Trace",
@@ -68,7 +69,8 @@
       "extracted_at": "2026-07-07T19:00:00",
       "enriched": false,
       "label_image_url": null,
-      "notes": null
+      "notes": null,
+      "display_name": "Buffalo Trace - Weller Special Reserve"
     }
   ],
   "count": 2,

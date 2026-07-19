@@ -424,7 +424,9 @@ describe('saveTasting', () => {
         // Real non-event response: file_path is the new tasting's DB id ('1'),
         // not a vault path — the success alert shows it verbatim.
         expect(alertMock).toHaveBeenCalledWith('Tasting saved successfully to 1');
-        expect(location.href).toBe('/bottles');
+        // Lands back on the tasted bottle: /bottles opens the deep-linked
+        // bottle's modal (bottles-page.js openDeepLinkedBottle).
+        expect(location.href).toBe('/bottles?bottle=1');
         expect(w.saving).toBe(false);
     });
 

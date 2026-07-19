@@ -11,13 +11,13 @@
   "bottles": [
     {
       "bottle_id": "4",
-      "bottle_name": "Caymus Vineyards - Cabernet Sauvignon",
+      "bottle_name": "Caymus Vineyards - Cabernet Sauvignon (2021)",
       "bottle_path": "4",
       "blind_number": 1
     },
     {
       "bottle_id": "5",
-      "bottle_name": "Opus One - Opus One",
+      "bottle_name": "Opus One - Opus One (2019)",
       "bottle_path": "5",
       "blind_number": 2
     }

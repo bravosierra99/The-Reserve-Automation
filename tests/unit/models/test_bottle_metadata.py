@@ -101,6 +101,49 @@ class TestBottleMetadataCreation:
 
 
 # ============================================================================
+# Test display_name (serialized label used by pickers and event lists)
+# ============================================================================
+
+class TestDisplayName:
+    """display_name disambiguates near-identical bottlings (year/batch)."""
+
+    def _bottle(self, **kwargs):
+        defaults = dict(producer="Buffalo Trace", name="George T. Stagg",
+                        type="whiskey", source="test")
+        defaults.update(kwargs)
+        return BottleMetadata(**defaults)
+
+    def test_plain_producer_name(self):
+        assert self._bottle().display_name == "Buffalo Trace - George T. Stagg"
+
+    def test_year_appended(self):
+        assert self._bottle(year=2018).display_name == \
+            "Buffalo Trace - George T. Stagg (2018)"
+
+    def test_batch_appended(self):
+        assert self._bottle(batch_number="23A").display_name == \
+            "Buffalo Trace - George T. Stagg (Batch 23A)"
+
+    def test_year_and_batch_appended(self):
+        assert self._bottle(year=2024, batch_number="011").display_name == \
+            "Buffalo Trace - George T. Stagg (2024, Batch 011)"
+
+    def test_batch_already_in_name_not_duplicated(self):
+        bottle = self._bottle(name="Stagg Jr Batch 24D", batch_number="24D", year=2024)
+        assert bottle.display_name == "Buffalo Trace - Stagg Jr Batch 24D (2024)"
+
+    def test_blank_batch_ignored(self):
+        assert self._bottle(batch_number="  ").display_name == \
+            "Buffalo Trace - George T. Stagg"
+
+    def test_serialized_in_model_dump(self):
+        # Pickers and templates read this from the JSON payload — it must
+        # survive model_dump, not just attribute access.
+        dumped = self._bottle(year=2025).model_dump(mode="json")
+        assert dumped["display_name"] == "Buffalo Trace - George T. Stagg (2025)"
+
+
+# ============================================================================
 # Test Field Validation
 # ============================================================================
 

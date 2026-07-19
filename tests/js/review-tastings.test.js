@@ -496,7 +496,8 @@ describe('selected match display helpers', () => {
         // Contract truth: seeded bottles carry no label image, so the real
         // candidate's thumbnail_url is null.
         expect(app.getSelectedMatchThumbnail()).toBeNull();
-        expect(app.getSelectedMatchName()).toBe('Caymus Vineyards - Cabernet Sauvignon');
+        // Candidate names now include year/batch (BottleMetadata.display_name)
+        expect(app.getSelectedMatchName()).toBe('Caymus Vineyards - Cabernet Sauvignon (2021)');
         expect(app.getSelectedMatchConfidence()).toBe(candidate.confidence);
     });
 

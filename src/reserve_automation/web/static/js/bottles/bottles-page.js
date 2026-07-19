@@ -24,6 +24,8 @@
 //              GET /api/v1/labels/thumbnail?id=&size=  (thumbnail images)
 // #CLAUDE_REQ: navigateToCreateTasting writes sessionStorage 'preselect_bottle'
 //              which static/js/tastings/manual-tasting.js reads on /manual-tasting.
+// #CLAUDE_REQ: manual-tasting.js redirects to /bottles?bottle=<id> after a
+//              non-event save; openDeepLinkedBottle here consumes that param.
 
 window.bottlesApp = function bottlesApp() {
     // Initialize bottle editor modal
@@ -193,6 +195,22 @@ window.bottlesApp = function bottlesApp() {
 
             // Load bottles
             await this.loadBottles();
+
+            await this.openDeepLinkedBottle();
+        },
+
+        // /bottles?bottle=<id> (set by manual-tasting.js after a save) opens
+        // that bottle's detail modal so the user lands back on the bottle
+        // they just tasted instead of a cleared grid.
+        async openDeepLinkedBottle() {
+            const bottleId = new URLSearchParams(window.location.search || '').get('bottle');
+            if (!bottleId) return;
+            // Drop the param so refresh/back doesn't re-open the modal
+            window.history.replaceState({}, '', window.location.pathname || '/bottles');
+            const bottle = this.labelBottles.find(b => String(b.id) === bottleId);
+            if (bottle && this.bottleEditor.openManagement) {
+                await this.bottleEditor.openManagement(bottle, !this.canEdit);
+            }
         },
 
         async loadBottles() {

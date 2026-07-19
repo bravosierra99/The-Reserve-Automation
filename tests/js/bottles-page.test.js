@@ -427,6 +427,76 @@ describe('init', () => {
 });
 
 // ---------------------------------------------------------------------------
+// openDeepLinkedBottle — /bottles?bottle=<id> lands back on the tasted bottle
+// (manual-tasting.js redirects here after a non-event save)
+// ---------------------------------------------------------------------------
+
+describe('openDeepLinkedBottle', () => {
+    function deepLinkFetch() {
+        return routeFetch([
+            ['/api/v1/me', jsonResponse(loadContract('me'))],
+            ['/api/v1/bottles/collection', jsonResponse(loadContract('bottles_collection'))],
+        ]);
+    }
+
+    beforeEach(() => {
+        vi.spyOn(console, 'log').mockImplementation(() => {});
+        vi.spyOn(window.history, 'replaceState').mockImplementation(() => {});
+    });
+
+    it('opens the deep-linked bottle modal after init and cleans the URL', async () => {
+        vi.stubGlobal('location', { href: '', search: '?bottle=3', pathname: '/bottles' });
+        vi.stubGlobal('fetch', deepLinkFetch());
+        const app = freshApp();
+        const openSpy = vi.spyOn(app.bottleEditor, 'openManagement').mockResolvedValue();
+
+        await app.init();
+
+        expect(openSpy).toHaveBeenCalledTimes(1);
+        expect(openSpy.mock.calls[0][0].id).toBe('3');
+        expect(openSpy.mock.calls[0][1]).toBe(false); // contract 'me' can edit
+        expect(window.history.replaceState).toHaveBeenCalledWith({}, '', '/bottles');
+    });
+
+    it('opens read-only when the user lacks edit permission', async () => {
+        vi.stubGlobal('location', { href: '', search: '?bottle=3', pathname: '/bottles' });
+        vi.stubGlobal('fetch', routeFetch([
+            ['/api/v1/me', jsonResponse(loadContract('me_guest'))],
+            ['/api/v1/bottles/collection', jsonResponse(loadContract('bottles_collection'))],
+        ]));
+        const app = freshApp();
+        const openSpy = vi.spyOn(app.bottleEditor, 'openManagement').mockResolvedValue();
+
+        await app.init();
+
+        expect(openSpy).toHaveBeenCalledWith(expect.objectContaining({ id: '3' }), true);
+    });
+
+    it('does nothing without the ?bottle= param', async () => {
+        vi.stubGlobal('fetch', deepLinkFetch());
+        const app = freshApp();
+        const openSpy = vi.spyOn(app.bottleEditor, 'openManagement').mockResolvedValue();
+
+        await app.init();
+
+        expect(openSpy).not.toHaveBeenCalled();
+        expect(window.history.replaceState).not.toHaveBeenCalled();
+    });
+
+    it('ignores an unknown bottle id but still cleans the URL', async () => {
+        vi.stubGlobal('location', { href: '', search: '?bottle=999', pathname: '/bottles' });
+        vi.stubGlobal('fetch', deepLinkFetch());
+        const app = freshApp();
+        const openSpy = vi.spyOn(app.bottleEditor, 'openManagement').mockResolvedValue();
+
+        await app.init();
+
+        expect(openSpy).not.toHaveBeenCalled();
+        expect(window.history.replaceState).toHaveBeenCalledWith({}, '', '/bottles');
+    });
+});
+
+// ---------------------------------------------------------------------------
 // loadBottles
 // ---------------------------------------------------------------------------
 

@@ -150,7 +150,8 @@ class TastingService:
             bottles = self.bottle_repo.search(bottle_name)
             candidates = []
             for bottle in bottles[:limit]:
-                # Simple confidence based on name similarity
+                # Simple confidence based on name similarity (matched against
+                # the plain name; display uses display_name with year/batch)
                 from difflib import SequenceMatcher
                 full_name = f"{bottle.producer} - {bottle.name}"
                 confidence = SequenceMatcher(None, bottle_name.lower(), full_name.lower()).ratio()
@@ -159,7 +160,7 @@ class TastingService:
 
                 candidate = MatchCandidate(
                     bottle_path=str(bottle.id),  # Use DB ID as path
-                    bottle_name=full_name,
+                    bottle_name=bottle.display_name,
                     producer=bottle.producer or "",
                     vintage=bottle.year,
                     confidence=confidence,
@@ -271,7 +272,7 @@ class TastingService:
 
                 candidate = MatchCandidate(
                     bottle_path=str(bottle.id),
-                    bottle_name=full_name,
+                    bottle_name=bottle.display_name,
                     producer=bottle.producer or "",
                     vintage=bottle.year,
                     confidence=confidence,

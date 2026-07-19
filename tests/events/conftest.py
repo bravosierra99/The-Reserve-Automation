@@ -127,7 +127,7 @@ def weller_bottle(test_db):
     assert bottles, "Weller bottle not found in test DB"
     bottle = bottles[0]
     return {
-        "name": f"{bottle.producer} - {bottle.name}",
+        "name": bottle.display_name,
         "id": str(bottle.id),
         "beverage_type": "whiskey"
     }
@@ -142,7 +142,7 @@ def blantons_bottle(test_db):
     assert bottles, "Blantons bottle not found in test DB"
     bottle = bottles[0]
     return {
-        "name": f"{bottle.producer} - {bottle.name}",
+        "name": bottle.display_name,
         "id": str(bottle.id),
         "beverage_type": "whiskey"
     }
@@ -157,7 +157,7 @@ def caymus_bottle(test_db):
     assert bottles, "Caymus bottle not found in test DB"
     bottle = bottles[0]
     return {
-        "name": f"{bottle.producer} - {bottle.name}",
+        "name": bottle.display_name,
         "id": str(bottle.id),
         "beverage_type": "wine"
     }
@@ -172,7 +172,7 @@ def opus_bottle(test_db):
     assert bottles, "Opus One bottle not found in test DB"
     bottle = bottles[0]
     return {
-        "name": f"{bottle.producer} - {bottle.name}",
+        "name": bottle.display_name,
         "id": str(bottle.id),
         "beverage_type": "wine"
     }

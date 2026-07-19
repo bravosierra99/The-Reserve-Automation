@@ -33,7 +33,8 @@
       "extracted_at": "2026-07-07T19:00:00",
       "enriched": false,
       "label_image_url": null,
-      "notes": "Great in an Old Fashioned; decant 10 min"
+      "notes": "Great in an Old Fashioned; decant 10 min",
+      "display_name": "Buffalo Trace - Eagle Rare 10 Year (2018)"
     },
     {
       "producer": "Caymus Vineyards",
@@ -71,7 +72,8 @@
       "extracted_at": "2026-07-07T19:00:00",
       "enriched": false,
       "label_image_url": null,
-      "notes": null
+      "notes": null,
+      "display_name": "Caymus Vineyards - Special Selection Cabernet (2019)"
     },
     {
       "producer": "Cloudy Bay",
@@ -108,7 +110,8 @@
       "extracted_at": "2026-07-07T19:00:00",
       "enriched": false,
       "label_image_url": null,
-      "notes": null
+      "notes": null,
+      "display_name": "Cloudy Bay - Sauvignon Blanc Reserve (2022)"
     },
     {
       "producer": "Willett",
@@ -143,7 +146,8 @@
       "extracted_at": "2026-07-07T19:00:00",
       "enriched": false,
       "label_image_url": null,
-      "notes": null
+      "notes": null,
+      "display_name": "Willett - Pot Still Reserve"
     }
   ],
   "count": 4
