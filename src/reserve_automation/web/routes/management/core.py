@@ -179,6 +179,14 @@ async def get_bottle_tastings_summary(
         if summary.get("max_score") is None:
             summary["max_score"] = 100 if bottle.type == "wine" else 10
 
+        # The repo averages raw component sums (AWS 20-pt for wine). Display
+        # uses the 100-pt scale — same formula as tastings-list below.
+        if summary.get("avg_score") is not None:
+            if bottle.type == "wine":
+                summary["avg_score"] = round(50 + (summary["avg_score"] / 20) * 50, 1)
+            else:
+                summary["avg_score"] = round(summary["avg_score"], 1)
+
         return summary
 
     except HTTPException:

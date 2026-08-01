@@ -241,7 +241,7 @@ class TestManagementTastingsSummary:
         assert response.status_code == 200
         result = response.json()
         assert result["tasting_count"] >= 1
-        assert result["avg_score"] is not None
+        assert result["avg_score"] == 9.5  # raw 10-point sum (3 + 2.5 + 3 + 1)
         assert result["max_score"] == 10  # Whiskey 10-point scale
         assert "TestTaster" in result["tasters"]
 
@@ -262,3 +262,54 @@ class TestManagementTastingsSummary:
                 TastingNoteModel.taster_name == "TestTaster",
             ).delete()
             session.commit()
+
+    def test_wine_summary_avg_score_uses_100pt_scale(self, client):
+        """Wine avg_score must be on the 100-pt display scale, not the raw AWS 20-pt sum.
+
+        The tastings-list endpoint scales wine totals as 50 + (aws/20)*50; the
+        summary card must match it (regression: it showed the raw /20 score).
+        """
+        list_response = client.get("/api/v1/management/bottles")
+        bottles = list_response.json()["bottles"]
+        margaux = next((b for b in bottles if b.get("producer") == "Chateau Margaux"), None)
+        assert margaux is not None
+
+        db = next(get_db())
+        tasting_repo = SQLiteTastingRepository(db)
+        tasting_repo.create(
+            TastingNote(
+                bottle_name="Chateau Margaux - Grand Vin - 2015",
+                taster_name="WineTaster",
+                tasting_date=date(2026, 7, 1),
+                beverage_type="wine",
+                wine_appearance=2.5,
+                wine_aroma=5.0,
+                wine_taste=5.0,
+                wine_aftertaste=2.0,
+                wine_overall=1.5,  # AWS total = 16.0 → 100-pt = 90.0
+            ),
+            bottle_id=int(margaux["id"]),
+        )
+        db.close()
+
+        try:
+            response = client.post(
+                "/api/v1/management/bottles/tastings-summary",
+                json={"bottle": margaux},
+            )
+            assert response.status_code == 200
+            result = response.json()
+            assert result["avg_score"] == 90.0
+            assert result["max_score"] == 100
+        finally:
+            from sqlalchemy.orm import Session
+
+            from reserve_automation.db.engine import get_engine
+            from reserve_automation.db.models.bottle import TastingNoteModel
+            engine = get_engine()
+            with Session(engine) as session:
+                session.query(TastingNoteModel).filter(
+                    TastingNoteModel.bottle_id == int(margaux["id"]),
+                    TastingNoteModel.taster_name == "WineTaster",
+                ).delete()
+                session.commit()
