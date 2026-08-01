@@ -106,6 +106,7 @@ MODEL_LOAD_PARAMS: dict[str, dict] = {
     "qwen/qwen3-14b": {"context_length": 16384},
     "minicpm-v-4": {"context_length": 16384},
     "minicpm-o-4_5": {"context_length": 16384},
+    "minicpm-v-4_5": {"context_length": 16384},
 }
 
 # Per-model gateway config extras (merged into the provider config sent to LMStudioProvider).
