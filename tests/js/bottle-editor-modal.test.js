@@ -1244,7 +1244,7 @@ describe('label operations', () => {
         expect(m.labelActionInProgress).toBe(false);
     });
 
-    it('cropExistingLabel in upload mode overwrites in place and refreshes the preview', async () => {
+    it('cropExistingLabel in upload mode exposes a preview for review (does NOT apply)', async () => {
         const m = freshModal();
         m.mode = 'upload';
         m.uploadId = 'up-1';
@@ -1254,27 +1254,54 @@ describe('label operations', () => {
             ['/api/v1/bottles/auto-crop-temp', (url, opts) => {
                 calledUrl = url;
                 expect(JSON.parse(opts.body)).toEqual({ upload_id: 'up-1' });
-                return jsonResponse({ status: 'ok' });
+                return jsonResponse({ status: 'success', preview_filename: 'label_crop_preview.jpg' });
             }],
         ]);
 
         await m.cropExistingLabel();
 
         expect(calledUrl).toBe('/api/v1/bottles/auto-crop-temp');
-        expect(m.labelCropPreview).toBeNull();
-        expect(m.currentLabelTimestamp).toBeGreaterThanOrEqual(before);
+        expect(m.labelCropPreview).toContain('/api/v1/temp-images/up-1/label_crop_preview.jpg');
+        // The temp label itself must be untouched until acceptCropPreview.
+        expect(m.currentLabelTimestamp).toBe(before);
     });
 
-    it('acceptCropPreview commits the preview and clears it', async () => {
+    it('acceptCropPreview in management mode commits the preview and clears it', async () => {
         const m = freshModal();
+        m.mode = 'management';
         m.bottleId = '1';
         m.labelCropPreview = '/some/preview.jpg';
+        let body = null;
         global.fetch = routeFetch([
-            ['/api/v1/management/labels/accept-crop', jsonResponse({ status: 'ok' })],
+            ['/api/v1/management/labels/accept-crop', (url, opts) => {
+                body = JSON.parse(opts.body);
+                return jsonResponse({ status: 'ok' });
+            }],
         ]);
 
         await m.acceptCropPreview();
 
+        expect(body).toEqual({ bottle_id: '1' });
+        expect(m.labelCropPreview).toBeNull();
+        expect(m.labelActionInProgress).toBe(false);
+    });
+
+    it('acceptCropPreview in upload mode commits the temp preview and refreshes the label', async () => {
+        const m = freshModal();
+        m.mode = 'upload';
+        m.uploadId = 'up-1';
+        m.labelCropPreview = '/api/v1/temp-images/up-1/label_crop_preview.jpg';
+        let body = null;
+        global.fetch = routeFetch([
+            ['/api/v1/bottles/accept-crop-temp', (url, opts) => {
+                body = JSON.parse(opts.body);
+                return jsonResponse({ status: 'success' });
+            }],
+        ]);
+
+        await m.acceptCropPreview();
+
+        expect(body).toEqual({ upload_id: 'up-1' });
         expect(m.labelCropPreview).toBeNull();
         expect(m.labelActionInProgress).toBe(false);
     });

@@ -80,16 +80,23 @@ def _resolve_temp_label(upload_id: str, label_index: int) -> Path:
     return source_label
 
 
+def _temp_crop_preview_path(source_label: Path) -> Path:
+    """Preview file the auto-crop writes, next to the temp label it came from."""
+    return source_label.with_name(f"{source_label.stem}_crop_preview.jpg")
+
+
 @router.post("/api/v1/bottles/auto-crop-temp")
 async def auto_crop_temp_label(request: AutoCropTempRequest):
     """Auto-crop a temporary uploaded label (upload workflow).
 
-    Upload-mode analogue of management's crop-current. Because the upload flow
-    has no committed label yet, this mirrors manual-crop-temp: it runs the
-    LLM/CV label detection directly on /tmp/reserve_uploads/{upload_id}/labels/
-    label.jpg and overwrites it in place (no separate preview/accept step). The
-    modal refreshes its cache-busted temp preview on success.
+    Upload-mode analogue of management's crop-current: the LLM/CV label
+    detection runs on a COPY of /tmp/reserve_uploads/{upload_id}/labels/
+    {index}.jpg and writes a {stem}_crop_preview.jpg preview. The original is
+    untouched until the user accepts via accept-crop-temp, so a bad crop can
+    never destroy the uploaded photo.
     """
+    from shutil import copyfile
+
     from ....llm.gateway import LLMGateway
     from ....utils.label_processor import LabelImageProcessor
     from ...app import core_config
@@ -98,25 +105,53 @@ async def auto_crop_temp_label(request: AutoCropTempRequest):
         raise HTTPException(status_code=500, detail="Service not initialized")
 
     source_label = _resolve_temp_label(request.upload_id, request.label_index)
+    preview_path = _temp_crop_preview_path(source_label)
 
     try:
-        logger.info(f"Auto-crop temp: {source_label}")
+        logger.info(f"Auto-crop temp: {source_label} -> preview {preview_path.name}")
+        copyfile(source_label, preview_path)
         processor = LabelImageProcessor(LLMGateway(core_config.llm))
         # crop_to_label normalizes EXIF, auto-detects the label bounds, and
-        # overwrites source_label with the crop (or returns None on failure).
-        result = await processor.crop_to_label(source_label)
+        # overwrites preview_path with the crop (or returns None on failure).
+        result = await processor.crop_to_label(preview_path)
         if not result:
+            preview_path.unlink(missing_ok=True)
             raise HTTPException(status_code=500, detail="Auto-crop failed to detect a label")
 
         return {
             "status": "success",
-            "cropped_path": str(source_label),
-            "message": "Label auto-cropped successfully",
+            "preview_filename": preview_path.name,
+            "message": "Crop preview ready for review",
         }
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Auto-crop temp failed: {e}", exc_info=True)
+        preview_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/v1/bottles/accept-crop-temp")
+async def accept_crop_temp_label(request: AutoCropTempRequest):
+    """Accept an auto-crop preview: replace the temp label with the crop.
+
+    Upload-mode analogue of management's accept-crop. Discarding a preview
+    needs no endpoint — the frontend just drops it, and stale preview files
+    die with the /tmp upload dir (save.py only ever commits {index}.jpg).
+    """
+    from shutil import copyfile
+
+    source_label = _resolve_temp_label(request.upload_id, request.label_index)
+    preview_path = _temp_crop_preview_path(source_label)
+    if not preview_path.exists():
+        raise HTTPException(status_code=404, detail="No crop preview found")
+
+    try:
+        copyfile(preview_path, source_label)
+        preview_path.unlink(missing_ok=True)
+        return {"status": "success", "message": "Cropped label accepted"}
+    except Exception as e:
+        logger.error(f"Accept crop temp failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

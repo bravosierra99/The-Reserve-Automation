@@ -577,7 +577,7 @@ class TestAutoCropTemp:
 
     @pytest.mark.requires_lm_studio
     def test_auto_crop_happy_path(self, test_client, sample_bottle_image):
-        """Staging a temp label and auto-cropping it returns success.
+        """Staging a temp label and auto-cropping it produces a reviewable preview.
 
         Gated on LM Studio because crop_to_label's primary (text-based) label
         detection uses LLM vision.
@@ -588,14 +588,52 @@ class TestAutoCropTemp:
         upload_id = f"test-{uuid.uuid4().hex[:8]}"
         labels_dir = Path("/tmp/reserve_uploads") / upload_id / "labels"
         labels_dir.mkdir(parents=True, exist_ok=True)
-        (labels_dir / "label.jpg").write_bytes(sample_bottle_image.getvalue())
+        original_bytes = sample_bottle_image.getvalue()
+        (labels_dir / "label.jpg").write_bytes(original_bytes)
         try:
             response = test_client.post(
                 "/api/v1/bottles/auto-crop-temp", json={"upload_id": upload_id}
             )
             assert response.status_code == 200, response.text
-            assert response.json()["status"] == "success"
-            # The temp label is overwritten in place (no separate preview file).
+            body = response.json()
+            assert body["status"] == "success"
+            # The crop lands in a preview file; the original label is untouched
+            # until the user accepts it.
+            preview = labels_dir / body["preview_filename"]
+            assert preview.exists()
+            assert (labels_dir / "label.jpg").read_bytes() == original_bytes
+
+            accept = test_client.post(
+                "/api/v1/bottles/accept-crop-temp", json={"upload_id": upload_id}
+            )
+            assert accept.status_code == 200, accept.text
+            assert not preview.exists()
+            assert (labels_dir / "label.jpg").read_bytes() != original_bytes
+        finally:
+            shutil.rmtree(Path("/tmp/reserve_uploads") / upload_id, ignore_errors=True)
+
+    def test_accept_without_preview_returns_404(self, test_client, sample_bottle_image):
+        """Accepting when no auto-crop preview exists is a 404, and the label survives."""
+        import shutil
+        import uuid
+
+        upload_id = f"test-{uuid.uuid4().hex[:8]}"
+        labels_dir = Path("/tmp/reserve_uploads") / upload_id / "labels"
+        labels_dir.mkdir(parents=True, exist_ok=True)
+        (labels_dir / "label.jpg").write_bytes(sample_bottle_image.getvalue())
+        try:
+            response = test_client.post(
+                "/api/v1/bottles/accept-crop-temp", json={"upload_id": upload_id}
+            )
+            assert response.status_code == 404
             assert (labels_dir / "label.jpg").exists()
         finally:
             shutil.rmtree(Path("/tmp/reserve_uploads") / upload_id, ignore_errors=True)
+
+    @pytest.mark.parametrize("bad_id", ["../etc/passwd", "a/b", ""])
+    def test_accept_invalid_upload_id_rejected(self, test_client, bad_id):
+        """accept-crop-temp validates upload_id like the crop endpoints."""
+        response = test_client.post(
+            "/api/v1/bottles/accept-crop-temp", json={"upload_id": bad_id}
+        )
+        assert response.status_code == 400

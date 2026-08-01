@@ -1194,18 +1194,17 @@ window.bottleEditorModal = function() {
                     throw new Error(error.detail || 'Crop failed');
                 }
 
-                await response.json();
+                const result = await response.json();
 
+                // Both modes produce a preview the user accepts/discards; the
+                // original label is untouched until acceptCropPreview.
                 if (this.mode === 'management') {
-                    // Management commits a preview that the user accepts/discards.
                     this.labelCropPreview = `/api/v1/labels/view?id=${encodeURIComponent(this.bottleId)}&file=label_preview.jpg&t=${Date.now()}`;
-                    this.showToast('Label cropped! Review the preview below.');
                 } else {
-                    // Upload mode overwrites the temp label in place (like manual
-                    // crop); just refresh the cache-busted preview.
-                    this.currentLabelTimestamp = Date.now();
-                    this.showToast('Label auto-cropped successfully!');
+                    const previewFile = result.preview_filename || 'label_crop_preview.jpg';
+                    this.labelCropPreview = `/api/v1/temp-images/${this.uploadId}/${previewFile}?t=${Date.now()}`;
                 }
+                this.showToast('Label cropped! Review the preview below.');
             } catch (error) {
                 console.error('Crop failed:', error);
                 alert('Crop failed: ' + error.message);
@@ -1220,12 +1219,17 @@ window.bottleEditorModal = function() {
         async acceptCropPreview() {
             this.labelActionInProgress = true;
             try {
-                const response = await fetch('/api/v1/management/labels/accept-crop', {
+                const endpoint = this.mode === 'management'
+                    ? '/api/v1/management/labels/accept-crop'
+                    : '/api/v1/bottles/accept-crop-temp';
+                const body = this.mode === 'management'
+                    ? { bottle_id: this.bottleId }
+                    : { upload_id: this.uploadId };
+
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        bottle_id: this.bottleId
-                    })
+                    body: JSON.stringify(body)
                 });
 
                 if (!response.ok) {
