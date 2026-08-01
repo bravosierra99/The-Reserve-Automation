@@ -102,7 +102,12 @@ class SQLiteEventRepository:
         return self._event_to_dict(event)
 
     def get_all(self) -> list[dict]:
-        events = self._eager_query().order_by(EventModel.created_at.desc()).all()
+        # id tiebreak: pre-existing rows share second-granularity timestamps
+        events = (
+            self._eager_query()
+            .order_by(EventModel.created_at.desc(), EventModel.id.desc())
+            .all()
+        )
         return [self._event_to_dict(e) for e in events]
 
     def create(self, event_data: dict) -> dict:

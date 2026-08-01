@@ -1,6 +1,70 @@
 [
   {
     "event_id": "00000000-0000-4000-8000-000000000001",
+    "name": "Contract Wine Night",
+    "beverage_type": "wine",
+    "is_blind": true,
+    "status": "closed",
+    "host_name": "Ben",
+    "event_type": "bottle",
+    "event_mode": "standard",
+    "created_at": "2026-07-07T19:00:00",
+    "bottles": [
+      {
+        "bottle_id": "4",
+        "bottle_name": "Caymus Vineyards - Cabernet Sauvignon (2021)",
+        "bottle_path": "4",
+        "blind_number": 1
+      },
+      {
+        "bottle_id": "5",
+        "bottle_name": "Opus One - Opus One (2019)",
+        "bottle_path": "5",
+        "blind_number": 2
+      }
+    ],
+    "cocktails": [],
+    "participants": {
+      "00000000-0000-4000-8000-000000000002": {
+        "participant_id": "00000000-0000-4000-8000-000000000002",
+        "participant_name": "Alice",
+        "tastings": [
+          {
+            "bottle_id": "4",
+            "tasting_data": {
+              "wine_appearance": 2,
+              "wine_aroma": 5,
+              "wine_taste": 4,
+              "wine_aftertaste": 2,
+              "wine_overall": 1.5,
+              "whiskey_nose": 0,
+              "whiskey_palate": 0,
+              "whiskey_finish": 0,
+              "whiskey_overall": 0,
+              "appearance_notes": [
+                "ruby",
+                "clear"
+              ],
+              "nose_notes": [
+                "cherry",
+                "oak"
+              ],
+              "palate_notes": [
+                "plum"
+              ],
+              "finish_notes": [
+                "long"
+              ],
+              "overall_notes": "lovely & <bold>"
+            }
+          }
+        ],
+        "cocktail_ratings": []
+      }
+    }
+  },
+  {
+    "event_id": "00000000-0000-4000-8000-000000000003",
     "name": "Contract Whiskey Night",
     "beverage_type": "whiskey",
     "is_blind": true,
@@ -31,8 +95,8 @@
     ],
     "cocktails": [],
     "participants": {
-      "00000000-0000-4000-8000-000000000002": {
-        "participant_id": "00000000-0000-4000-8000-000000000002",
+      "00000000-0000-4000-8000-000000000004": {
+        "participant_id": "00000000-0000-4000-8000-000000000004",
         "participant_name": "Alice",
         "tastings": [
           {
@@ -91,8 +155,8 @@
         ],
         "cocktail_ratings": []
       },
-      "00000000-0000-4000-8000-000000000003": {
-        "participant_id": "00000000-0000-4000-8000-000000000003",
+      "00000000-0000-4000-8000-000000000005": {
+        "participant_id": "00000000-0000-4000-8000-000000000005",
         "participant_name": "Bob",
         "tastings": [
           {
@@ -143,70 +207,6 @@
                 "short"
               ],
               "overall_notes": "Not for me"
-            }
-          }
-        ],
-        "cocktail_ratings": []
-      }
-    }
-  },
-  {
-    "event_id": "00000000-0000-4000-8000-000000000004",
-    "name": "Contract Wine Night",
-    "beverage_type": "wine",
-    "is_blind": true,
-    "status": "closed",
-    "host_name": "Ben",
-    "event_type": "bottle",
-    "event_mode": "standard",
-    "created_at": "2026-07-07T19:00:00",
-    "bottles": [
-      {
-        "bottle_id": "4",
-        "bottle_name": "Caymus Vineyards - Cabernet Sauvignon (2021)",
-        "bottle_path": "4",
-        "blind_number": 1
-      },
-      {
-        "bottle_id": "5",
-        "bottle_name": "Opus One - Opus One (2019)",
-        "bottle_path": "5",
-        "blind_number": 2
-      }
-    ],
-    "cocktails": [],
-    "participants": {
-      "00000000-0000-4000-8000-000000000005": {
-        "participant_id": "00000000-0000-4000-8000-000000000005",
-        "participant_name": "Alice",
-        "tastings": [
-          {
-            "bottle_id": "4",
-            "tasting_data": {
-              "wine_appearance": 2,
-              "wine_aroma": 5,
-              "wine_taste": 4,
-              "wine_aftertaste": 2,
-              "wine_overall": 1.5,
-              "whiskey_nose": 0,
-              "whiskey_palate": 0,
-              "whiskey_finish": 0,
-              "whiskey_overall": 0,
-              "appearance_notes": [
-                "ruby",
-                "clear"
-              ],
-              "nose_notes": [
-                "cherry",
-                "oak"
-              ],
-              "palate_notes": [
-                "plum"
-              ],
-              "finish_notes": [
-                "long"
-              ],
-              "overall_notes": "lovely & <bold>"
             }
           }
         ],

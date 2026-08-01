@@ -718,7 +718,8 @@ describe('manage events', () => {
         ]);
         await app.loadManagedEvents();
         expect(app.managedEvents).toHaveLength(2);
-        expect(app.managedEvents[0].name).toBe('Contract Whiskey Night');
+        // Newest first (created_at desc): wine event is created after whiskey.
+        expect(app.managedEvents[0].name).toBe('Contract Wine Night');
         expect(app.manageEventsLoading).toBe(false);
     });
 

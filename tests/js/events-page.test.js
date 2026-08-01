@@ -80,9 +80,11 @@ describe('loadEvents', () => {
         const app = freshApp();
         await app.loadEvents();
 
+        // Newest first: the contract flow creates the wine event after the
+        // whiskey event, and /api/v1/events orders by created_at desc.
         expect(app.events.map(e => e.name))
-            .toEqual(['Contract Whiskey Night', 'Contract Wine Night']);
-        const [whiskey, wine] = app.events;
+            .toEqual(['Contract Wine Night', 'Contract Whiskey Night']);
+        const [wine, whiskey] = app.events;
 
         // Card header + badges read these directly.
         expect(whiskey.event_type).toBe('bottle');

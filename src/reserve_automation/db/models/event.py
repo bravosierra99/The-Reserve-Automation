@@ -1,6 +1,6 @@
 """SQLAlchemy models for tasting events."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
@@ -33,7 +33,12 @@ class EventModel(Base):
     event_mode: Mapped[str] = mapped_column(String(20), default="standard")
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    # Python-side default (not func.now()): SQLite CURRENT_TIMESTAMP has
+    # 1-second granularity, so events created back-to-back tied and sorted
+    # nondeterministically in get_all() (flaked the events_list contract test).
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
 
     # Relationships. All ordered deterministically: without order_by, SQLite
     # returns rows in index order — for participants that's the random UUID
