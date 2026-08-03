@@ -169,6 +169,14 @@ describe('init', () => {
         expect(app.acPurchaseSources).toEqual([]);
     });
 
+    it('pre-warms the vision model on page load (fire-and-forget)', async () => {
+        const app = freshApp();
+        await app.init();
+        const warmCall = fetch.mock.calls.find(([u]) => String(u) === '/api/v1/bottles/warm-model');
+        expect(warmCall).toBeTruthy();
+        expect(warmCall[1].method).toBe('POST');
+    });
+
     it('falls back to an empty editor object when the modal script is missing', async () => {
         const original = window.bottleEditorModal;
         window.bottleEditorModal = undefined;

@@ -637,3 +637,90 @@ class TestAutoCropTemp:
             "/api/v1/bottles/accept-crop-temp", json={"upload_id": bad_id}
         )
         assert response.status_code == 400
+
+
+class TestWarmModel:
+    """Model pre-warm: POST /api/v1/bottles/warm-model.
+
+    The upload page fires this on load so LM Studio JIT-loads the vision
+    model before the user clicks Import (a cold model otherwise adds its full
+    load time to the first extraction).
+    """
+
+    @pytest.fixture(autouse=True)
+    def reset_warm_state(self):
+        """Each test starts from a cold warm-state and restores it after."""
+        from reserve_automation.web.routes.bottles import extraction as ext
+
+        saved = dict(ext._warm_state)
+        ext._warm_state.update({"task": None, "last_ok": None})
+        yield
+        ext._warm_state.update(saved)
+
+    @pytest.mark.asyncio
+    async def test_warm_request_sends_bearer_token_to_chat_completions(self):
+        """The warm call must authenticate like LMStudioProvider (GROUND_TRUTH.md #3)
+        and must be an inference request — only inference triggers the JIT load."""
+        from unittest.mock import patch
+
+        from reserve_automation.web.routes.bottles import extraction as ext
+
+        captured = {}
+
+        class _CapturingClient:
+            def __init__(self, *a, **k):
+                captured["headers"] = k.get("headers")
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, json=None, **k):
+                captured["url"] = url
+                captured["payload"] = json
+
+                class _Resp:
+                    @staticmethod
+                    def raise_for_status():
+                        pass
+
+                return _Resp()
+
+        with patch("httpx.AsyncClient", _CapturingClient):
+            await ext._send_warm_request(
+                "http://lmstudio:1234/v1", "qwen/qwen3.5-9b", "sk-lm-secret"
+            )
+
+        assert captured["headers"] == {"Authorization": "Bearer sk-lm-secret"}
+        assert captured["url"] == "http://lmstudio:1234/v1/chat/completions"
+        assert captured["payload"]["model"] == "qwen/qwen3.5-9b"
+        assert captured["payload"]["max_tokens"] == 1
+
+    def test_warm_endpoint_fires_background_load(self, test_client):
+        """First call kicks off a warm task and reports 'warming'."""
+        from unittest.mock import AsyncMock, patch
+
+        from reserve_automation.web.routes.bottles import extraction as ext
+
+        with patch.object(ext, "_send_warm_request", new=AsyncMock()) as mock_send:
+            response = test_client.post("/api/v1/bottles/warm-model")
+            assert response.status_code == 200
+            assert response.json()["status"] == "warming"
+            assert ext._warm_state["task"] is not None
+        # The mock may or may not have completed inside the request's loop;
+        # what matters is the endpoint scheduled it.
+        assert mock_send.call_count <= 1
+
+    def test_warm_endpoint_debounces_recent_success(self, test_client):
+        """A fresh successful warm short-circuits: no new task is spawned."""
+        import time as _time
+
+        from reserve_automation.web.routes.bottles import extraction as ext
+
+        ext._warm_state["last_ok"] = _time.monotonic()
+        response = test_client.post("/api/v1/bottles/warm-model")
+        assert response.status_code == 200
+        assert response.json()["status"] == "warm"
+        assert ext._warm_state["task"] is None

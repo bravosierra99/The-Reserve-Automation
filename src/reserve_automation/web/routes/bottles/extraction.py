@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import shutil
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -74,7 +75,6 @@ async def _await_with_heartbeat(coro, on_status, status, message_fn, interval=No
 
     Returns the coroutine's result; re-raises its exception.
     """
-    import time
 
     if interval is None:
         interval = _HEARTBEAT_INTERVAL_SECONDS
@@ -94,6 +94,86 @@ router = APIRouter()
 # Templates
 templates_dir = Path(__file__).parent.parent / "templates"
 templates = make_templates(templates_dir)
+
+
+def _resolve_ocr_target(core_config) -> tuple[str, str, str | None]:
+    """Resolve (model_name, base_url, api_key) for the OCR/vision provider.
+
+    The api_key is resolved the same way LMStudioProvider does it, so every
+    standalone HTTP call to LM Studio authenticates identically to the real
+    extraction call (GROUND_TRUTH.md #3).
+    """
+    routing = core_config.llm.get("routing", {})
+    providers_cfg = core_config.llm.get("providers", {})
+    ocr_cfg = providers_cfg.get(routing.get("ocr", "lm_studio_vision"), {})
+    model_name = ocr_cfg.get("model", "vision model")
+    base_url = ocr_cfg.get("base_url", "http://localhost:1234/v1")
+    api_key = (
+        ocr_cfg.get("api_key")
+        or (os.environ.get(ocr_cfg["api_key_env"]) if ocr_cfg.get("api_key_env") else None)
+        or os.environ.get("LM_STUDIO_API_KEY")
+    )
+    return model_name, base_url, api_key
+
+
+# ── Model pre-warm ───────────────────────────────────────────────────────────
+# LM Studio JIT-loads a model on the first *inference* request that names it,
+# so with a cold model the first import pays the full load (60-80s) inside the
+# upload request. The upload page fires warm-model on page load; a 1-token
+# completion triggers the JIT load before the user clicks Import. One warm
+# task in flight at a time; successes are debounced so reloads don't spam.
+_WARM_DEBOUNCE_SECONDS = 60
+_warm_state: dict = {"task": None, "last_ok": None}
+
+
+async def _send_warm_request(base_url: str, model_name: str, api_key: str | None) -> None:
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+    payload = {
+        "model": model_name,
+        "messages": [{"role": "user", "content": "ready"}],
+        "max_tokens": 1,
+        "temperature": 0,
+    }
+    # Long read timeout on purpose: this call is what rides out the model load.
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(300.0, connect=5.0), headers=headers
+    ) as client:
+        resp = await client.post(f"{base_url}/chat/completions", json=payload)
+        resp.raise_for_status()
+
+
+@router.post("/api/v1/bottles/warm-model", dependencies=[Depends(require("bottles.create"))])
+async def warm_model():
+    """Pre-warm the vision model so the first extraction doesn't pay the JIT load.
+
+    Fire-and-forget: returns immediately; the load continues in the background.
+    Failures are logged, never surfaced — the upload flow's own pre-flight
+    still handles a cold/unreachable model.
+    """
+    from ...app import core_config
+
+    if not core_config:
+        raise HTTPException(status_code=500, detail="Service not initialized")
+
+    task = _warm_state["task"]
+    if task is not None and not task.done():
+        return {"status": "warming"}
+    last_ok = _warm_state["last_ok"]
+    if last_ok is not None and time.monotonic() - last_ok < _WARM_DEBOUNCE_SECONDS:
+        return {"status": "warm"}
+
+    model_name, base_url, api_key = _resolve_ocr_target(core_config)
+
+    async def _run():
+        try:
+            await _send_warm_request(base_url, model_name, api_key)
+            _warm_state["last_ok"] = time.monotonic()
+            logger.info(f"Model pre-warm complete: {model_name}")
+        except Exception as e:
+            logger.warning(f"Model pre-warm failed (non-fatal): {e}")
+
+    _warm_state["task"] = asyncio.create_task(_run())
+    return {"status": "warming"}
 
 
 @router.post("/api/v1/bottles/upload", dependencies=[Depends(require("bottles.create"))])
@@ -241,19 +321,7 @@ async def upload_bottle_stream(
     upload_id = str(uuid.uuid4())
 
     # Determine which LM Studio model/URL will be used for status messages
-    routing = core_config.llm.get("routing", {})
-    providers_cfg = core_config.llm.get("providers", {})
-    ocr_provider_name = routing.get("ocr", "lm_studio_vision")
-    ocr_cfg = providers_cfg.get(ocr_provider_name, {})
-    model_name = ocr_cfg.get("model", "vision model")
-    lm_base_url = ocr_cfg.get("base_url", "http://localhost:1234/v1")
-    # Resolve the LM Studio API key the same way LMStudioProvider does, so the
-    # model pre-flight probe authenticates identically to the extraction call.
-    lm_api_key = (
-        ocr_cfg.get("api_key")
-        or (os.environ.get(ocr_cfg["api_key_env"]) if ocr_cfg.get("api_key_env") else None)
-        or os.environ.get("LM_STUDIO_API_KEY")
-    )
+    model_name, lm_base_url, lm_api_key = _resolve_ocr_target(core_config)
 
     async def run_pipeline(on_status):
         """Run the full upload → extract pipeline, calling on_status at each stage."""
@@ -411,7 +479,6 @@ async def _poll_for_model(
 
     Returns (ok, reason): reason is "" on success, else "unreachable" or "timeout".
     """
-    import time
 
     async def _probe() -> str:
         """Return 'loaded' | 'not_loaded' | 'unreachable'."""

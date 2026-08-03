@@ -60,6 +60,12 @@ window.uploadForm = function uploadForm() {
                 this.bottleEditor.loadAutocomplete();
             }
 
+            // Pre-warm the vision model: LM Studio JIT-loads on first inference,
+            // so without this the first import pays the full model load after the
+            // Import click. Fire-and-forget — the upload pre-flight still covers
+            // a cold model if this fails.
+            fetch('/api/v1/bottles/warm-model', { method: 'POST' }).catch(() => {});
+
             // Load purchase_source autocomplete
             try {
                 const resp = await fetch('/api/v1/autocomplete/bottles/purchase_source');
