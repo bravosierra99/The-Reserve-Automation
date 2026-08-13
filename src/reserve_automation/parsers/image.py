@@ -1,6 +1,5 @@
 """Image parser using OCR."""
 
-import io
 from pathlib import Path
 from typing import Literal
 
@@ -10,6 +9,7 @@ from PIL import Image, ImageEnhance, ImageFilter
 
 from ..core.exceptions import ParserError
 from ..core.models import ParserResult
+from ..utils.image_prep import DOCUMENT_MAX_DIM, encode_for_vision
 from .base import BaseParser
 
 
@@ -90,14 +90,16 @@ class ImageParser(BaseParser):
             original_image = image.copy()  # Keep original for tesseract
             original_size = image.size
 
-            # Preprocess if enabled (but not for tesseract - PSM works better on originals)
-            if self.preprocess and self.ocr_method == "vision":
-                image = self._preprocess_image(image)
-
-            # Convert image to bytes for storage
-            img_bytes_io = io.BytesIO()
-            image.save(img_bytes_io, format="PNG")
-            img_bytes = img_bytes_io.getvalue()
+            # Encode for the vision model from the ORIGINAL image, capped at
+            # DOCUMENT_MAX_DIM. Two things this deliberately no longer does:
+            #   - it does not ship a full-resolution PNG (the old behaviour).
+            #     Image tokens scale with pixel count, so a 4032px phone capture
+            #     of a manifest put tens of thousands of tokens into prefill and
+            #     blew the 180s LM Studio timeout before a single bottle came back.
+            #   - it does not feed the model _preprocess_image() output, which is
+            #     grayscaled, contrast-doubled and hard-binarized. That helps
+            #     tesseract and actively destroys detail for an LLM vision read.
+            img_bytes = encode_for_vision(original_image, max_dim=DOCUMENT_MAX_DIM)
 
             # Perform OCR based on method
             text = None

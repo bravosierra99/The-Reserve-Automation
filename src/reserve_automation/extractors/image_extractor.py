@@ -4,11 +4,12 @@ from pathlib import Path
 from typing import Optional
 
 from loguru import logger
-from PIL import Image, ImageOps
+from PIL import Image
 
 from ..core.models import BottleMetadata
 from ..llm import LLMGateway
 from ..llm.response_parser import LLMResponseParser
+from ..utils.image_prep import LABEL_MAX_DIM, encode_for_vision
 
 
 def _parse_variety_from_llm(val) -> list[str] | None:
@@ -244,26 +245,10 @@ For beverage_type:
 Return only the JSON, nothing else."""
 
         try:
-            # Convert image to bytes for vision LLM.
-            # Always emit a plain JPEG stream — iPhone HDR captures arrive as MPO
-            # (multi-frame JPEG container) and some LM Studio vision decoders
-            # choke on it, causing the sampler to collapse into runaway "/"
-            # output. Re-saving as single-frame JPEG normalizes the container.
-            import io
-            img_buffer = io.BytesIO()
-            # Apply the EXIF orientation tag before re-saving: phone photos are
-            # stored rotated with an orientation flag, and re-saving without
-            # honoring it feeds the model a sideways label (the flag itself is
-            # dropped by the re-save).
-            img = ImageOps.exif_transpose(img)
-            # Downscale huge captures: past ~1536px the vision encoder gains no
-            # OCR accuracy (verified on the prod-label eval set) while prefill
-            # time triples — full-res uploads took 130s+ vs ~45s at 1536px.
-            if max(img.size) > 1536:
-                img.thumbnail((1536, 1536), Image.LANCZOS)
-            save_img = img if img.mode == "RGB" else img.convert("RGB")
-            save_img.save(img_buffer, format="JPEG", quality=95)
-            image_bytes = img_buffer.getvalue()
+            # Convert image to bytes for vision LLM. EXIF orientation, the
+            # 1536px cap and single-frame JPEG encoding all live in the shared
+            # helper so the manifest path can't drift from this one again.
+            image_bytes = encode_for_vision(img, max_dim=LABEL_MAX_DIM)
 
             logger.debug("=" * 80)
             logger.debug("VISION LLM EXTRACTION - Starting")
