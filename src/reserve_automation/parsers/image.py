@@ -146,7 +146,12 @@ class ImageParser(BaseParser):
                 images=[img_bytes],
                 metadata={
                     "dimensions": original_size,
-                    "preprocessed": self.preprocess,
+                    # Always False now: tesseract reads the original image and the
+                    # vision payload is encoded from the original too, so nothing
+                    # in this path consumes _preprocess_image() output. The
+                    # preprocess/deskew/denoise/enhance_contrast ctor args are
+                    # inert — see the dead-code follow-up before trusting them.
+                    "preprocessed": False,
                     "ocr_method": ocr_method_used,
                 },
                 source_type="image",
