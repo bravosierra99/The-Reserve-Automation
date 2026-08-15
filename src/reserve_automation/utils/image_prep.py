@@ -21,21 +21,29 @@ LABEL_MAX_DIM = 1536
 # label), so squeezing it to LABEL_MAX_DIM risks dropping characters and
 # silently extracting fewer bottles.
 #
-# Spot-checked (not a full eval) against a real 3024x4032 phone capture of a
-# City Wine Merchant invoice: all 13 line items, vintages and prices stayed
-# legible at 2048 through diagonal window glare, and a live extraction returned
-# every one of them. 1536 was also readable on that sample; 2048 keeps margin
-# for dimmer light or smaller print.
+# Measured 2026-08-15 against the live stack (LM Studio + qwen3.5-9b) using a
+# real 3024x4032 phone capture of a 13-line City Wine Merchant invoice:
 #
-# DO NOT expect this cap to speed up extraction. Measured 2026-08-15 against
-# LM Studio + qwen3.5-9b: full-res (3024x4032) and 2048 produce an IDENTICAL
-# prompt_tokens (3112) and identical time-to-first-token (~56s), because the
-# server downscales to its own vision-token budget before encoding. The cap
-# buys a smaller upload payload (857KB -> 497KB) and predictable input, not
-# prefill time. (The label path's 1536 number came from a July 2026 measurement
-# showing 130s+ vs ~45s; that no longer reproduces here, so treat it as stale
-# rather than as evidence for this constant.)
-DOCUMENT_MAX_DIM = 2048
+#   cap    image tokens   TTFT     accuracy
+#   512        232         1.2s    BAD - 6 wrong prices, misspelled producers
+#   1024       808         2.3s    13/13 exact
+#   1536      1768         5.3s    13/13 exact, 0 price errors
+#   2048      3112        55.7s    13/13 exact
+#   full-res  3112        56.1s    13/13 exact
+#
+# Two things that table shows, both easy to get wrong:
+#   1. Above ~2048 the cap does nothing — the server clamps to its own vision
+#      token budget (3112), so full-res and 2048 are the SAME request.
+#   2. There is a savage nonlinearity between 1768 and 3112 image tokens: 1.8x
+#      the tokens costs 10.6x the time. Something spills once the vision tower
+#      crosses that threshold. Staying under it is worth ~4x end-to-end
+#      (15s vs 65s) at identical accuracy.
+#
+# 1536 sits below the cliff with accuracy margin — 1024 is faster still but
+# only one step from the 512 results, and glare or smaller print would eat that
+# margin. Deliberately the same value as LABEL_MAX_DIM; kept as its own
+# constant so a manifest eval can retune it without touching the label path.
+DOCUMENT_MAX_DIM = 1536
 
 
 def encode_for_vision(image: Image.Image, max_dim: int = LABEL_MAX_DIM) -> bytes:
