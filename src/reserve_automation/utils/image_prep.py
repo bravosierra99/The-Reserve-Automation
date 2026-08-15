@@ -31,18 +31,24 @@ LABEL_MAX_DIM = 1536
 #   2048      3112        55.7s    13/13 exact
 #   full-res  3112        56.1s    13/13 exact
 #
-# Two things that table shows, both easy to get wrong:
+# Solid conclusions from that table:
 #   1. Above ~2048 the cap does nothing — the server clamps to its own vision
 #      token budget (3112), so full-res and 2048 are the SAME request.
-#   2. There is a savage nonlinearity between 1768 and 3112 image tokens: 1.8x
-#      the tokens costs 10.6x the time. Something spills once the vision tower
-#      crosses that threshold. Staying under it is worth ~4x end-to-end
-#      (15s vs 65s) at identical accuracy.
+#   2. 512 is genuinely too small: real misreads, not just slower.
+#   3. 1024/1536 both extract the document exactly.
 #
-# 1536 sits below the cliff with accuracy margin — 1024 is faster still but
-# only one step from the 512 results, and glare or smaller print would eat that
-# margin. Deliberately the same value as LABEL_MAX_DIM; kept as its own
-# constant so a manifest eval can retune it without touching the label path.
+# CAVEAT on the timings, recorded honestly: the 2048/full-res rows (~56s) were
+# measured EARLY in the session and the 512/1024/1536 rows LATER, and this host
+# degrades under sustained load — minutes after the table above, an identical
+# 1536 request that had taken 14.9s exceeded 300s until LM Studio was bounced.
+# So the apparent 1768->3112 token "cliff" may be partly that drift rather than
+# a real threshold. Re-measure 2048 against a freshly restarted engine before
+# treating the cliff as fact.
+#
+# 1536 is kept regardless, because it does not depend on the disputed timing:
+# it reads the document exactly, it is never slower than 2048, and it matches
+# LABEL_MAX_DIM. Kept as its own constant so a manifest eval can retune it
+# without touching the label path.
 DOCUMENT_MAX_DIM = 1536
 
 
