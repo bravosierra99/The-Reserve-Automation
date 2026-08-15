@@ -16,12 +16,17 @@ from PIL import Image, ImageOps
 # uploads took 130s+ vs ~45s at 1536px.
 LABEL_MAX_DIM = 1536
 
-# Multi-bottle documents (manifests, invoices, wine lists). PROVISIONAL — this
-# number is NOT eval-backed the way LABEL_MAX_DIM is. A manifest carries far
-# smaller glyphs than a single label (a 12-line list vs one big-print label),
-# so squeezing it to 1536 risks dropping characters and silently extracting
-# fewer bottles. 2048 still removes ~4x the pixels of a 4032px phone capture,
-# which is most of the prefill win. Revisit once a manifest eval set exists.
+# Multi-bottle documents (manifests, invoices, wine lists). A manifest carries
+# far smaller glyphs than a single label (a 12-line list vs one big-print
+# label), so squeezing it to LABEL_MAX_DIM risks dropping characters and
+# silently extracting fewer bottles.
+#
+# Spot-checked (not a full eval) against a real 3024x4032 phone capture of a
+# City Wine Merchant invoice: all 13 line items, vintages and prices stayed
+# legible at 2048 through diagonal window glare. 1536 was also readable on that
+# sample, but 2048 keeps margin for dimmer light or smaller print while still
+# cutting pixel count 3.9x (12.2MP -> 3.1MP), which is most of the prefill win.
+# Revisit with a proper manifest eval set before tightening.
 DOCUMENT_MAX_DIM = 2048
 
 
