@@ -47,6 +47,11 @@ window.uploadForm = function uploadForm() {
         purchaseSource: '',  // Where bottle was purchased
         acPurchaseSources: [],  // Autocomplete suggestions for purchase source
         inventory: 0,  // Number of bottles in inventory
+        // Manifest only: how many line items the user counted on the document.
+        // Sent as expected_count so the extractor can tell it came up short —
+        // it matters most on phone photos, where a tight crop can clip the
+        // quantity column and whole rows sit under glare. '' = don't send.
+        expectedCount: '',
         imageLoadHandled: false,  // Flag to ensure we only auto-scroll once
 
         // Manifest panel state
@@ -225,6 +230,10 @@ window.uploadForm = function uploadForm() {
         resetManifest() {
             this.showManifestPanel = false;
             this.manifestBottles = [];
+            // Unlike purchaseSource/inventory (deliberately sticky defaults),
+            // the count belongs to the document just finished. Carrying it to
+            // the next manifest would feed the extractor a wrong hint.
+            this.expectedCount = '';
         },
 
         handleSessionExpired() {
@@ -261,6 +270,13 @@ window.uploadForm = function uploadForm() {
                     formData.append('purchase_source', this.purchaseSource);
                 }
                 formData.append('inventory', this.inventory);
+                // Optional. Omit entirely when blank or not a positive number —
+                // the backend treats a missing expected_count as "no hint", and
+                // sending a bogus one would actively mislead the extractor.
+                const expected = parseInt(this.expectedCount, 10);
+                if (Number.isFinite(expected) && expected > 0) {
+                    formData.append('expected_count', expected);
+                }
                 endpoint = '/api/v1/bottles/upload/stream';
             }
 

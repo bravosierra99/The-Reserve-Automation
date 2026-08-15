@@ -324,6 +324,63 @@ describe('uploadFile guards and payload', () => {
         expect(opts.body.get('purchase_source')).toBe('Total Wine');
     });
 
+    // expected_count lets the extractor notice it came up short — it matters on
+    // phone photos of a receipt, where a tight crop can clip the quantity column.
+    // A wrong hint is worse than none, so only a positive integer is sent.
+    const manifestUpload = async (mutate) => {
+        vi.stubGlobal('fetch', routeFetch([
+            ['/api/v1/bottles/upload/stream', sseResponse([
+                { status: 'complete', upload_id: 'up-3', bottles: [BOTTLE_A], is_manifest: true },
+            ])],
+        ]));
+        const app = freshApp();
+        app.bottleEditor = { openUpload: vi.fn() };
+        app.selectedFile = FILE;
+        app.uploadType = 'manifest';
+        mutate(app);
+        await app.uploadFile();
+        return { app, opts: fetch.mock.calls[0][1] };
+    };
+
+    it('sends expected_count for a manifest when the user supplies one', async () => {
+        const { opts } = await manifestUpload((a) => { a.expectedCount = '13'; });
+        expect(opts.body.get('expected_count')).toBe('13');
+    });
+
+    it('omits expected_count when blank', async () => {
+        const { opts } = await manifestUpload((a) => { a.expectedCount = ''; });
+        expect(opts.body.get('expected_count')).toBeNull();
+    });
+
+    it.each([['0'], ['-4'], ['abc']])('omits a non-positive/garbage count (%s)', async (val) => {
+        const { opts } = await manifestUpload((a) => { a.expectedCount = val; });
+        expect(opts.body.get('expected_count')).toBeNull();
+    });
+
+    it('never sends expected_count on a single-bottle upload', async () => {
+        vi.stubGlobal('fetch', routeFetch([
+            ['/api/v1/bottles/upload/stream', sseResponse([
+                { status: 'complete', upload_id: 'up-4', bottles: [BOTTLE_A], is_manifest: false },
+            ])],
+        ]));
+        const app = freshApp();
+        app.bottleEditor = { openUpload: vi.fn() };
+        app.selectedFile = FILE;
+        app.uploadType = 'bottle';
+        app.expectedCount = '13';
+
+        await app.uploadFile();
+
+        expect(fetch.mock.calls[0][1].body.get('expected_count')).toBeNull();
+    });
+
+    it('resetManifest clears the count so it cannot leak to the next document', () => {
+        const app = freshApp();
+        app.expectedCount = '13';
+        app.resetManifest();
+        expect(app.expectedCount).toBe('');
+    });
+
     it('a 401 shows the session-expired prompt, not a generic error', async () => {
         vi.stubGlobal('fetch', routeFetch([
             ['/upload/stream', jsonResponse({}, { ok: false, status: 401 })],
