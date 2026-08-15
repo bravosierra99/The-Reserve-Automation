@@ -6,6 +6,7 @@ image tokens into prefill and blew the 180s LM Studio timeout.
 """
 
 import io
+from pathlib import Path
 
 import pytest
 from PIL import Image
@@ -67,6 +68,40 @@ class TestEncodeForVision:
     def test_document_cap_is_looser_than_label_cap(self):
         """Manifests carry smaller glyphs than labels, so they keep more pixels."""
         assert DOCUMENT_MAX_DIM > LABEL_MAX_DIM
+
+
+FIXTURE = (
+    Path(__file__).parent.parent / "fixtures" / "manifests" / "photo_manifest_cropped.jpg"
+)
+
+
+class TestRealPhoneManifest:
+    """The actual capture that triggered the Aug 2026 manifest failure.
+
+    A hand-held phone shot of a printed invoice: 3024x4032, diagonal window
+    glare, and framed tight enough that the left quantity column is cut off.
+    This is what a photographed manifest realistically looks like — it is the
+    expected input, not a malformed one.
+    """
+
+    def test_fixture_is_a_full_res_phone_capture(self):
+        assert max(Image.open(FIXTURE).size) > DOCUMENT_MAX_DIM, (
+            "fixture must stay oversized — it exists to exercise the downscale"
+        )
+
+    def test_encodes_under_the_document_cap(self):
+        out = encode_for_vision(Image.open(FIXTURE), max_dim=DOCUMENT_MAX_DIM)
+        encoded = _decode(out)
+        assert encoded.format == "JPEG"
+        assert max(encoded.size) == DOCUMENT_MAX_DIM
+
+    def test_downscale_is_a_large_prefill_win(self):
+        """Image tokens scale with pixel count; this is why the upload timed out."""
+        src = Image.open(FIXTURE)
+        before = src.size[0] * src.size[1]
+        after_size = _decode(encode_for_vision(src, max_dim=DOCUMENT_MAX_DIM)).size
+        after = after_size[0] * after_size[1]
+        assert before / after > 3, f"expected >3x pixel reduction, got {before / after:.1f}x"
 
 
 class TestManifestPathUsesEncoder:
