@@ -23,10 +23,18 @@ LABEL_MAX_DIM = 1536
 #
 # Spot-checked (not a full eval) against a real 3024x4032 phone capture of a
 # City Wine Merchant invoice: all 13 line items, vintages and prices stayed
-# legible at 2048 through diagonal window glare. 1536 was also readable on that
-# sample, but 2048 keeps margin for dimmer light or smaller print while still
-# cutting pixel count 3.9x (12.2MP -> 3.1MP), which is most of the prefill win.
-# Revisit with a proper manifest eval set before tightening.
+# legible at 2048 through diagonal window glare, and a live extraction returned
+# every one of them. 1536 was also readable on that sample; 2048 keeps margin
+# for dimmer light or smaller print.
+#
+# DO NOT expect this cap to speed up extraction. Measured 2026-08-15 against
+# LM Studio + qwen3.5-9b: full-res (3024x4032) and 2048 produce an IDENTICAL
+# prompt_tokens (3112) and identical time-to-first-token (~56s), because the
+# server downscales to its own vision-token budget before encoding. The cap
+# buys a smaller upload payload (857KB -> 497KB) and predictable input, not
+# prefill time. (The label path's 1536 number came from a July 2026 measurement
+# showing 130s+ vs ~45s; that no longer reproduces here, so treat it as stale
+# rather than as evidence for this constant.)
 DOCUMENT_MAX_DIM = 2048
 
 
