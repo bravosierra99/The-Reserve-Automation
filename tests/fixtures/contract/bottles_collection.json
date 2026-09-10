@@ -22,6 +22,8 @@
       "price": 49.99,
       "purchase_source": "Total Wine",
       "purchase_link": null,
+      "order_ref": "INV-1001",
+      "order_date": "2026-05-02",
       "inventory": 2,
       "buy": 0,
       "stars": null,
@@ -34,7 +36,8 @@
       "enriched": false,
       "label_image_url": null,
       "notes": "Great in an Old Fashioned; decant 10 min",
-      "display_name": "Buffalo Trace - Eagle Rare 10 Year (2018)"
+      "display_name": "Buffalo Trace - Eagle Rare 10 Year (2018)",
+      "tasting_count": 2
     },
     {
       "producer": "Caymus Vineyards",
@@ -61,6 +64,8 @@
       "price": 189.0,
       "purchase_source": null,
       "purchase_link": null,
+      "order_ref": "INV-1002",
+      "order_date": "2026-06-15",
       "inventory": 1,
       "buy": 0,
       "stars": null,
@@ -73,7 +78,8 @@
       "enriched": false,
       "label_image_url": null,
       "notes": null,
-      "display_name": "Caymus Vineyards - Special Selection Cabernet (2019)"
+      "display_name": "Caymus Vineyards - Special Selection Cabernet (2019)",
+      "tasting_count": 1
     },
     {
       "producer": "Cloudy Bay",
@@ -99,6 +105,8 @@
       "price": null,
       "purchase_source": null,
       "purchase_link": null,
+      "order_ref": "INV-1002",
+      "order_date": "2026-06-15",
       "inventory": 0,
       "buy": 0,
       "stars": null,
@@ -111,7 +119,8 @@
       "enriched": false,
       "label_image_url": null,
       "notes": null,
-      "display_name": "Cloudy Bay - Sauvignon Blanc Reserve (2022)"
+      "display_name": "Cloudy Bay - Sauvignon Blanc Reserve (2022)",
+      "tasting_count": 0
     },
     {
       "producer": "Willett",
@@ -135,6 +144,8 @@
       "price": null,
       "purchase_source": null,
       "purchase_link": null,
+      "order_ref": null,
+      "order_date": null,
       "inventory": 0,
       "buy": 0,
       "stars": null,
@@ -147,7 +158,8 @@
       "enriched": false,
       "label_image_url": null,
       "notes": null,
-      "display_name": "Willett - Pot Still Reserve"
+      "display_name": "Willett - Pot Still Reserve",
+      "tasting_count": 0
     }
   ],
   "count": 4

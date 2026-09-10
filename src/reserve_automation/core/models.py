@@ -70,6 +70,10 @@ class BottleMetadata(BaseModel):
     # Inventory and purchase info
     purchase_source: Optional[str] = Field(None, description="Where the bottle was purchased", max_length=200)
     purchase_link: Optional[str] = Field(None, description="Purchase URL", max_length=500)
+    # Order grouping (set per manifest upload). order_date is the date on the
+    # invoice, not the upload date.
+    order_ref: Optional[str] = Field(None, description="Order/invoice reference this bottle came in on", max_length=100)
+    order_date: Optional[str] = Field(None, description="Order date (ISO YYYY-MM-DD) from the invoice", max_length=20)
     inventory: int = Field(0, description="Number of bottles in inventory", ge=0)
     buy: int = Field(0, description="Quantity to purchase", ge=0)
 

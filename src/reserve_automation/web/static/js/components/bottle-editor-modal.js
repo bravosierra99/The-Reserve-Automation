@@ -85,7 +85,7 @@ window.bottleEditorModal = function() {
         // Autocomplete data (populated once per page load)
         acData: {
             producer: [], region: [], country: [], variety: [],
-            beverage_type: [], style: [], vineyard: [], purchase_source: [],
+            beverage_type: [], style: [], vineyard: [], purchase_source: [], order_ref: [],
         },
         _acLoaded: false,
 
@@ -213,6 +213,8 @@ window.bottleEditorModal = function() {
                 inventory: b.inventory || '',
                 purchase_source: b.purchase_source || '',
                 purchase_link: b.purchase_link || '',
+                order_ref: b.order_ref || '',
+                order_date: b.order_date || '',
 
                 // Wine-specific
                 ...(isWine ? {
@@ -346,6 +348,8 @@ window.bottleEditorModal = function() {
                 if (cleanBottle.inventory === '') cleanBottle.inventory = null;
                 if (cleanBottle.abv === '') cleanBottle.abv = null;
                 if (cleanBottle.proof === '') cleanBottle.proof = null;
+                if (cleanBottle.order_ref === '') cleanBottle.order_ref = null;
+                if (cleanBottle.order_date === '') cleanBottle.order_date = null;
 
                 // The route only persists fields sent in `updates` (applied onto a
                 // fresh DB copy) — sending edits solely inside `bottle` silently
@@ -444,6 +448,8 @@ window.bottleEditorModal = function() {
                 if (cleanBottle.inventory === '') cleanBottle.inventory = null;
                 if (cleanBottle.abv === '') cleanBottle.abv = null;
                 if (cleanBottle.proof === '') cleanBottle.proof = null;
+                if (cleanBottle.order_ref === '') cleanBottle.order_ref = null;
+                if (cleanBottle.order_date === '') cleanBottle.order_date = null;
 
                 // CRITICAL: Ensure type field is present for duplicate detection
                 // The type field (wine/whiskey/etc) determines which vault directory to search
@@ -556,6 +562,8 @@ window.bottleEditorModal = function() {
                 if (cleanBottle.inventory === '') cleanBottle.inventory = null;
                 if (cleanBottle.abv === '') cleanBottle.abv = null;
                 if (cleanBottle.proof === '') cleanBottle.proof = null;
+                if (cleanBottle.order_ref === '') cleanBottle.order_ref = null;
+                if (cleanBottle.order_date === '') cleanBottle.order_date = null;
 
                 const requestBody = {
                     bottle: cleanBottle,
@@ -622,6 +630,8 @@ window.bottleEditorModal = function() {
                 if (cleanBottle.inventory === '') cleanBottle.inventory = null;
                 if (cleanBottle.abv === '') cleanBottle.abv = null;
                 if (cleanBottle.proof === '') cleanBottle.proof = null;
+                if (cleanBottle.order_ref === '') cleanBottle.order_ref = null;
+                if (cleanBottle.order_date === '') cleanBottle.order_date = null;
 
                 // Ensure type field is present
                 if (!cleanBottle.type) {
@@ -761,6 +771,8 @@ window.bottleEditorModal = function() {
                 if (cleanBottle.inventory === '') cleanBottle.inventory = null;
                 if (cleanBottle.abv === '') cleanBottle.abv = null;
                 if (cleanBottle.proof === '') cleanBottle.proof = null;
+                if (cleanBottle.order_ref === '') cleanBottle.order_ref = null;
+                if (cleanBottle.order_date === '') cleanBottle.order_date = null;
 
                 console.log('Starting async enrichment for bottle:', cleanBottle);
 
@@ -1085,6 +1097,8 @@ window.bottleEditorModal = function() {
                 if (cleanBottle.inventory === '') cleanBottle.inventory = null;
                 if (cleanBottle.abv === '') cleanBottle.abv = null;
                 if (cleanBottle.proof === '') cleanBottle.proof = null;
+                if (cleanBottle.order_ref === '') cleanBottle.order_ref = null;
+                if (cleanBottle.order_date === '') cleanBottle.order_date = null;
 
                 const additionalData = this.mode === 'management'
                     ? { bottle_id: this.bottleId }

@@ -85,6 +85,8 @@ def _run_migrations(engine: Engine) -> None:
     migrations = [
         ("tasting_notes",     "hidden BOOLEAN NOT NULL DEFAULT 0"),
         ("cocktail_tastings", "hidden BOOLEAN NOT NULL DEFAULT 0"),
+        ("bottles",           "order_ref VARCHAR(100)"),
+        ("bottles",           "order_date VARCHAR(20)"),
     ]
     with engine.connect() as conn:
         for table, col_def in migrations:

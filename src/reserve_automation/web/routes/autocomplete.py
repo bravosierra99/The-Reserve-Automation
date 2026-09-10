@@ -13,7 +13,7 @@ from ..auth.dependencies import require
 
 BOTTLE_AUTOCOMPLETE_FIELDS = frozenset([
     "producer", "region", "country", "beverage_type",
-    "style", "vineyard", "purchase_source", "barrel_type",
+    "style", "vineyard", "purchase_source", "barrel_type", "order_ref",
 ])  # variety excluded: stored as JSON list, requires dedicated endpoint
 TASTING_AUTOCOMPLETE_FIELDS = frozenset(["taster_name", "place", "theme"])
 

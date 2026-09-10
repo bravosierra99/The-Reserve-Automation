@@ -203,6 +203,10 @@ def bottles_flow(contract_client, contract_db, tmp_path_factory):
         country="USA", region="Kentucky", age_statement=10, proof=90,
         barrel_type="New Charred Oak", inventory=2, price=49.99,
         purchase_source="Total Wine",
+        # Order stamps: INV-1001 is fully rated, INV-1002 is half rated, and the
+        # minimal Willett carries no order at all — the three shapes the grid's
+        # order dropdown and "not yet rated" filter have to handle.
+        order_ref="INV-1001", order_date="2026-05-02",
     ))
     repo.create(BottleMetadata(
         # Deliberately minimal: only required fields — the grid's null-guards
@@ -216,6 +220,7 @@ def bottles_flow(contract_client, contract_db, tmp_path_factory):
         country="USA", region="Napa Valley",
         variety=["Cabernet Sauvignon", "Merlot"], vineyard="Rutherford Estate",
         style="Bold", abv=14.8, inventory=1, price=189.0, points="94",
+        order_ref="INV-1002", order_date="2026-06-15",
     ))
     repo.create(BottleMetadata(
         # Region-less (country-only) and out of stock — the grid's region
@@ -224,6 +229,7 @@ def bottles_flow(contract_client, contract_db, tmp_path_factory):
         type="wine", source="test", year=2022, beverage_type="White",
         country="New Zealand", variety=["Sauvignon Blanc"], style="Crisp",
         inventory=0,
+        order_ref="INV-1002", order_date="2026-06-15",
     ))
     captured = {}
 

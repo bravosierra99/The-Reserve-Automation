@@ -22,6 +22,8 @@
     "price": 54.99,
     "purchase_source": "Total Wine",
     "purchase_link": "",
+    "order_ref": "INV-1001",
+    "order_date": "2026-05-02",
     "inventory": 2,
     "buy": 0,
     "stars": null,

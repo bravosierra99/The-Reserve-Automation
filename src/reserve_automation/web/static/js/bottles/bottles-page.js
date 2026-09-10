@@ -18,7 +18,11 @@
 //              silently loses functionality.
 // #CLAUDE_REQ: Endpoints must match the backend routes:
 //              GET /api/v1/bottles/collection  (web/routes/bottles/collection.py)
-//                  -> {bottles: [BottleMetadata.model_dump(mode='json')], count}
+//                  -> {bottles: [BottleMetadata.model_dump(mode='json')
+//                                 + tasting_count], count}
+//                     tasting_count backs gridFilterUnratedOnly — drop it from
+//                     the route and the "not yet rated" filter silently passes
+//                     everything.
 //              GET /api/v1/me                  (web/routes/health.py)
 //                  -> {permissions: {bottles_edit, tastings_submit, ...}}
 //              GET /api/v1/labels/thumbnail?id=&size=  (thumbnail images)
@@ -43,6 +47,12 @@ window.bottlesApp = function bottlesApp() {
         gridFilterStyle: '',
         gridFilterBarrelType: '',
         gridFilterInStockOnly: false,
+        // Order stamped at import (bottles.order_ref / order_date). '' = any.
+        gridFilterOrder: '',
+        // "Not yet rated" = zero tasting rows of any kind. Deliberately counts
+        // hidden rows and notes-only rows as rated: the question is "have I
+        // given feedback on this bottle", not "is the rating complete".
+        gridFilterUnratedOnly: false,
 
         // Permission flags
         canEdit: false,
@@ -104,6 +114,14 @@ window.bottlesApp = function bottlesApp() {
                 bottles = bottles.filter(b => (b.inventory || 0) > 0);
             }
 
+            if (this.gridFilterOrder) {
+                bottles = bottles.filter(b => (b.order_ref || '') === this.gridFilterOrder);
+            }
+
+            if (this.gridFilterUnratedOnly) {
+                bottles = bottles.filter(b => (b.tasting_count || 0) === 0);
+            }
+
             return bottles;
         },
 
@@ -115,7 +133,9 @@ window.bottlesApp = function bottlesApp() {
                 this.gridFilterVariety ||
                 this.gridFilterStyle ||
                 this.gridFilterBarrelType ||
-                this.gridFilterInStockOnly;
+                this.gridFilterInStockOnly ||
+                this.gridFilterOrder ||
+                this.gridFilterUnratedOnly;
         },
 
         gridResetTypeFilters() {
@@ -131,6 +151,8 @@ window.bottlesApp = function bottlesApp() {
             this.gridSearchQuery = '';
             this.gridResetTypeFilters();
             this.gridFilterInStockOnly = false;
+            this.gridFilterOrder = '';
+            this.gridFilterUnratedOnly = false;
         },
 
         // Returns unique region values for the current type filter
@@ -160,6 +182,34 @@ window.bottlesApp = function bottlesApp() {
             const seen = new Set();
             bottles.forEach(b => { if (b.style) seen.add(b.style); });
             return [...seen].sort();
+        },
+
+        // Orders present in the collection, newest first. Each entry carries the
+        // counts the dropdown label shows, so picking an order tells you the
+        // unrated tally before you even apply the "not yet rated" filter.
+        gridAvailableOrders() {
+            const byRef = new Map();
+            this.labelBottles.forEach(b => {
+                const ref = b.order_ref || '';
+                if (!ref) return;
+                if (!byRef.has(ref)) {
+                    byRef.set(ref, { ref, date: b.order_date || '', total: 0, unrated: 0 });
+                }
+                const entry = byRef.get(ref);
+                entry.total += 1;
+                if ((b.tasting_count || 0) === 0) entry.unrated += 1;
+                // Bottles in one order share a date; keep the first non-empty.
+                if (!entry.date && b.order_date) entry.date = b.order_date;
+            });
+            return [...byRef.values()].sort((a, b) => {
+                if (a.date !== b.date) return (b.date || '').localeCompare(a.date || '');
+                return a.ref.localeCompare(b.ref);
+            });
+        },
+
+        gridOrderLabel(order) {
+            const date = order.date ? ` — ${order.date}` : '';
+            return `${order.ref}${date} (${order.unrated}/${order.total} unrated)`;
         },
 
         gridAvailableBarrelTypes() {

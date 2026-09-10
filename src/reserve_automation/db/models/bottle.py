@@ -64,6 +64,12 @@ class BottleModel(Base):
     # Inventory and purchase
     purchase_source: Mapped[str | None] = mapped_column(String(200), nullable=True)
     purchase_link: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Order grouping: set once per manifest upload so a whole order can be
+    # filtered as a unit (e.g. "what's unrated from INV-5947?"). order_date is
+    # the ISO date printed on the invoice, NOT the upload date -- they differ by
+    # weeks in practice. Stored as text like bottle_opened_date.
+    order_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    order_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
     inventory: Mapped[int] = mapped_column(Integer, default=0)
     buy: Mapped[int] = mapped_column(Integer, default=0)
 

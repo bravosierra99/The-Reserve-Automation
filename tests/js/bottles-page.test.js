@@ -214,6 +214,45 @@ describe('filteredBottles', () => {
         expect(app.filteredBottles.map(b => b.id)).toEqual(['1', '3']);
     });
 
+    it('hides rated bottles with the not-yet-rated toggle', () => {
+        // Contract data: Buffalo Trace has 2 tastings, Caymus 1, Cloudy Bay and
+        // Willett none.
+        const app = appWithBottles();
+        app.gridFilterUnratedOnly = true;
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['4', '2']);
+    });
+
+    it('treats a missing tasting_count as unrated', () => {
+        // Guards against an older cached payload (or a route that drops the
+        // field) silently reporting every bottle as rated.
+        const app = appWithBottles();
+        app.labelBottles = app.labelBottles.map(({ tasting_count, ...rest }) => rest);
+        app.gridFilterUnratedOnly = true;
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['1', '3', '4', '2']);
+    });
+
+    it('filters by order ref', () => {
+        const app = appWithBottles();
+        app.gridFilterOrder = 'INV-1002';
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['3', '4']);
+        app.gridFilterOrder = 'INV-1001';
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['1']);
+    });
+
+    it('excludes unstamped bottles from any order filter', () => {
+        // Willett carries order_ref: null and must never fall into an order.
+        const app = appWithBottles();
+        app.gridFilterOrder = 'INV-1002';
+        expect(app.filteredBottles.map(b => b.id)).not.toContain('2');
+    });
+
+    it('stacks order and not-yet-rated — the "what do I still owe feedback on" query', () => {
+        const app = appWithBottles();
+        app.gridFilterOrder = 'INV-1002';
+        app.gridFilterUnratedOnly = true;
+        expect(app.filteredBottles.map(b => b.id)).toEqual(['4']);
+    });
+
     it('stacks filters', () => {
         const app = appWithBottles();
         app.gridFilterType = 'whiskey';
@@ -241,6 +280,8 @@ describe('gridHasActiveFilters', () => {
         ['gridFilterStyle', 'Bold'],
         ['gridFilterBarrelType', 'New Charred Oak'],
         ['gridFilterInStockOnly', true],
+        ['gridFilterOrder', 'INV-1002'],
+        ['gridFilterUnratedOnly', true],
     ])('is truthy when %s is set', (key, value) => {
         const app = freshApp();
         app[key] = value;
@@ -258,6 +299,8 @@ describe('reset helpers', () => {
         app.gridFilterVariety = 'Merlot';
         app.gridFilterStyle = 'Bold';
         app.gridFilterBarrelType = 'New Charred Oak';
+        app.gridFilterOrder = 'INV-1002';
+        app.gridFilterUnratedOnly = true;
 
         app.gridResetTypeFilters();
 
@@ -268,6 +311,10 @@ describe('reset helpers', () => {
         expect(app.gridFilterBarrelType).toBe('');
         expect(app.gridFilterType).toBe('wine');
         expect(app.gridSearchQuery).toBe('keep me');
+        // Order and rating are collection-wide, not type-specific — switching
+        // the wine/whiskey tab must not silently drop the order you picked.
+        expect(app.gridFilterOrder).toBe('INV-1002');
+        expect(app.gridFilterUnratedOnly).toBe(true);
     });
 
     it('gridResetAllFilters restores every filter to defaults', () => {
@@ -276,6 +323,8 @@ describe('reset helpers', () => {
         app.gridSearchQuery = 'eagle';
         app.gridFilterBarrelType = 'New Charred Oak';
         app.gridFilterInStockOnly = true;
+        app.gridFilterOrder = 'INV-1002';
+        app.gridFilterUnratedOnly = true;
 
         app.gridResetAllFilters();
 
@@ -283,6 +332,8 @@ describe('reset helpers', () => {
         expect(app.gridSearchQuery).toBe('');
         expect(app.gridFilterBarrelType).toBe('');
         expect(app.gridFilterInStockOnly).toBe(false);
+        expect(app.gridFilterOrder).toBe('');
+        expect(app.gridFilterUnratedOnly).toBe(false);
         expect(app.gridHasActiveFilters()).toBeFalsy();
     });
 });
@@ -322,6 +373,35 @@ describe('option providers', () => {
     it('gridAvailableBarrelTypes lists whiskey barrels only', () => {
         const app = appWithBottles();
         expect(app.gridAvailableBarrelTypes()).toEqual(['New Charred Oak']);
+    });
+
+    it('gridAvailableOrders groups by ref, newest first, with unrated counts', () => {
+        const app = appWithBottles();
+        expect(app.gridAvailableOrders()).toEqual([
+            { ref: 'INV-1002', date: '2026-06-15', total: 2, unrated: 1 },
+            { ref: 'INV-1001', date: '2026-05-02', total: 1, unrated: 0 },
+        ]);
+    });
+
+    it('gridAvailableOrders skips bottles with no order stamp', () => {
+        const app = appWithBottles();
+        const refs = app.gridAvailableOrders().map(o => o.ref);
+        expect(refs).not.toContain('');
+        expect(refs).toHaveLength(2);
+    });
+
+    it('gridAvailableOrders is empty for a collection predating order tracking', () => {
+        const app = appWithBottles();
+        app.labelBottles = app.labelBottles.map(b => ({ ...b, order_ref: null }));
+        expect(app.gridAvailableOrders()).toEqual([]);
+    });
+
+    it('gridOrderLabel shows the unrated tally, and omits a missing date', () => {
+        const app = appWithBottles();
+        const [newest] = app.gridAvailableOrders();
+        expect(app.gridOrderLabel(newest)).toBe('INV-1002 — 2026-06-15 (1/2 unrated)');
+        expect(app.gridOrderLabel({ ref: 'INV-9', date: '', total: 3, unrated: 3 }))
+            .toBe('INV-9 (3/3 unrated)');
     });
 });
 

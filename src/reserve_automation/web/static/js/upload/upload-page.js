@@ -27,8 +27,9 @@
 // #CLAUDE_REQ: Enrichment endpoints must match web/routes/management/core.py:
 //              POST /api/v1/management/bottles/verify -> {task_id}, then poll
 //              GET /api/v1/management/tasks/{task_id}/status -> {status, ...}.
-// #CLAUDE_REQ: Autocomplete endpoint must match web/routes/autocomplete.py
-//              (GET /api/v1/autocomplete/bottles/purchase_source -> [str]).
+// #CLAUDE_REQ: Autocomplete endpoints must match web/routes/autocomplete.py
+//              (GET /api/v1/autocomplete/bottles/purchase_source -> [str],
+//               GET /api/v1/autocomplete/bottles/order_ref -> [str]).
 
 window.uploadForm = function uploadForm() {
     return {
@@ -46,6 +47,13 @@ window.uploadForm = function uploadForm() {
         sessionExpired: false,  // True when a stream request 401s / Access-redirects (lapsed login)
         purchaseSource: '',  // Where bottle was purchased
         acPurchaseSources: [],  // Autocomplete suggestions for purchase source
+        // Order stamp applied to every bottle in this upload. A manifest is one
+        // order, so this is what makes "unrated from order X" answerable later.
+        // orderDate is the invoice date, not the upload date — they differ by
+        // weeks, which is why upload time alone can't stand in for an order.
+        orderRef: '',
+        orderDate: '',
+        acOrderRefs: [],  // Autocomplete suggestions for order ref
         inventory: 0,  // Number of bottles in inventory
         // Manifest only: how many line items the user counted on the document.
         // Sent as expected_count so the extractor can tell it came up short —
@@ -75,6 +83,12 @@ window.uploadForm = function uploadForm() {
             try {
                 const resp = await fetch('/api/v1/autocomplete/bottles/purchase_source');
                 if (resp.ok) this.acPurchaseSources = await resp.json();
+            } catch (e) { /* ignore */ }
+
+            // Load order_ref autocomplete (re-uploading into an existing order)
+            try {
+                const resp = await fetch('/api/v1/autocomplete/bottles/order_ref');
+                if (resp.ok) this.acOrderRefs = await resp.json();
             } catch (e) { /* ignore */ }
 
             // Prevent iOS scroll restoration on page load
@@ -261,6 +275,12 @@ window.uploadForm = function uploadForm() {
                 if (this.purchaseSource) {
                     formData.append('purchase_source', this.purchaseSource);
                 }
+                if (this.orderRef) {
+                    formData.append('order_ref', this.orderRef);
+                }
+                if (this.orderDate) {
+                    formData.append('order_date', this.orderDate);
+                }
                 formData.append('inventory', this.inventory);
                 endpoint = '/api/v1/bottles/upload/stream';
             } else if (this.uploadType === 'manifest') {
@@ -268,6 +288,12 @@ window.uploadForm = function uploadForm() {
                 formData.append('beverage_type', 'auto');
                 if (this.purchaseSource) {
                     formData.append('purchase_source', this.purchaseSource);
+                }
+                if (this.orderRef) {
+                    formData.append('order_ref', this.orderRef);
+                }
+                if (this.orderDate) {
+                    formData.append('order_date', this.orderDate);
                 }
                 formData.append('inventory', this.inventory);
                 // Optional. Omit entirely when blank or not a positive number —

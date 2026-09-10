@@ -1276,7 +1276,7 @@ async def update_bottle_fields(
 # #CLAUDE_REQ: and TASTING_AUTOCOMPLETE_FIELDS
 _BOTTLE_CLEANUP_FIELDS = frozenset([
     "producer", "region", "country", "beverage_type",
-    "style", "vineyard", "purchase_source", "barrel_type",
+    "style", "vineyard", "purchase_source", "barrel_type", "order_ref",
 ])  # variety excluded: stored as JSON list, not suitable for SQL equality cleanup
 _TASTING_CLEANUP_FIELDS = frozenset(["taster_name", "place", "theme"])
 

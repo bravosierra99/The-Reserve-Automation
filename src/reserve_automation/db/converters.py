@@ -71,6 +71,8 @@ def bottle_to_pydantic(db: BottleModel) -> BottleMetadata:
         price=db.price,
         purchase_source=db.purchase_source,
         purchase_link=db.purchase_link,
+        order_ref=db.order_ref,
+        order_date=db.order_date,
         inventory=db.inventory,
         buy=db.buy,
         stars=db.stars,
@@ -114,6 +116,8 @@ def pydantic_to_bottle(p: BottleMetadata, existing: BottleModel | None = None) -
     model.price = p.price
     model.purchase_source = p.purchase_source
     model.purchase_link = p.purchase_link
+    model.order_ref = p.order_ref
+    model.order_date = p.order_date
     model.inventory = p.inventory
     model.buy = p.buy
     model.stars = p.stars

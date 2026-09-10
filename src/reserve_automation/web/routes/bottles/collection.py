@@ -4,8 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
 from pydantic import BaseModel
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from ....core.models import BottleMetadata
+from ....db.engine import get_db
+from ....db.models.bottle import TastingNoteModel
 from ....db.repositories import get_bottle_repo, get_tasting_repo
 from ....db.repositories.bottle_repo import SQLiteBottleRepository
 from ....db.repositories.tasting_repo import SQLiteTastingRepository
@@ -26,16 +30,38 @@ async def bottles_page(request: Request):
 @router.get("/api/v1/bottles/collection")
 async def get_bottle_collection(
     bottle_repo: SQLiteBottleRepository = Depends(get_bottle_repo),
+    db: Session = Depends(get_db),
 ):
     """
     Get all bottles for the collection grid view.
+
+    Each bottle carries a `tasting_count` so the grid can filter on "not yet
+    rated" without a per-bottle round trip (the tastings-summary endpoint is
+    one POST per bottle -- unusable for a 150-bottle grid). Counted with a
+    single GROUP BY.
+
+    "Rated" deliberately means `tasting_count > 0` -- any tasting row counts as
+    feedback given, including hidden rows and rows saved with notes but no
+    sub-scores. The question this answers is "have I said anything about this
+    bottle yet", not "is the rating complete".
 
     Returns:
         dict: Contains list of bottles with their current metadata (with IDs)
     """
     try:
         bottles = bottle_repo.get_all()
-        bottles_data = [bottle.model_dump(mode='json') for bottle in bottles]
+
+        counts = dict(
+            db.query(TastingNoteModel.bottle_id, func.count(TastingNoteModel.id))
+            .group_by(TastingNoteModel.bottle_id)
+            .all()
+        )
+
+        bottles_data = []
+        for bottle in bottles:
+            data = bottle.model_dump(mode='json')
+            data["tasting_count"] = counts.get(int(bottle.id), 0) if bottle.id else 0
+            bottles_data.append(data)
 
         logger.info(f"Collection: loaded {len(bottles)} bottles")
 

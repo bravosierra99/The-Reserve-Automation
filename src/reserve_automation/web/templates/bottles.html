@@ -174,12 +174,29 @@
                     </div>
                 </div>
 
-                <!-- Row 3: In-stock filter -->
-                <div class="flex items-center gap-4">
+                <!-- Row 3: order / rating filters (type-independent) -->
+                <div class="flex flex-wrap items-center gap-4">
                     <label class="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-600 hover:text-gray-800">
                         <input type="checkbox" x-model="gridFilterInStockOnly" class="rounded">
                         <span>In Stock Only</span>
                     </label>
+                    <label class="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-600 hover:text-gray-800">
+                        <input type="checkbox" x-model="gridFilterUnratedOnly" class="rounded">
+                        <span>Not Yet Rated</span>
+                    </label>
+                    <!-- Only rendered once something in the collection carries an
+                         order stamp, so pre-order-tracking collections see no
+                         empty dropdown. -->
+                    <div class="flex items-center gap-2" x-show="gridAvailableOrders().length > 0">
+                        <label class="text-xs text-gray-600 whitespace-nowrap">Order:</label>
+                        <select x-model="gridFilterOrder"
+                                class="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="">All orders</option>
+                            <template x-for="o in gridAvailableOrders()" :key="o.ref">
+                                <option :value="o.ref" x-text="gridOrderLabel(o)"></option>
+                            </template>
+                        </select>
+                    </div>
                 </div>
             </div>
 

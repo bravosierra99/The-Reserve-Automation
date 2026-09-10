@@ -183,6 +183,8 @@ async def upload_bottle(
     beverage_type: str = Form("auto"),  # wine, whiskey, auto
     expected_count: Optional[int] = Form(None),  # Expected bottle count (optional)
     purchase_source: Optional[str] = Form(None),  # Where bottle was purchased
+    order_ref: Optional[str] = Form(None),  # Order/invoice reference (manifest = one order)
+    order_date: Optional[str] = Form(None),  # Order date from the invoice (ISO)
     inventory: int = Form(0),  # Number of bottles in inventory
 ):
     """
@@ -197,6 +199,8 @@ async def upload_bottle(
         beverage_type: Type of beverage (wine, whiskey, auto)
         expected_count: Expected number of bottles (helps improve extraction accuracy)
         purchase_source: Where the bottle was purchased
+        order_ref: Order/invoice reference stamped on every bottle in this upload
+        order_date: Date printed on the invoice (ISO YYYY-MM-DD)
         inventory: Number of bottles in inventory (default 0)
 
     Returns:
@@ -248,6 +252,10 @@ async def upload_bottle(
             # Apply purchase info
             if purchase_source:
                 bottle.purchase_source = purchase_source
+            if order_ref:
+                bottle.order_ref = order_ref
+            if order_date:
+                bottle.order_date = order_date
             bottle.inventory = inventory
 
             bottles = [extraction_service.bottle_to_dict(bottle)]
@@ -260,10 +268,15 @@ async def upload_bottle(
                 expected_count=expected_count
             )
 
-            # Apply purchase info to all bottles
+            # Apply purchase info to all bottles. One manifest == one order,
+            # so the order stamp lands on every line item.
             for bottle in extracted_bottles:
                 if purchase_source:
                     bottle.purchase_source = purchase_source
+                if order_ref:
+                    bottle.order_ref = order_ref
+                if order_date:
+                    bottle.order_date = order_date
                 bottle.inventory = inventory
 
             bottles = [extraction_service.bottle_to_dict(bottle) for bottle in extracted_bottles]
@@ -295,6 +308,8 @@ async def upload_bottle_stream(
     beverage_type: str = Form("auto"),
     expected_count: Optional[int] = Form(None),
     purchase_source: Optional[str] = Form(None),
+    order_ref: Optional[str] = Form(None),
+    order_date: Optional[str] = Form(None),
     inventory: int = Form(0),
 ):
     """
@@ -389,6 +404,10 @@ async def upload_bottle_stream(
                 )
                 if purchase_source:
                     bottle.purchase_source = purchase_source
+                if order_ref:
+                    bottle.order_ref = order_ref
+                if order_date:
+                    bottle.order_date = order_date
                 bottle.inventory = inventory
                 bottles = [extraction_service.bottle_to_dict(bottle)]
 
@@ -406,6 +425,10 @@ async def upload_bottle_stream(
                 for b in extracted:
                     if purchase_source:
                         b.purchase_source = purchase_source
+                    if order_ref:
+                        b.order_ref = order_ref
+                    if order_date:
+                        b.order_date = order_date
                     b.inventory = inventory
                 bottles = [extraction_service.bottle_to_dict(b) for b in extracted]
 
