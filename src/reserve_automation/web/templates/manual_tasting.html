@@ -3,10 +3,10 @@
 {% block title %}Tastings - The Reserve{% endblock %}
 
 {% block head %}
-<script src="/static/js/components/tasting-form-mixin.js"></script>
+<script src="/static/js/components/tasting-form-mixin.js?v={{ static_v }}"></script>
 <!-- Wizard component (window.manualTastingWizard) — logic lives in a static
      module so it gets vitest unit coverage; see tests/js/manual-tasting.test.js -->
-<script src="/static/js/tastings/manual-tasting.js"></script>
+<script src="/static/js/tastings/manual-tasting.js?v={{ static_v }}"></script>
 {% endblock %}
 
 {% block content %}

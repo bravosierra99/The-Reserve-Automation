@@ -3,7 +3,7 @@
 {% block title %}Review Tastings - The Reserve{% endblock %}
 
 {% block head %}
-<script src="/static/js/components/tasting-form-mixin.js"></script>
+<script src="/static/js/components/tasting-form-mixin.js?v={{ static_v }}"></script>
 <!-- Data bootstrap: the only Jinja-rendered value the page component needs.
      Must be set before tastingReview() runs (Alpine is deferred). -->
 <script>window.PAGE_DATA = { extractionId: {{ extraction_id | tojson }} };</script>
