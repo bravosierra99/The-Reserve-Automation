@@ -8,6 +8,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from ..auth.dependencies import require
+from ..cookies import is_secure_request
 from ..services.extraction_service import ExtractionService
 from ..services.review_service import ReviewService
 from ..sessions import SessionManager
@@ -105,6 +106,7 @@ async def update_extraction(
     extraction_id: str,
     request: UpdateExtractionRequest,
     response: Response,
+    http_request: Request,
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """
@@ -156,7 +158,7 @@ async def update_extraction(
         value=new_token,
         max_age=web_config.sessions.max_age_hours * 3600,
         httponly=True,
-        secure=True,
+        secure=is_secure_request(http_request),
         samesite="lax"
     )
 

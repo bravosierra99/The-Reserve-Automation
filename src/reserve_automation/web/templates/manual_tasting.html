@@ -27,8 +27,24 @@
         </button>
     </div>
 
+    <!-- Event session missing: the page was opened in event mode but the
+         participant_sessions cookie isn't there, so we can't scope the wizard
+         to the event's bottles. Fail visibly instead of degrading into the
+         full-collection wizard. -->
+    <div x-show="eventSessionMissing" class="bg-amber-50 border border-amber-300 rounded-lg p-6 mb-6">
+        <h3 class="text-amber-900 font-bold text-lg mb-2">You're not signed in to this event</h3>
+        <p class="text-amber-800">
+            Your participant session wasn't found, so this tasting can't be linked to the event.
+            Go back and join the event again.
+        </p>
+        <a :href="`/events/${eventSessionEventId}`"
+           class="mt-4 inline-block text-blue-600 hover:text-blue-800 font-semibold">
+            &larr; Back to the event
+        </a>
+    </div>
+
     <!-- Main wizard -->
-    <div x-show="!loading && !error" class="space-y-6">
+    <div x-show="!loading && !error && !eventSessionMissing" class="space-y-6">
         <!-- Header -->
         <div class="bg-white rounded-lg shadow-md p-6">
             <div class="flex justify-between items-start">

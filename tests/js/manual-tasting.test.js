@@ -666,14 +666,35 @@ describe('init', () => {
             ]);
         });
 
-        it('falls back to standalone mode when the participant cookie is missing', async () => {
+        // REGRESSION: this used to fall back to standalone mode, which silently
+        // handed the participant the free-search wizard over the whole
+        // collection. That is exactly what a dropped participant_sessions
+        // cookie produced, and it read as "the event isn't limiting bottles".
+        // Event mode must fail visibly instead.
+        it('refuses to run instead of degrading when the participant cookie is missing', async () => {
             window.history.pushState({}, '', '/tastings?event_mode=true&event_id=evt1');
             vi.spyOn(console, 'error').mockImplementation(() => {});
+            const fetchSpy = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
+            vi.stubGlobal('fetch', fetchSpy);
+
+            await wizard.init();
+
+            expect(wizard.eventSessionMissing).toBe(true);
+            expect(wizard.eventSessionEventId).toBe('evt1');
+            expect(wizard.isEventMode).toBe(false);
+            // init bailed out: no standalone setup ran, so there is no usable
+            // wizard behind the error panel.
+            expect(fetchSpy).not.toHaveBeenCalled();
+            expect(wizard.tasterName).toBe('');
+        });
+
+        it('does not set the missing-session flag on a normal standalone visit', async () => {
+            window.history.pushState({}, '', '/tastings');
             vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
 
             await wizard.init();
 
-            expect(wizard.isEventMode).toBe(false);
+            expect(wizard.eventSessionMissing).toBe(false);
             expect(wizard.currentStep).toBe('taster_info');
         });
     });

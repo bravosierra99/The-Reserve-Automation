@@ -65,6 +65,11 @@ window.manualTastingWizard = function() {
         tastingDate: new Date().toISOString().split('T')[0],
         beverageType: 'wine',
         participantSession: null,  // Store event session info (from cookie, not server session)
+        // Set when the page was opened in event mode but the participant
+        // session cookie is missing. The wizard must NOT fall through to
+        // standalone mode in that case (see init).
+        eventSessionMissing: false,
+        eventSessionEventId: '',
 
         // Step 2 data
         selectedBottle: null,
@@ -171,8 +176,15 @@ window.manualTastingWizard = function() {
             if (isEventMode && eventId) {
                 this.participantSession = this.getParticipantSession(eventId);
                 if (!this.participantSession) {
+                    // Do NOT degrade to standalone mode. Silently dropping into
+                    // the free-search wizard is indistinguishable from "the
+                    // event has no bottle restrictions", which is how a dropped
+                    // participant_sessions cookie looked like a permissions bug.
+                    // Stop here and send them back to the event to re-join.
                     console.error('Event mode requested but no participant session found');
-                    this.participantSession = null;
+                    this.eventSessionMissing = true;
+                    this.eventSessionEventId = eventId;
+                    return;
                 }
             } else {
                 // Standalone/Obsidian mode

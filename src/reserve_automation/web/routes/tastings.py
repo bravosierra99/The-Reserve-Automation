@@ -19,6 +19,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from ..auth.dependencies import require
+from ..cookies import is_secure_request
 from ..schemas.tasting import (
     ManualTastingMode,
     SaveManualTastingRequest,
@@ -78,6 +79,7 @@ async def review_tastings_page(request: Request, extraction_id: str):
 async def get_tasting_session(
     extraction_id: str,
     response: Response,
+    http_request: Request,
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """
@@ -150,6 +152,7 @@ async def get_tasting_session(
                     value=new_token,
                     max_age=web_config.sessions.max_age_hours * 3600,
                     httponly=True,
+                    secure=is_secure_request(http_request),
                     samesite="lax"
                 )
                 logger.info("Successfully saved tasting session to cookie")
@@ -259,6 +262,7 @@ async def update_tasting(
     index: int,
     request: UpdateTastingDataRequest,
     response: Response,
+    http_request: Request,
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Update a single tasting's data."""
@@ -308,7 +312,7 @@ async def update_tasting(
         value=new_token,
         max_age=web_config.sessions.max_age_hours * 3600,
         httponly=True,
-        secure=True,
+        secure=is_secure_request(http_request),
         samesite="lax"
     )
 
@@ -322,6 +326,7 @@ async def select_match(
     index: int,
     request: SelectMatchRequest,
     response: Response,
+    http_request: Request,
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Select a bottle match for a tasting."""
@@ -396,7 +401,7 @@ async def select_match(
         value=new_token,
         max_age=web_config.sessions.max_age_hours * 3600,
         httponly=True,
-        secure=True,
+        secure=is_secure_request(http_request),
         samesite="lax"
     )
 
@@ -417,6 +422,7 @@ async def approve_tasting(
     extraction_id: str,
     index: int,
     response: Response,
+    http_request: Request,
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Approve and save a single tasting."""
@@ -499,6 +505,7 @@ async def approve_tasting(
                 value=new_token,
                 max_age=web_config.sessions.max_age_hours * 3600,
                 httponly=True,
+                secure=is_secure_request(http_request),
                 samesite="lax"
             )
 
@@ -515,6 +522,7 @@ async def skip_tasting(
     extraction_id: str,
     index: int,
     response: Response,
+    http_request: Request,
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Skip a single tasting without saving."""
@@ -573,6 +581,7 @@ async def skip_tasting(
                 value=new_token,
                 max_age=web_config.sessions.max_age_hours * 3600,
                 httponly=True,
+                secure=is_secure_request(http_request),
                 samesite="lax"
             )
 
@@ -629,6 +638,7 @@ async def reject_all_tastings(
 async def refresh_matches(
     extraction_id: str,
     response: Response,
+    http_request: Request,
     session_token: Optional[str] = Cookie(None, alias="session")
 ):
     """Re-run bottle matching for all tastings in the session."""
@@ -698,7 +708,7 @@ async def refresh_matches(
         value=new_token,
         max_age=web_config.sessions.max_age_hours * 3600,
         httponly=True,
-        secure=True,
+        secure=is_secure_request(http_request),
         samesite="lax"
     )
 
@@ -768,6 +778,7 @@ async def upload_tasting_card(
             value=session_token,
             max_age=web_config.sessions.max_age_hours * 3600,
             httponly=True,
+            secure=is_secure_request(request),
             samesite="lax"
         )
 
@@ -879,6 +890,17 @@ async def save_manual_tasting(
                 int(bottle_id)
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"Invalid bottle ID for event mode: {bottle_id}")
+
+            # An event tasting may only target a bottle that is actually in the
+            # event. The wizard normally offers nothing else, but the wizard is
+            # not the authority — without this a participant could POST any
+            # bottle ID in the collection into the event's results.
+            event_bottle_ids = {str(b["bottle_id"]) for b in event.get("bottles", [])}
+            if str(bottle_id) not in event_bottle_ids:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Bottle {bottle_id} is not part of event {request_data.event_id}",
+                )
 
             # Check if tasting already exists for this participant + bottle (for editing)
             existing_tasting = None

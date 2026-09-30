@@ -18,6 +18,7 @@ from fastapi import (
 from loguru import logger
 
 from ..auth.dependencies import require
+from ..cookies import is_secure_request
 from ..services.extraction_service import ExtractionService
 from ..sessions import SessionManager
 from ..templating import make_templates
@@ -132,7 +133,7 @@ async def upload_file(
             value=session_token,
             max_age=web_config.sessions.max_age_hours * 3600,
             httponly=True,
-            secure=True,
+            secure=is_secure_request(request),
             samesite="lax"
         )
 

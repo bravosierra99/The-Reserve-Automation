@@ -14,6 +14,7 @@ from ...db.repositories.bottle_repo import SQLiteBottleRepository
 from ...db.repositories.event_repo import SQLiteEventRepository
 from ..auth.dependencies import require
 from ..auth.models import AuthenticatedUser
+from ..cookies import is_secure_request
 from ..schemas.events import (
     AddEventBottleRequest,
     AddEventCocktailRequest,
@@ -263,7 +264,7 @@ async def join_event(
             path="/",  # Must be "/" so cookie is sent on all paths
             max_age=7 * 24 * 3600,  # 7 days (longer since it covers multiple events)
             httponly=False,  # Must be False so JavaScript can access it
-            secure=True,
+            secure=is_secure_request(request),
             samesite="lax"
         )
 

@@ -14,6 +14,8 @@ CRITICAL: All tests use an isolated test vault in /tmp, never the real vault.
 import json
 from urllib.parse import unquote
 
+import pytest
+
 
 class TestEventCRUD:
     """Test basic event CRUD operations."""
@@ -464,3 +466,116 @@ class TestEventBottleDisplay:
         # Bottle name should be folder name (last part of path)
         bottle = event["bottles"][0]
         assert bottle["bottle_name"] == "Buffalo Trace - Weller Special Reserve"
+
+
+class TestParticipantCookieSecurity:
+    """Joining over plain http must not send a cookie the browser will discard.
+
+    The `Secure` attribute was hardcoded on, so on direct LAN access
+    (http://192.168.x.x:8000) the browser silently dropped
+    `participant_sessions`. The join API still returned 200 and the event page
+    still flipped to "joined" (it reads the response body, not the cookie), but
+    the tasting wizard then found no session and fell back to searching the
+    whole collection — which looked like the event wasn't restricting bottles.
+    """
+
+    @pytest.fixture
+    def open_event(self, test_client, weller_bottle):
+        response = test_client.post("/api/v1/events", json={
+            "name": "Cookie Test Event",
+            "beverage_type": "whiskey",
+            "is_blind": False,
+            "host_name": "Host",
+            "bottle_ids": [weller_bottle["id"]],
+            "blind_numbers": None,
+        })
+        assert response.status_code == 200
+        return response.json()
+
+    def test_no_secure_flag_over_plain_http(self, test_client, open_event):
+        response = test_client.post(
+            f"/api/v1/events/{open_event['event_id']}/join",
+            json={"participant_name": "Guest"},
+        )
+        assert response.status_code == 200
+
+        set_cookie = response.headers["set-cookie"]
+        assert "participant_sessions=" in set_cookie
+        assert "Secure" not in set_cookie
+
+        sessions = json.loads(unquote(response.cookies["participant_sessions"]))
+        assert open_event["event_id"] in sessions
+
+    def test_secure_flag_kept_when_proxy_reports_https(self, test_client, open_event):
+        response = test_client.post(
+            f"/api/v1/events/{open_event['event_id']}/join",
+            json={"participant_name": "Guest"},
+            headers={"X-Forwarded-Proto": "https"},
+        )
+        assert response.status_code == 200
+        assert "Secure" in response.headers["set-cookie"]
+
+
+class TestEventTastingBottleScope:
+    """An event tasting may only target a bottle that is in the event."""
+
+    def test_rejects_bottle_outside_the_event(
+        self, test_client, weller_bottle, blantons_bottle
+    ):
+        event = test_client.post("/api/v1/events", json={
+            "name": "Scoped Event",
+            "beverage_type": "whiskey",
+            "is_blind": False,
+            "host_name": "Host",
+            "bottle_ids": [weller_bottle["id"]],
+            "blind_numbers": None,
+        }).json()
+
+        joined = test_client.post(
+            f"/api/v1/events/{event['event_id']}/join",
+            json={"participant_name": "Guest"},
+        ).json()
+
+        # blantons is a real bottle, just not one of this event's bottles.
+        response = test_client.post("/api/v1/manual-tasting/save", json={
+            "mode": "event",
+            "taster_name": "Guest",
+            "tasting_date": "2026-09-30",
+            "beverage_type": "whiskey",
+            "selected_bottle_id": str(blantons_bottle["id"]),
+            "selected_bottle_path": str(blantons_bottle["id"]),
+            "event_id": event["event_id"],
+            "participant_id": joined["participant_id"],
+            "tasting_data": {"overall_notes": "should not be saved"},
+        })
+        assert response.status_code == 400
+        assert "not part of event" in response.json()["detail"]
+
+    def test_accepts_a_bottle_in_the_event(self, test_client, weller_bottle):
+        event = test_client.post("/api/v1/events", json={
+            "name": "Scoped Event OK",
+            "beverage_type": "whiskey",
+            "is_blind": False,
+            "host_name": "Host",
+            "bottle_ids": [weller_bottle["id"]],
+            "blind_numbers": None,
+        }).json()
+
+        joined = test_client.post(
+            f"/api/v1/events/{event['event_id']}/join",
+            json={"participant_name": "Guest"},
+        ).json()
+
+        response = test_client.post("/api/v1/manual-tasting/save", json={
+            "mode": "event",
+            "taster_name": "Guest",
+            "tasting_date": "2026-09-30",
+            "beverage_type": "whiskey",
+            "selected_bottle_id": str(weller_bottle["id"]),
+            "selected_bottle_path": str(weller_bottle["id"]),
+            "event_id": event["event_id"],
+            "participant_id": joined["participant_id"],
+            "tasting_data": {"overall_notes": "fine"},
+        })
+        assert response.status_code == 200
+        assert response.json()["event_id"] == event["event_id"]
