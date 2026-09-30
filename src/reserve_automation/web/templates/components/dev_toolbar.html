@@ -1,4 +1,7 @@
-<!-- Dev Mode Toolbar - Only visible when auth dev mode is enabled -->
+<!-- Dev Mode Toolbar - Only visible when auth dev mode is enabled.
+     devToolbar() lives in /static/js/components/dev-toolbar.js
+     (extracted Sept 2026 for vitest coverage — tests/js/dev-toolbar.test.js) -->
+<script src="/static/js/components/dev-toolbar.js?v={{ static_v }}"></script>
 <div x-data="devToolbar()" x-show="visible" x-cloak
      class="fixed bottom-0 left-0 right-0 bg-yellow-400 text-yellow-900 px-4 py-2 shadow-lg z-50 flex items-center justify-between text-sm">
     <div class="flex items-center gap-3">
@@ -24,35 +27,7 @@
         </div>
     </div>
     <div class="flex items-center gap-2 text-yellow-800">
+        <span x-show="error" x-text="error" class="font-semibold text-red-800"></span>
         <span x-text="userEmail"></span>
     </div>
 </div>
-
-<script>
-function devToolbar() {
-    return {
-        visible: false,
-        currentRole: '',
-        userEmail: '',
-
-        async init() {
-            try {
-                const resp = await fetch('/api/v1/me');
-                const data = await resp.json();
-                if (data.dev_mode) {
-                    this.visible = true;
-                    this.currentRole = data.role || 'admin';
-                    this.userEmail = data.email || '';
-                }
-            } catch (e) {
-                // Silently ignore - toolbar just won't show
-            }
-        },
-
-        switchRole(role) {
-            document.cookie = `dev_role_override=${role};path=/;max-age=${7 * 24 * 3600};secure;samesite=strict`;
-            window.location.reload();
-        }
-    };
-}
-</script>
