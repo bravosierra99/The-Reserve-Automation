@@ -53,17 +53,25 @@ When the user asks to "bump the version" or "create a new release":
 ```
 
 **What this script does:**
-1. Updates `pyproject.toml` version
-2. Commits the change
-3. Creates matching git tag (e.g., `v0.3.9`)
-4. Pushes commits AND tags to origin
+1. Runs the pre-release gate (ruff + fast pytest) — a red build never ships
+2. Updates `pyproject.toml` version
+3. Refreshes `uv.lock` (it pins this project's *own* version) and verifies it took
+4. Commits both files together
+5. Creates matching git tag (e.g., `v0.3.9`)
+6. Pushes commits AND tags to origin
 
 **DO NOT:**
 - Manually edit `pyproject.toml` version
+- Manually edit the version in `uv.lock`
 - Create git tags manually (unless explicit one-off need)
 - Update version in one place but not the other
 
-**Why:** `pyproject.toml` and git tags must stay in sync. The script ensures both are updated together.
+**Why:** `pyproject.toml`, `uv.lock` and the git tag must stay in sync. The script
+ensures all three move together. `uv.lock` matters because it carries its own
+`[[package]] name = "reserve-automation"` / `version = …` stanza: if a bump leaves
+it stale, the next `uv run` anyone does silently rewrites it, surfacing as an
+unexplained dirty tree in a later unrelated session (this happened between
+v1.16.1 and v1.16.3).
 
 ## Documentation Reference Guide
 

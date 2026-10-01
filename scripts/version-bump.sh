@@ -1,6 +1,6 @@
 #!/bin/bash
 # Unified version bump script
-# Updates both pyproject.toml AND git tag to keep versions in sync
+# Updates pyproject.toml, uv.lock AND the git tag to keep versions in sync
 #
 # Usage:
 #   ./scripts/version-bump.sh patch              # 0.3.8 -> 0.3.9
@@ -113,18 +113,20 @@ fi
 if [ "$DRY_RUN" = true ]; then
     echo -e "\n${YELLOW}DRY RUN - Would perform these actions:${NC}"
     echo "  1. Update pyproject.toml: version = \"$NEW_VERSION\""
-    echo "  2. Commit: \"Bump version to $NEW_VERSION\""
-    echo "  3. Create tag: v$NEW_VERSION"
-    echo "  4. Push commits and tags to origin"
+    echo "  2. Refresh uv.lock (it pins this project's own version)"
+    echo "  3. Commit both: \"Bump version to $NEW_VERSION\""
+    echo "  4. Create tag: v$NEW_VERSION"
+    echo "  5. Push commits and tags to origin"
     exit 0
 fi
 
 # Confirm with user (skip if --yes)
 echo -e "\n${YELLOW}This will:${NC}"
 echo "  1. Update pyproject.toml to version $NEW_VERSION"
-echo "  2. Commit the change"
-echo "  3. Create git tag v$NEW_VERSION"
-echo "  4. Push to origin (commits + tags)"
+echo "  2. Refresh uv.lock to match"
+echo "  3. Commit the change"
+echo "  4. Create git tag v$NEW_VERSION"
+echo "  5. Push to origin (commits + tags)"
 echo ""
 if [[ "${YES}" != "true" ]]; then
     read -p "Continue? [y/N] " -n 1 -r
@@ -168,9 +170,42 @@ if [ "$NEW_VERSION_CHECK" != "$NEW_VERSION" ]; then
 fi
 echo -e "${GREEN}✓ Updated pyproject.toml${NC}"
 
+# Refresh uv.lock. It pins this project's OWN version in its
+# [[package]] name = "reserve-automation" stanza, so bumping pyproject.toml
+# alone leaves the lock stale — and the next `uv run` anyone does rewrites it,
+# producing a spurious dirty tree long after the release. Lock it here and ship
+# it in the same commit. No --upgrade: existing dependency pins are preserved,
+# only our own version moves.
+LOCK_FILES=(pyproject.toml)
+if [ -f uv.lock ]; then
+    echo -e "\n${BLUE}Refreshing uv.lock...${NC}"
+    if ! command -v uv >/dev/null 2>&1; then
+        echo -e "${RED}Error: uv not found, cannot refresh uv.lock${NC}"
+        git checkout pyproject.toml  # Revert
+        exit 1
+    fi
+    if ! uv lock --quiet; then
+        echo -e "${RED}Error: 'uv lock' failed — aborting release${NC}"
+        git checkout pyproject.toml  # Revert
+        exit 1
+    fi
+    # Confirm the lock actually carries the new version, so a silent no-op
+    # can't put us back in the stale-lock situation this block exists to fix.
+    LOCK_VERSION=$(awk '/^name = "reserve-automation"$/{found=1; next}
+                        found && /^version = /{match($0, /"[^"]+"/)
+                                               print substr($0, RSTART+1, RLENGTH-2); exit}' uv.lock)
+    if [ "$LOCK_VERSION" != "$NEW_VERSION" ]; then
+        echo -e "${RED}Error: uv.lock still reports '${LOCK_VERSION}', expected '${NEW_VERSION}'${NC}"
+        git checkout pyproject.toml uv.lock  # Revert
+        exit 1
+    fi
+    LOCK_FILES+=(uv.lock)
+    echo -e "${GREEN}✓ Updated uv.lock${NC}"
+fi
+
 # Commit the version bump
 echo -e "\n${BLUE}Committing version bump...${NC}"
-git add pyproject.toml
+git add "${LOCK_FILES[@]}"
 git commit -m "Bump version to $NEW_VERSION"
 echo -e "${GREEN}✓ Committed${NC}"
 
