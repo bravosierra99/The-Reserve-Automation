@@ -349,8 +349,11 @@ class TestBrowserUploadFlow:
             found_zero_text = page.locator("text=Found 0 bottle(s)")
             assert not found_zero_text.is_visible(), "Should not show 'Found 0 bottles' on error"
 
-            # Verify error message is shown
-            error_div = page.locator("[x-show='error']")
+            # Verify error message is shown. Must stay scoped to the container
+            # div: a bare [x-show='error'] also matches the inner
+            # <span x-show="error" x-text="error"> and trips Playwright strict
+            # mode ("resolved to 2 elements").
+            error_div = page.locator("div[x-show='error']")
             expect(error_div).to_be_visible()
 
             print("✓ Upload failure shows error, not 'Found 0 bottles'")
