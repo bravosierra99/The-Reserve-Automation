@@ -42,7 +42,13 @@ dependencies = [
     "itsdangerous>=2.2.0",
     "opencv-python>=4.11.0.86",
     "opencv-python-headless>=4.11.0.86",
-    "easyocr>=1.7.2",
+    # NOTE: easyocr was removed (Oct 2026). Nothing imported it — the v1.13.0
+    # auto-crop rewrite replaced the OCR path with LLM bbox and left the dep
+    # behind. It was the only consumer of scikit-image, which ships no cp314
+    # wheel, so CI's `uv sync` built it from source and pythran died on
+    # "template instantiation depth exceeds maximum of 900". That had CI red on
+    # every push since v1.16.0. pytesseract/cv2 ARE still used (parsers/image.py,
+    # extractors/tasting_extractor.py) — don't prune those.
     "requests>=2.32.5",
     "llmwhisperer-client>=2.3.1",
     "beautifulsoup4>=4.14.3",
