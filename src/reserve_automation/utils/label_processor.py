@@ -1,7 +1,10 @@
 """Vision-based label quality assessment and cropping.
 
 Auto-crop design (evaluated against real prod bottle photos, July 2026):
-- Detection runs on a downscaled copy (max 1024px) via the vision LLM.
+- Detection runs on a downscaled copy (max DETECTION_MAX_DIM px) via the
+  vision LLM.
+- Label extraction also uses it (crop_image_to_label): reading the cropped
+  label at a small size beats reading the whole photo at a large one.
 - The model is asked for ONE box covering ALL label/text regions on the main
   bottle, in 0-1000 normalized coordinates. Both qwen3-vl-8b and qwen3.5-9b
   consistently emit Qwen-grounding-style 0-1000 normalized boxes regardless of
@@ -28,6 +31,7 @@ from PIL import Image, ImageOps
 from ..core.exceptions import LLMProviderNotFoundError
 from ..core.models import BottleMetadata
 from ..llm.gateway import LLMGateway
+from .image_prep import encode_for_vision
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +53,12 @@ LABEL_BBOX_PROMPT = (
 class LabelImageProcessor:
     """Process bottle label images using a vision LLM."""
 
-    # Max dimension of the downscaled copy sent for detection. 1024 keeps
-    # detection fast without hurting box accuracy (boxes are normalized).
-    DETECTION_MAX_DIM = 1024
+    # Max dimension of the downscaled copy sent for detection. Boxes are
+    # normalized, so a small copy locates the label as well as a large one:
+    # on the Oct 2026 prod eval, 640 gave a usable box on 132/134 photos in
+    # ~3s, while vision-encoder cost grows much faster than pixel count
+    # (see image_prep.LABEL_MAX_DIM).
+    DETECTION_MAX_DIM = 640
     # Padding added around the detected box, as a fraction of box size.
     # Covers the model's tendency to place edges exactly on the text.
     PADDING_FRAC = 0.05
@@ -166,58 +173,78 @@ class LabelImageProcessor:
             ORIGINAL image's pixel coordinates, or None if detection fails.
         """
         try:
-            img = Image.open(BytesIO(image_bytes))
-            img_width, img_height = img.size
-
-            detection_bytes = self._make_detection_image(img)
-
-            # Prefer a dedicated "label_detection" routing when configured
-            # (lets a deployment point cropping at a grounding-tuned model,
-            # e.g. qwen3-vl-8b) and fall back to the standard vision provider.
-            try:
-                response = await self.llm.complete(
-                    task_type="label_detection",
-                    prompt=LABEL_BBOX_PROMPT,
-                    images=[detection_bytes],
-                    max_tokens=200,
-                    temperature=0.0,
-                )
-            except LLMProviderNotFoundError:  # no routing rule for label_detection
-                response = await self.llm.complete(
-                    task_type="ocr",
-                    prompt=LABEL_BBOX_PROMPT,
-                    images=[detection_bytes],
-                    max_tokens=200,
-                    temperature=0.0,
-                )
-
-            logger.info(f"Label bbox response: {response.content!r}")
-            norm_box = self._parse_bounding_box(response.content)
-            if not norm_box:
-                logger.warning(f"Failed to parse bounding box from: {response.content!r}")
-                return None
-
-            bounds = self._normalized_to_bounds(norm_box, img_width, img_height)
-            if not bounds:
-                logger.warning(f"Rejected implausible bounding box: {norm_box}")
-                return None
-
-            logger.info(f"Detected label bounds (padded): {bounds}")
-            return bounds
-
+            return await self._detect_bounds(Image.open(BytesIO(image_bytes)))
         except Exception as e:
             logger.error(f"Bounding box detection failed: {e}")
             return None
 
+    async def crop_image_to_label(self, img: Image.Image) -> Image.Image:
+        """Return the label region of an upright image, or the image itself.
+
+        The image must already be EXIF-transposed: the detected box is
+        relative to the pixels the model sees, so cropping a still-rotated
+        original with it would cut the wrong region. Any detection failure
+        returns the input unchanged — a skipped crop is always better than a
+        wrong crop.
+        """
+        try:
+            bounds = await self._detect_bounds(img)
+        except Exception as e:
+            logger.error(f"Bounding box detection failed: {e}")
+            return img
+        if not bounds:
+            return img
+        x, y, width, height = bounds
+        return img.crop((x, y, x + width, y + height))
+
+    async def _detect_bounds(
+        self, img: Image.Image
+    ) -> Optional[Tuple[int, int, int, int]]:
+        """Shared core of detect_label_bounds / crop_image_to_label.
+
+        Raises on LLM errors; callers decide the fallback.
+        """
+        img_width, img_height = img.size
+
+        detection_bytes = self._make_detection_image(img)
+
+        # Prefer a dedicated "label_detection" routing when configured
+        # (lets a deployment point cropping at a grounding-tuned model,
+        # e.g. qwen3-vl-8b) and fall back to the standard vision provider.
+        try:
+            response = await self.llm.complete(
+                task_type="label_detection",
+                prompt=LABEL_BBOX_PROMPT,
+                images=[detection_bytes],
+                max_tokens=200,
+                temperature=0.0,
+            )
+        except LLMProviderNotFoundError:  # no routing rule for label_detection
+            response = await self.llm.complete(
+                task_type="ocr",
+                prompt=LABEL_BBOX_PROMPT,
+                images=[detection_bytes],
+                max_tokens=200,
+                temperature=0.0,
+            )
+
+        logger.info(f"Label bbox response: {response.content!r}")
+        norm_box = self._parse_bounding_box(response.content)
+        if not norm_box:
+            logger.warning(f"Failed to parse bounding box from: {response.content!r}")
+            return None
+
+        bounds = self._normalized_to_bounds(norm_box, img_width, img_height)
+        if not bounds:
+            logger.warning(f"Rejected implausible bounding box: {norm_box}")
+            return None
+
+        logger.info(f"Detected label bounds (padded): {bounds}")
+        return bounds
+
     def _make_detection_image(self, img: Image.Image) -> bytes:
         """Downscale a copy for detection; coordinates come back normalized."""
-        det = img.copy()
-        det.thumbnail((self.DETECTION_MAX_DIM, self.DETECTION_MAX_DIM))
-        if det.mode != "RGB":
-            det = det.convert("RGB")
-        buffer = BytesIO()
-        det.save(buffer, format="JPEG", quality=90)
-        return buffer.getvalue()
+        return encode_for_vision(img, max_dim=self.DETECTION_MAX_DIM)
 
     def _normalized_to_bounds(
         self, norm_box: Tuple[int, int, int, int], img_width: int, img_height: int

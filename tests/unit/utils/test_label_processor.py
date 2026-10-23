@@ -180,3 +180,25 @@ class TestCropToLabel:
         img_path.write_bytes(make_image_bytes(400, 300))
 
         assert await proc.crop_to_label(img_path, bounds=(100, 100, 900, 900)) is None
+
+
+class TestCropImageToLabel:
+    @pytest.mark.asyncio
+    async def test_returns_detected_region(self):
+        proc = make_processor('{"bbox_2d": [250, 250, 750, 750]}')
+        out = await proc.crop_image_to_label(Image.new("RGB", (2000, 1000)))
+        assert 1000 <= out.width <= 1100 and 500 <= out.height <= 550
+
+    @pytest.mark.asyncio
+    async def test_llm_failure_returns_input_unchanged(self):
+        proc = make_processor(None)  # gateway raises
+        img = Image.new("RGB", (800, 600))
+        assert await proc.crop_image_to_label(img) is img
+
+    @pytest.mark.asyncio
+    async def test_detection_image_is_a_capped_jpeg(self):
+        proc = make_processor('{"bbox_2d": [250, 250, 750, 750]}')
+        await proc.crop_image_to_label(Image.new("RGBA", (4032, 3024)))
+        det = Image.open(BytesIO(proc.llm.complete.call_args.kwargs["images"][0]))
+        assert det.format == "JPEG"
+        assert max(det.size) == LabelImageProcessor.DETECTION_MAX_DIM

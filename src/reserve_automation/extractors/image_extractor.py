@@ -4,12 +4,13 @@ from pathlib import Path
 from typing import Optional
 
 from loguru import logger
-from PIL import Image
+from PIL import Image, ImageOps
 
 from ..core.models import BottleMetadata
 from ..llm import LLMGateway
 from ..llm.response_parser import LLMResponseParser
 from ..utils.image_prep import LABEL_MAX_DIM, encode_for_vision
+from ..utils.label_processor import LabelImageProcessor
 
 
 def _parse_variety_from_llm(val) -> list[str] | None:
@@ -162,7 +163,9 @@ class ImageMetadataExtractor:
 
         # Read image
         try:
-            img = Image.open(image_path)
+            # Upright before anything else: the label crop below takes its box
+            # from the pixels the model sees, so it must crop those same pixels.
+            img = ImageOps.exif_transpose(Image.open(image_path))
             img_width, img_height = img.size
             logger.debug(f"Image dimensions: {img_width}x{img_height}")
         except Exception as e:
@@ -245,10 +248,16 @@ For beverage_type:
 Return only the JSON, nothing else."""
 
         try:
-            # Convert image to bytes for vision LLM. EXIF orientation, the
-            # 1536px cap and single-frame JPEG encoding all live in the shared
+            # Read the label, not the whole photo: crop to the detected label
+            # first, then send it at LABEL_MAX_DIM. Small print keeps its
+            # pixels while the image stays small enough for the vision encoder
+            # to be fast (see image_prep.LABEL_MAX_DIM). Detection failure
+            # falls back to the full photo.
+            label_img = await LabelImageProcessor(self.llm_gateway).crop_image_to_label(img)
+
+            # The size cap and single-frame JPEG encoding live in the shared
             # helper so the manifest path can't drift from this one again.
-            image_bytes = encode_for_vision(img, max_dim=LABEL_MAX_DIM)
+            image_bytes = encode_for_vision(label_img, max_dim=LABEL_MAX_DIM)
 
             logger.debug("=" * 80)
             logger.debug("VISION LLM EXTRACTION - Starting")

@@ -77,26 +77,29 @@ validation.
   reads that look like model failures but aren't.
 - The media endpoint happily serves any bytes at a .jpg path.
 
-## 5. Label-import speed depends on three LM Studio host settings, not on our code.
+## 5. Label-import speed: image size on our side, three LM Studio settings on the host.
 
-A label extraction should take ~10s warm and ~20s on a cold first upload. If it takes
-minutes, it is almost certainly one of these LM Studio settings on the host (192.168.86.2)
-having been reset (by an LM Studio update or a GUI toggle). That has happened three
-times (Jul, Aug, Sep–Oct 2026), and each time it looked like a model, runtime or code
-problem. It was none of those.
+A label extraction should take ~10s warm and ~20s on a cold first upload. It slowed to
+minutes three times (Jul, Aug, Sep–Oct 2026), and each time looked like a model, runtime
+or code problem. It was an LM Studio setting on the host (192.168.86.2) reset by an
+update or a GUI toggle, compounded by the image size we send.
 
-The host has two GPUs: Vulkan0 = RTX 3060, Vulkan1 = RX 6900 XT.
+The host has two GPUs: Vulkan0 = RTX 3060 (Ben's display/gaming card), Vulkan1 =
+RX 6900 XT. The model is meant to run on the 6900 XT alone ("Disabled GPUs: [0]").
 
 1. **qwen/qwen3.5-9b must load with `parallel` = 1** (Max Concurrent Predictions).
    Any value > 1 drops its hybrid (Gated DeltaNet) architecture to ~47 prefill / 19
    decode tok/s on Vulkan. With 1 it gets ~780 / 63. The tell is "decode exactly ~19 tok/s".
-2. **GPU split must be "evenly" with no GPU disabled.** The vision encoder runs on the
-   *first visible* Vulkan device. On the 6900 XT its head-dim-72 flash attention crawls:
-   ~165s per photo. On the 3060 it takes ~2s. LM Studio hides any GPU that receives no
-   layers, so "Disabled GPUs: [0]" and "priority order" both move the encoder onto the
-   6900 XT.
+2. **The vision encoder is very slow on the 6900 XT, and its cost explodes with image
+   size.** A photo at 768px takes 4.9s, 1024px 26s, 1536px ~165s (head-dim-72 flash
+   attention with no matrix cores). That is why the app crops to the label and reads it at
+   768px (`image_prep.LABEL_MAX_DIM`, enforced by `tests/unit/test_image_prep.py`).
+   **Never raise those caps to "improve accuracy"** without timing on the 6900 XT.
+   The encoder runs on the *first visible* Vulkan device: enabling the 3060 (split
+   "evenly", nothing disabled) puts it there at ~2s. That is the fallback if the caps
+   ever have to grow, at the cost of ~5GB on the gaming card.
 3. Runtime version is NOT the cause. Vulkan 2.42.0 and 2.28.2 both run a label in ~10–12s
-   once 1 and 2 hold. An earlier "2.42 is slow" result was the encoder-on-6900 effect.
+   once 1 and 2 are handled. An earlier "2.42 is slow" result was the encoder-on-6900 effect.
 4. The 9b's GGUF folder is a junction onto the C: NVMe
    (`C:\Users\ben\.lmstudio\models-nvme\…`). Models on D: sit on a spinning HDD, which
    made a cold load take ~48s whenever the file wasn't in the Windows cache. From the NVMe

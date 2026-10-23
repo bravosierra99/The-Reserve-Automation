@@ -8,6 +8,7 @@ import pytest
 from PIL import Image
 
 from reserve_automation.extractors.image_extractor import ImageMetadataExtractor
+from reserve_automation.utils.image_prep import LABEL_MAX_DIM
 
 
 class TestNormalizeWineBeverageType:
@@ -307,7 +308,7 @@ class TestImagePrepOrientationAndSize:
 
     @pytest.mark.asyncio
     async def test_oversized_image_downscaled(self, extractor_with_captured_call, tmp_path):
-        """Full-res captures (e.g. 4032x3024) must be capped at 1536px on the long side."""
+        """Full-res captures (e.g. 4032x3024) must be capped at LABEL_MAX_DIM on the long side."""
         extractor, captured = extractor_with_captured_call
         path = tmp_path / "big.jpg"
         Image.new("RGB", (4032, 3024), (10, 20, 30)).save(path, format="JPEG")
@@ -316,8 +317,8 @@ class TestImagePrepOrientationAndSize:
             await extractor.extract_from_image(path)
 
         sent = Image.open(io.BytesIO(captured["images"][0]))
-        assert max(sent.size) == 1536
-        assert sent.size == (1536, 1152), "aspect ratio not preserved"
+        assert max(sent.size) == LABEL_MAX_DIM
+        assert sent.size == (LABEL_MAX_DIM, LABEL_MAX_DIM * 3 // 4), "aspect ratio not preserved"
 
     @pytest.mark.asyncio
     async def test_small_image_not_upscaled(self, extractor_with_captured_call, tmp_path):
@@ -380,3 +381,60 @@ class TestEnrichmentSearchQuery:
             self._bottle(producer="Buffalo Trace", name="Eagle Rare", beverage_type="Bourbon")
         )
         assert q.startswith("Buffalo Trace Eagle Rare")
+
+
+class TestReadsCroppedLabel:
+    """extract_from_image crops to the detected label before reading it.
+
+    The crop box comes back relative to the upright image the model sees, so a
+    phone photo stored sideways (EXIF orientation 6) must be transposed BEFORE
+    cropping or the crop cuts the wrong region.
+    """
+
+    EXTRACTION_JSON = '{"producer": "P", "name": "N", "beverage_type": "wine"}'
+
+    @staticmethod
+    def _sideways_photo(path: Path) -> None:
+        """Upright 400x800 photo with a red 'label' in the top-left 200x200,
+        stored rotated with EXIF orientation 6 the way phones save it."""
+        upright = Image.new("RGB", (400, 800), "white")
+        upright.paste((255, 0, 0), (0, 0, 200, 200))
+        stored = upright.transpose(Image.Transpose.ROTATE_90)
+        exif = stored.getexif()
+        exif[274] = 6  # Orientation: rotate 90 CW to display
+        stored.save(path, format="JPEG", exif=exif)
+
+    def _extractor(self, detection_reply: str):
+        llm = Mock()
+        llm.complete = AsyncMock(side_effect=[Mock(content=detection_reply),
+                                              Mock(content=self.EXTRACTION_JSON, tokens_used=1)])
+        extractor = ImageMetadataExtractor(llm)
+        return extractor, llm
+
+    @pytest.mark.asyncio
+    async def test_rotated_photo_is_cropped_to_the_upright_label(self, tmp_path):
+        path = tmp_path / "label.jpg"
+        self._sideways_photo(path)
+        # Red block = x 0-200 of 400, y 0-200 of 800 → normalized [0,0,500,250]
+        extractor, llm = self._extractor('{"bbox_2d": [0, 0, 500, 250]}')
+
+        with patch.object(extractor, "_create_bottle_from_extraction", AsyncMock(return_value=Mock())):
+            await extractor.extract_from_image(path)
+
+        sent = Image.open(io.BytesIO(llm.complete.call_args_list[1].kwargs["images"][0])).convert("RGB")
+        w, h = sent.size
+        assert 0.8 < w / h < 1.25, f"expected the square label crop, got {w}x{h}"
+        r, g, b = sent.resize((1, 1)).getpixel((0, 0))
+        assert r > 200 and g < 120, f"crop missed the red label (mean colour {(r, g, b)})"
+
+    @pytest.mark.asyncio
+    async def test_failed_detection_reads_the_whole_photo(self, tmp_path):
+        path = tmp_path / "label.jpg"
+        self._sideways_photo(path)
+        extractor, llm = self._extractor("no box here")
+
+        with patch.object(extractor, "_create_bottle_from_extraction", AsyncMock(return_value=Mock())):
+            await extractor.extract_from_image(path)
+
+        sent = Image.open(io.BytesIO(llm.complete.call_args_list[1].kwargs["images"][0]))
+        assert sent.size == (LABEL_MAX_DIM // 2, LABEL_MAX_DIM), "fallback must send the full upright photo"

@@ -11,10 +11,18 @@ import io
 
 from PIL import Image, ImageOps
 
-# Single labels: past ~1536px the vision encoder gains no OCR accuracy
-# (verified on the prod-label eval set) while prefill time triples — full-res
-# uploads took 130s+ vs ~45s at 1536px.
-LABEL_MAX_DIM = 1536
+# Why these caps are small: the vision encoder's cost grows far faster than
+# pixel count, and on the RX 6900 XT (Vulkan, no matrix cores) it is extreme.
+# qwen3.5-9b's encoder on that card, one label photo: 768px 4.9s, 1024px 26s,
+# 1536px ~165s (Oct 2026). Faster GPUs hide this; the 6900 XT alone does not.
+#
+# Single labels are read AFTER cropping to the label (extractors/image_extractor
+# via LabelImageProcessor.crop_image_to_label), so 768px of label carries as
+# much text detail as ~1536px of whole photo. Oct 2026 prod eval, 134 photos,
+# 6900 XT only:  crop+768: name 80%, producer 66%, 9.5s median / 11.7s p90.
+#                full 1536 (old): name 77%, producer 67%, ~165s on that card.
+#                full 768, no crop: name 75%, misreads small print ("Mecher's").
+LABEL_MAX_DIM = 768
 
 # Multi-bottle documents (manifests, invoices, wine lists). A manifest carries
 # far smaller glyphs than a single label (a 12-line list vs one big-print
@@ -37,19 +45,12 @@ LABEL_MAX_DIM = 1536
 #   2. 512 is genuinely too small: real misreads, not just slower.
 #   3. 1024/1536 both extract the document exactly.
 #
-# CAVEAT on the timings, recorded honestly: the 2048/full-res rows (~56s) were
-# measured EARLY in the session and the 512/1024/1536 rows LATER, and this host
-# degrades under sustained load — minutes after the table above, an identical
-# 1536 request that had taken 14.9s exceeded 300s until LM Studio was bounced.
-# So the apparent 1768->3112 token "cliff" may be partly that drift rather than
-# a real threshold. Re-measure 2048 against a freshly restarted engine before
-# treating the cliff as fact.
-#
-# 1536 is kept regardless, because it does not depend on the disputed timing:
-# it reads the document exactly, it is never slower than 2048, and it matches
-# LABEL_MAX_DIM. Kept as its own constant so a manifest eval can retune it
-# without touching the label path.
-DOCUMENT_MAX_DIM = 1536
+# The erratic timings in that table (and the "cliff") were the encoder-on-6900
+# effect described above, not load drift. Re-measured Oct 2026 with the
+# encoder on the 6900 XT: same capture at 1024 = 9.1s, 13/13 lines exact; 1536
+# would be minutes. Documents are not cropped, so this cap is larger than
+# LABEL_MAX_DIM on purpose.
+DOCUMENT_MAX_DIM = 1024
 
 
 def encode_for_vision(image: Image.Image, max_dim: int = LABEL_MAX_DIM) -> bytes:

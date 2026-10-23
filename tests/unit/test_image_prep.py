@@ -65,17 +65,18 @@ class TestEncodeForVision:
         out = encode_for_vision(Image.open(io.BytesIO(buf.getvalue())))
         assert _decode(out).size == (50, 100)
 
-    def test_document_cap_stays_under_the_vision_cliff(self):
-        """Above ~1800 image tokens the vision tower falls off a cliff (1.8x the
-        tokens cost 10.6x the time, measured 2026-08-15). 1536 keeps a manifest
-        under it at no accuracy cost; 2048 crossed it and cost ~4x end-to-end."""
-        assert DOCUMENT_MAX_DIM <= 1536
+    def test_caps_stay_fast_on_the_6900xt(self):
+        """The vision encoder's cost explodes with size on the RX 6900 XT
+        (one label photo: 768px 4.9s, 1024px 26s, 1536px ~165s, Oct 2026).
+        Raising either cap re-creates the 'first upload takes forever' bug."""
+        assert 0 < LABEL_MAX_DIM <= 768
+        assert 0 < DOCUMENT_MAX_DIM <= 1024
 
-    def test_caps_are_positive_and_document_never_exceeds_label(self):
-        """Kept as separate constants so a manifest eval can retune one of them,
-        but a manifest must never be sent at higher resolution than a label —
-        that direction is what crossed the cliff."""
-        assert 0 < DOCUMENT_MAX_DIM <= LABEL_MAX_DIM
+    def test_document_cap_is_not_below_the_measured_floor(self):
+        """512 misread a real manifest (6 wrong prices); 1024 read it exactly.
+        Documents are not cropped first, so they need more pixels than a
+        cropped label."""
+        assert DOCUMENT_MAX_DIM >= 1024 > LABEL_MAX_DIM
 
 
 FIXTURE = (
