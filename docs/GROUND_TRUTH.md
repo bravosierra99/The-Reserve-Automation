@@ -95,7 +95,12 @@ The host has two GPUs: Vulkan0 = RTX 3060, Vulkan1 = RX 6900 XT.
    ~165s per photo. On the 3060 it takes ~2s. LM Studio hides any GPU that receives no
    layers, so "Disabled GPUs: [0]" and "priority order" both move the encoder onto the
    6900 XT.
-3. Runtime: Vulkan **2.28.2** is verified fast. 2.42.0 was also slow for vision when tested.
+3. Runtime version is NOT the cause. Vulkan 2.42.0 and 2.28.2 both run a label in ~10–12s
+   once 1 and 2 hold. An earlier "2.42 is slow" result was the encoder-on-6900 effect.
+4. The 9b's GGUF folder is a junction onto the C: NVMe
+   (`C:\Users\ben\.lmstudio\models-nvme\…`). Models on D: sit on a spinning HDD, which
+   made a cold load take ~48s whenever the file wasn't in the Windows cache. From the NVMe
+   it takes ~8s, so a true first upload (model unloaded) is ~19s.
 
 Diagnose before touching code. A prefill/decode split comes from
 `POST /api/v0/chat/completions` (`stats`). Use a *fresh* image every time: re-sending the
