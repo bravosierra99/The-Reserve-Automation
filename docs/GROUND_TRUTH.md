@@ -77,6 +77,31 @@ validation.
   reads that look like model failures but aren't.
 - The media endpoint happily serves any bytes at a .jpg path.
 
+## 5. Label-import speed depends on three LM Studio host settings, not on our code.
+
+A label extraction should take ~10s warm and ~20s on a cold first upload. If it takes
+minutes, it is almost certainly one of these LM Studio settings on the host (192.168.86.2)
+having been reset (by an LM Studio update or a GUI toggle). That has happened three
+times (Jul, Aug, Sep–Oct 2026), and each time it looked like a model, runtime or code
+problem. It was none of those.
+
+The host has two GPUs: Vulkan0 = RTX 3060, Vulkan1 = RX 6900 XT.
+
+1. **qwen/qwen3.5-9b must load with `parallel` = 1** (Max Concurrent Predictions).
+   Any value > 1 drops its hybrid (Gated DeltaNet) architecture to ~47 prefill / 19
+   decode tok/s on Vulkan. With 1 it gets ~780 / 63. The tell is "decode exactly ~19 tok/s".
+2. **GPU split must be "evenly" with no GPU disabled.** The vision encoder runs on the
+   *first visible* Vulkan device. On the 6900 XT its head-dim-72 flash attention crawls:
+   ~165s per photo. On the 3060 it takes ~2s. LM Studio hides any GPU that receives no
+   layers, so "Disabled GPUs: [0]" and "priority order" both move the encoder onto the
+   6900 XT.
+3. Runtime: Vulkan **2.28.2** is verified fast. 2.42.0 was also slow for vision when tested.
+
+Diagnose before touching code. A prefill/decode split comes from
+`POST /api/v0/chat/completions` (`stats`). Use a *fresh* image every time: re-sending the
+same image hits LM Studio's prompt cache and looks fast. Full A/B method and numbers are
+in the operator's notes (2026-10-23).
+
 ---
 
 *Add to this file when you learn a fact about the deployed system that the code doesn't
