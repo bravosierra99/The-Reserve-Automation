@@ -18,17 +18,21 @@ paths:
 # Override any of these in user.yaml (gitignored) for your deployment.
 # See config/llm.yaml.example for annotated provider/routing options.
 llm:
-  # GROUND TRUTH (see docs/GROUND_TRUTH.md): qwen/qwen3.5-9b is MULTIMODAL — it does
-  # vision/OCR *and* text. Deployments routinely point lm_studio_vision at it (prod does).
-  # Do NOT "correct" a vision provider away from qwen3.5-9b to a *-vl model on the belief
-  # that 3.5-9b is text-only — it is not. Never infer a model's vision capability from its
-  # name. The vision/text model split below is about latency/quality, not capability.
+  # GROUND TRUTH (see docs/GROUND_TRUTH.md): unsloth/qwen3.6-35b-a3b and qwen/qwen3.5-9b are
+  # MULTIMODAL — they do vision/OCR *and* text. Prod points lm_studio_vision at the 35b, the
+  # household's shared "house model" (since 2026-11-10; the 9b before). Do NOT "correct" a
+  # vision provider away from either to a *-vl model on the belief that it is text-only — it
+  # is not. Never infer a model's vision capability from its name. The vision/text model split
+  # below is about latency/quality, not capability.
   # tests/test_llm_config_vision.py enforces that vision routing stays on a known-vision model.
+  # The LM Studio box is shared by every household app and holds ONE model: keep all three
+  # lm_studio_* providers on the house model, or every switch between apps reloads (~15-60s).
+  # Which model is the house model: proxmox repo, model-eval/registry.toml.
   providers:
     lm_studio_vision:
       provider: lm_studio
       base_url: "http://localhost:1234/v1"
-      model: "qwen/qwen3-vl-8b"
+      model: "unsloth/qwen3.6-35b-a3b"
       timeout: 180
       model_load_timeout: 360
       max_retries: 2
@@ -40,7 +44,7 @@ llm:
     lm_studio_text:
       provider: lm_studio
       base_url: "http://localhost:1234/v1"
-      model: "qwen/qwen3-vl-8b"
+      model: "unsloth/qwen3.6-35b-a3b"
       timeout: 120
       model_load_timeout: 240
       max_retries: 2
@@ -49,7 +53,7 @@ llm:
     lm_studio_agent:
       provider: lm_studio
       base_url: "http://localhost:1234/v1"
-      model: "qwen/qwen3.5-9b"   # multimodal — also valid for vision/OCR (see note above)
+      model: "unsloth/qwen3.6-35b-a3b"   # multimodal — also valid for vision/OCR (see note above)
       timeout: 300
       max_retries: 1
       context_length: 16384

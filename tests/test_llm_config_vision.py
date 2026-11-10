@@ -20,6 +20,9 @@ import yaml
 KNOWN_VISION_MODELS = {
     "qwen/qwen3-vl-8b",
     "qwen/qwen3.5-9b",
+    # The household house model; prod since 2026-11-10. Verified by evals/run.py (label 7/8,
+    # tasting cards 3/3 vs the 9b's 7/8 and 2/3), results in the proxmox repo's model-eval/.
+    "unsloth/qwen3.6-35b-a3b",
 }
 
 # Routing keys whose work requires actually looking at an image.

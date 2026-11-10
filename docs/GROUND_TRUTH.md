@@ -14,8 +14,14 @@ or test, the location is noted so it can't be quietly violated.
 
 ## 1. `qwen/qwen3.5-9b` is multimodal (vision + text). It is NOT text-only.
 
-It performs OCR / image analysis as well as text generation. Production points the
-`lm_studio_vision` provider at it (`config/user.yaml`), and that is correct.
+It performs OCR / image analysis as well as text generation. Production pointed the
+`lm_studio_vision` provider at it (`config/user.yaml`) until 2026-11-10, and that was correct.
+
+**The same goes for `unsloth/qwen3.6-35b-a3b`**, the household's shared "house model", which
+prod has used for both providers since 2026-11-10. LM Studio holds one model for every app in
+the house, so Reserve moved onto it. `evals/run.py` (`model-eval run <model> --apps reserve`,
+from the proxmox repo) compared the two. The 35b passed 11/12 cases and the 9b 10/12: labels
+7/8 each, tasting cards 3/3 vs 2/3, and the manifest both. Label reads took the same time, ~8-13 s.
 
 - **Do not** "fix" a vision provider away from `qwen3.5-9b` to a `*-vl` model on the
   belief that 3.5-9b can't see. It can.
@@ -90,6 +96,9 @@ RX 6900 XT. The model is meant to run on the 6900 XT alone ("Disabled GPUs: [0]"
 1. **qwen/qwen3.5-9b must load with `parallel` = 1** (Max Concurrent Predictions).
    Any value > 1 drops its hybrid (Gated DeltaNet) architecture to ~47 prefill / 19
    decode tok/s on Vulkan. With 1 it gets ~780 / 63. The tell is "decode exactly ~19 tok/s".
+   The 35b house model (prod since 2026-11-10) also loads at parallel 1 and 32,768 ctx (the
+   proxmox repo's `model-eval/registry.toml` holds every model's load settings). On a label it
+   decodes at ~68 tok/s, and a label read takes ~8-13 s, the same as the 9b.
 2. **The vision encoder is very slow on the 6900 XT, and its cost explodes with image
    size.** A photo at 768px takes 4.9s, 1024px 26s, 1536px ~165s (head-dim-72 flash
    attention with no matrix cores). That is why the app crops to the label and reads it at
